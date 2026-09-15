@@ -311,6 +311,40 @@ export default function TasksPage() {
     }
   };
 
+  const buildTasksPayload = () => ({
+    tasks: (tasks || []).map((t) => ({
+      title: t.title,
+      project: t.project,
+      status: t.status,
+      priority: t.priority,
+      due: t.due instanceof Date ? t.due.toISOString() : (t.due || null),
+      overdue: isOverdue(t),
+      assignees: (t.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean).map((m) => ({ i: m.i, c: m.c })),
+    })),
+  });
+
+  const exportTasksPng = async () => {
+    try {
+      setTaskError("");
+      const res = await fetch("/api/tasks-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildTasksPayload()) });
+      if (!res.ok) throw new Error("Unable to render tasks image.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = "sdc-tasks.png";
+      link.href = url; link.click(); URL.revokeObjectURL(url);
+    } catch (e) { setTaskError(e.message || "Unable to export tasks image."); }
+  };
+
+  const sendTasksToLark = async () => {
+    try {
+      setTaskError("");
+      const res = await fetch("/api/lark/tasks-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildTasksPayload()) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Unable to send tasks to Lark.");
+    } catch (e) { setTaskError(e.message || "Unable to send to Lark"); }
+  };
+
   return (
     <>
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
@@ -332,6 +366,8 @@ export default function TasksPage() {
                   style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}><Icon size={15} />{v}</button>
               ))}
             </div>
+            <button onClick={exportTasksPng} className="rounded-full px-3.5 py-2 text-sm font-medium shadow-sm shrink-0" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
+            <button onClick={sendTasksToLark} className="rounded-full px-3.5 py-2 text-sm font-medium shadow-sm shrink-0" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
             <button onClick={() => openCreate("todo")} className="tp-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
               <Plus size={17} /> New task
             </button>
