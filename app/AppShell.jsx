@@ -6,19 +6,23 @@ import { ThemeCtx } from "./theme";
 import { AuthProvider, useAuth } from "./auth";
 import Sidebar from "./Sidebar";
 
+function readThemeCookie() {
+  if (typeof document === "undefined") return null;
+  const item = document.cookie.split("; ").find((entry) => entry.startsWith("sdc_theme="));
+  return item ? item.split("=")[1] : null;
+}
+
 export default function AppShell({ children }) {
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(false);
 
   useEffect(() => {
-    try {
-      const v = localStorage.getItem("sdc-theme");
-      if (v) setDark(v === "dark");
-    } catch {}
+    const saved = readThemeCookie();
+    if (saved === "dark" || saved === "light") setDark(saved === "dark");
   }, []);
 
-  const toggle = () => setDark((d) => {
-    const next = !d;
-    try { localStorage.setItem("sdc-theme", next ? "dark" : "light"); } catch {}
+  const toggle = () => setDark((current) => {
+    const next = !current;
+    document.cookie = `sdc_theme=${next ? "dark" : "light"}; Path=/; Max-Age=31536000; SameSite=Lax`;
     return next;
   });
 
