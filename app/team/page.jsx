@@ -44,6 +44,7 @@ export default function TeamPage() {
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [pageError, setPageError] = useState("");
 
   const list = members.filter((m) => {
     const q = query.trim().toLowerCase();
@@ -75,6 +76,9 @@ export default function TeamPage() {
         </header>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
+          {pageError && (
+            <div className="mb-4 rounded-xl px-4 py-3 text-sm" style={{ color: "#E5536E", background: "rgba(229,83,110,0.10)", border: "1px solid rgba(229,83,110,0.25)" }}>{pageError}</div>
+          )}
           {list.length ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(285px, 1fr))", gap: 20 }}>
               {list.map((m) => (
@@ -100,11 +104,17 @@ export default function TeamPage() {
         <MemberModal
           member={editing}
           onClose={() => { setAdding(false); setEditing(null); }}
-          onSave={(data) => {
-            if (editing) updateMember(editing.id, data);
-            else addMember(data);
-            setAdding(false);
-            setEditing(null);
+          onSave={async (data) => {
+            setPageError("");
+            try {
+              if (editing) await updateMember(editing.id, data);
+              else await addMember(data);
+              setAdding(false);
+              setEditing(null);
+              return { ok: true };
+            } catch (error) {
+              return { ok: false, message: error.message || "Unable to save member." };
+            }
           }}
         />
       )}
@@ -114,9 +124,15 @@ export default function TeamPage() {
           member={deleting}
           blocked={currentMember?.id === deleting.id}
           onClose={() => setDeleting(null)}
-          onDelete={() => {
-            deleteMember(deleting.id);
-            setDeleting(null);
+          onDelete={async () => {
+            setPageError("");
+            try {
+              await deleteMember(deleting.id);
+              setDeleting(null);
+            } catch (error) {
+              setPageError(error.message || "Unable to delete member.");
+              setDeleting(null);
+            }
           }}
         />
       )}
@@ -216,24 +232,31 @@ function MemberCard({ m, dark, isCurrent, onEdit, onDelete }) {
 function MemberModal({ member, onClose, onSave }) {
   const [form, setForm] = useState(() => member ? { ...member, pin: "" } : { ...EMPTY_FORM });
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return setError("Member name is required.");
     if (!form.role.trim()) return setError("Role is required.");
     if (!member && !form.pin.trim()) return setError("Create a login PIN for this member.");
     if (form.pin && form.pin.length < 4) return setError("PIN must be at least 4 digits.");
 
-    onSave({
-      ...form,
-      i: (form.i || makeInitials(form.name) || "TM").toUpperCase().slice(0, 3),
-      pin: form.pin,
-      projects: Math.max(0, Number(form.projects) || 0),
-      open: Math.max(0, Number(form.open) || 0),
-      done: Math.max(0, Number(form.done) || 0),
-    });
+    setSaving(true);
+    try {
+      const result = await onSave({
+        ...form,
+        i: (form.i || makeInitials(form.name) || "TM").toUpperCase().slice(0, 3),
+        pin: form.pin,
+        projects: Math.max(0, Number(form.projects) || 0),
+        open: Math.max(0, Number(form.open) || 0),
+        done: Math.max(0, Number(form.done) || 0),
+      });
+      if (result?.ok === false) setError(result.message || "Unable to save member.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -295,8 +318,8 @@ function MemberModal({ member, onClose, onSave }) {
 
         <div className="flex justify-end gap-2 px-6 py-4" style={{ borderTop: "1px solid var(--border)" }}>
           <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm font-medium" style={{ color: "var(--text-2)", background: "var(--col)" }}>Cancel</button>
-          <button type="submit" className="rounded-full px-4 py-2 text-sm font-medium flex items-center gap-2 shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
-            <Save size={15} /> {member ? "Save changes" : "Add member"}
+          <button disabled={saving} type="submit" className="rounded-full px-4 py-2 text-sm font-medium flex items-center gap-2 shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
+            <Save size={15} /> {saving ? "Saving…" : (member ? "Save changes" : "Add member")}
           </button>
         </div>
       </form>
