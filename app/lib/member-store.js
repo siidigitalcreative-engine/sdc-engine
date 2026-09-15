@@ -63,6 +63,7 @@ function normalizeStoredMember(member) {
     done: Math.max(0, Number(member.done) || 0),
     status: String(member.status || "Active"),
     featured: Boolean(member.featured),
+    theme: member.theme === "light" ? "light" : "dark",
     pinHash: String(member.pinHash || hashPin(DEFAULT_PIN)),
   };
 }
@@ -128,15 +129,7 @@ export async function readMembersState({ ifNoneMatch } = {}) {
   return { state, etag: result.blob.etag, notModified: false };
 }
 
-function isEtagConflict(error) {
-  return error instanceof BlobPreconditionFailedError ||
-    error?.name === "BlobPreconditionFailedError" ||
-    /precondition failed|etag mismatch/i.test(String(error?.message || ""));
-}
-
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-export async function mutateMembers(mutator, maxAttempts = 8) {
+export async function mutateMembers(mutator, maxAttempts = 5) {
   let lastError;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -162,33 +155,15 @@ export async function mutateMembers(mutator, maxAttempts = 8) {
       });
       return { state: nextState, etag: blob.etag };
     } catch (error) {
-      if (!isEtagConflict(error)) throw error;
-      lastError = error;
-      await wait(25 * (attempt + 1));
+      if (error instanceof BlobPreconditionFailedError) {
+        lastError = error;
+        continue;
+      }
+      throw error;
     }
   }
 
-  // If the same tiny member file is under unusually heavy contention, do one
-  // final fresh read, re-apply the requested change, and save it. This keeps a
-  // transient ETag conflict from becoming a user-facing save failure.
-  const latest = await readMembersState();
-  const finalMembers = await mutator(latest.state.members.map((member) => ({ ...member })));
-  const finalState = {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    members: finalMembers.map(normalizeStoredMember),
-  };
-
-  try {
-    const blob = await put(PATHNAME, JSON.stringify(finalState), {
-      access: "private",
-      contentType: "application/json",
-      allowOverwrite: true,
-    });
-    return { state: finalState, etag: blob.etag };
-  } catch (error) {
-    throw lastError || error;
-  }
+  throw lastError || new Error("The member list changed while saving. Please try again.");
 }
 
 export function createMemberInput(data = {}) {
@@ -212,6 +187,7 @@ export function createMemberInput(data = {}) {
     done: data.done,
     status: data.status,
     featured: false,
+    theme: data.theme || "dark",
     pinHash: hashPin(pin),
   });
 }
