@@ -5,6 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { ThemeCtx } from "./theme";
 import { AuthProvider, useAuth } from "./auth";
 import Sidebar from "./Sidebar";
+import { Menu, Sparkles } from "lucide-react";
+
+const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
+const ON_ACCENT = "var(--on-accent)";
 
 function readThemeCookie() {
   if (typeof document === "undefined") return null;
@@ -69,6 +73,9 @@ function AppFrame({ children, dark }) {
   const router = useRouter();
   const { ready, currentMember } = useAuth();
   const isLogin = pathname === "/login";
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
 
   useEffect(() => {
     if (!ready) return;
@@ -93,8 +100,28 @@ function AppFrame({ children, dark }) {
     <div className={shellClass} style={{ minHeight: 560, background: "var(--page)", color: "var(--text)" }}>
       <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex" style={{ background: "var(--surface)" }}>
         {!isLogin && <Sidebar />}
-        {children}
+        <div className="flex-1 min-w-0 flex flex-col">
+          {!isLogin && (
+            <div className="md:hidden flex items-center gap-3 px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
+              <button onClick={() => setMenuOpen(true)} aria-label="Open menu" className="sb-ib h-9 w-9 flex items-center justify-center rounded-xl" style={{ color: "var(--text)", background: "var(--col)", border: "1px solid var(--border)" }}>
+                <Menu size={20} />
+              </button>
+              <span className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ background: ACCENT_GRAD }}><Sparkles size={16} style={{ color: ON_ACCENT }} /></span>
+              <span className="font-semibold" style={{ color: "var(--text)" }}>SDC</span>
+            </div>
+          )}
+          {children}
+        </div>
       </div>
+
+      {!isLogin && menuOpen && (
+        <div className="md:hidden fixed inset-0 z-50" onClick={() => setMenuOpen(false)}>
+          <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.55)" }} />
+          <div className="absolute left-0 top-0 bottom-0 z-10 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <Sidebar mobile onNavigate={() => setMenuOpen(false)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
