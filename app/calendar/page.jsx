@@ -1,5 +1,7 @@
 "use client";
 
+import { toPng } from "html-to-image";
+
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
 import {
@@ -121,40 +123,17 @@ export default function TeamCalendar() {
       const target = calendarExportRef.current;
       if (!target) return;
 
-      const rect = target.getBoundingClientRect();
-      const html = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}">
-          <foreignObject width="100%" height="100%">
-            <div xmlns="http://www.w3.org/1999/xhtml" style="width:${rect.width}px;height:${rect.height}px;">
-              ${target.outerHTML}
-            </div>
-          </foreignObject>
-        </svg>
-      `;
+      const dataUrl = await toPng(target, {
+        cacheBust: true,
+        pixelRatio: 2,
+      });
 
-      const blob = new Blob([html], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const image = new Image();
-
-      image.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = rect.width * 2;
-        canvas.height = rect.height * 2;
-
-        const ctx = canvas.getContext("2d");
-        ctx.scale(2, 2);
-        ctx.drawImage(image, 0, 0);
-
-        const link = document.createElement("a");
-        link.download = "sdc-calendar.png";
-        link.href = canvas.toDataURL("image/png");
-        link.click();
-
-        URL.revokeObjectURL(url);
-      };
-
-      image.src = url;
+      const link = document.createElement("a");
+      link.download = "sdc-calendar.png";
+      link.href = dataUrl;
+      link.click();
     } catch (error) {
+      console.error("PNG EXPORT ERROR", error);
       setCalendarError("Unable to export calendar image.");
     }
   };
