@@ -25,8 +25,8 @@ export default function Sidebar() {
 
   if (!currentMember) return null;
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.replace("/login");
   };
 
