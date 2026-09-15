@@ -5,3 +5,47 @@
 
 html, body { margin: 0; padding: 0; }
 * { box-sizing: border-box; }
+
+.theme-light{
+  --page:linear-gradient(165deg,#F4F5F7 0%,#EDEEF1 100%);
+  --surface:#FFFFFF; --sidebar:#F6F7F9;
+  --header:linear-gradient(180deg,#FFFFFF 0%,#FAFAFC 100%);
+  --card:#FFFFFF; --col:#F4F5F7; --border:#E9EAEE; --grid:#EDEEF2; --dim:rgba(17,17,20,0.02);
+  --text:#111014; --text-2:#5B5D66; --muted:#9A9CA6; --faint:#C4C6CE;
+  --hover:rgba(17,17,20,0.05); --hover-cell:rgba(17,17,20,0.03); --hover-row:#F6F7F9; color-scheme:light; --on-accent:#ffffff;
+}
+.theme-dark{
+  --page:linear-gradient(165deg,#0D0D10 0%,#111114 100%);
+  --surface:#141417; --sidebar:#0D0D0F;
+  --header:linear-gradient(180deg,#161619 0%,#141417 100%);
+  --card:#1C1C21; --col:#171719; --border:rgba(255,255,255,0.08); --grid:rgba(255,255,255,0.07); --dim:rgba(255,255,255,0.03);
+  --text:#F1F1F4; --text-2:rgba(255,255,255,0.62); --muted:rgba(255,255,255,0.40); --faint:rgba(255,255,255,0.28);
+  --hover:rgba(255,255,255,0.08); --hover-cell:rgba(255,255,255,0.05); --hover-row:rgba(255,255,255,0.04); color-scheme:dark; --on-accent:#2A2210;
+}
+
+input,textarea,select{background:transparent;color:var(--text)}
+input::placeholder,textarea::placeholder{color:var(--muted)}
+
+.sb-nav:hover{background:var(--hover)}
+.sb-ib:hover{background:var(--hover)}
+.tc-mini-day:hover{background:var(--hover)}
+.tc-cat:hover{background:var(--hover)}
+.tc-cell:hover{background:var(--hover-cell)}
+.tc-evt{transition:filter .12s ease}
+.tc-evt:hover{filter:brightness(0.96)}
+.tc-ib:hover{background:var(--hover)}
+.tc-pill:hover{filter:brightness(1.05)}
+.tp-card{transition:box-shadow .15s ease, transform .15s ease}
+.tp-card:hover{box-shadow:0 8px 22px rgba(0,0,0,0.18); transform:translateY(-1px)}
+.tp-ib:hover{background:var(--hover)}
+.tp-pill:hover{filter:brightness(1.04)}
+.tp-row:hover{background:var(--hover-row)}
+.tp-chip-x:hover{opacity:1}
+.db-ib:hover{background:var(--hover)}
+.db-pill:hover{filter:brightness(1.05)}
+.db-row:hover{filter:brightness(0.985)}
+.db-day:hover{background:var(--hover)}
+.tm-ib:hover{background:var(--hover)}
+.tm-pill:hover{filter:brightness(1.05)}
+.tm-card{transition:box-shadow .15s ease, transform .15s ease}
+.tm-card:hover{box-shadow:0 10px 30px rgba(20,15,40,0.10); transform:translateY(-2px)}
