@@ -3,7 +3,6 @@ import { ImageResponse } from "next/og";
 import { buildCalendarElement, IMG_W, IMG_H } from "../../../lib/calendar-image";
 
 export const runtime = "edge";
-
 const LARK = "https://open.larksuite.com";
 
 async function getToken() {
@@ -22,20 +21,21 @@ async function getToken() {
 export async function POST(request) {
   try {
     if (!process.env.LARK_APP_ID || !process.env.LARK_APP_SECRET) {
-      return NextResponse.json({ error: "Missing LARK_APP_ID or LARK_APP_SECRET." }, { status: 500 });
+      return NextResponse.json({ error: "Missing LARK_APP_ID / LARK_APP_SECRET (needed only to upload the image)." }, { status: 500 });
     }
-    if (!process.env.LARK_CHAT_ID) {
-      return NextResponse.json({ error: "Missing LARK_CHAT_ID." }, { status: 500 });
+    if (!process.env.LARK_CALENDAR_BOT_WEBHOOK) {
+      return NextResponse.json({ error: "Missing LARK_CALENDAR_BOT_WEBHOOK (the custom bot that posts to the group)." }, { status: 500 });
     }
 
     const body = await request.json().catch(() => ({}));
     const events = Array.isArray(body.events) ? body.events : [];
 
+    // 1) render the calendar to PNG bytes
     const image = new ImageResponse(buildCalendarElement(events, { month: body.month }), { width: IMG_W, height: IMG_H });
     const png = new Uint8Array(await image.arrayBuffer());
 
+    // 2) upload via the app -> image_key  (app-level; does NOT require the bot to be in any chat)
     const token = await getToken();
-
     const form = new FormData();
     form.append("image_type", "message");
     form.append("image", new Blob([png], { type: "image/png" }), "calendar.png");
@@ -46,24 +46,22 @@ export async function POST(request) {
     });
     const uploadData = await uploadRes.json().catch(() => ({}));
     if (uploadData.code !== 0 || !uploadData.data?.image_key) {
-      return NextResponse.json({ step: "upload", error: `Image upload failed — the app likely needs the "im:resource" permission (${uploadData.msg || JSON.stringify(uploadData)})` }, { status: 500 });
+      return NextResponse.json({ step: "upload", error: `Image upload failed — the app needs the "im:resource" permission (${uploadData.msg || JSON.stringify(uploadData)})` }, { status: 500 });
     }
 
-    const sendRes = await fetch(`${LARK}/open-apis/im/v1/messages?receive_id_type=chat_id`, {
+    // 3) deliver THROUGH the custom bot webhook (already a member of the group)
+    const sendRes = await fetch(process.env.LARK_CALENDAR_BOT_WEBHOOK, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        receive_id: process.env.LARK_CHAT_ID,
-        msg_type: "image",
-        content: JSON.stringify({ image_key: uploadData.data.image_key }),
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ msg_type: "image", content: { image_key: uploadData.data.image_key } }),
     });
     const sendData = await sendRes.json().catch(() => ({}));
-    if (sendData.code !== 0) {
-      return NextResponse.json({ step: "send", error: `Send failed — make sure the app is in that chat and has "im:message" (${sendData.msg || JSON.stringify(sendData)})` }, { status: 500 });
+    const ok = sendData.code === 0 || sendData.StatusCode === 0;
+    if (!ok) {
+      return NextResponse.json({ step: "send", error: `Custom-bot webhook rejected the image (${sendData.msg || sendData.StatusMessage || JSON.stringify(sendData)})` }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, message_id: sendData.data?.message_id });
+    return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message || "Unable to send calendar image to Lark." }, { status: 500 });
   }
