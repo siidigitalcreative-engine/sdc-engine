@@ -115,6 +115,50 @@ export default function TeamCalendar() {
   const [calendarError, setCalendarError] = useState("");
   const [savingEvent, setSavingEvent] = useState(false);
 
+
+  const exportCalendarPng = async () => {
+    try {
+      const target = calendarExportRef.current;
+      if (!target) return;
+
+      const rect = target.getBoundingClientRect();
+      const html = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}">
+          <foreignObject width="100%" height="100%">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="width:${rect.width}px;height:${rect.height}px;">
+              ${target.outerHTML}
+            </div>
+          </foreignObject>
+        </svg>
+      `;
+
+      const blob = new Blob([html], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const image = new Image();
+
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = rect.width * 2;
+        canvas.height = rect.height * 2;
+
+        const ctx = canvas.getContext("2d");
+        ctx.scale(2, 2);
+        ctx.drawImage(image, 0, 0);
+
+        const link = document.createElement("a");
+        link.download = "sdc-calendar.png";
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+
+        URL.revokeObjectURL(url);
+      };
+
+      image.src = url;
+    } catch (error) {
+      setCalendarError("Unable to export calendar image.");
+    }
+  };
+
   const sendToLark = async () => {
     try {
       const response = await fetch("/api/lark/calendar-image", {
@@ -142,6 +186,7 @@ export default function TeamCalendar() {
   const [modal, setModal] = useState(null);
   const [now, setNow] = useState(new Date());
   const scrollRef = useRef(null);
+  const calendarExportRef = useRef(null);
 
   const hydrateEvents = useCallback((items = []) => (
     items.map((event) => ({
@@ -300,7 +345,7 @@ export default function TeamCalendar() {
 
   return (
     <>
-      <main className="flex-1 min-w-0 flex flex-col">
+      <main ref={calendarExportRef} className="flex-1 min-w-0 flex flex-col">
           {calendarError && (
             <div className="mx-5 mt-3 rounded-xl px-4 py-2.5 text-sm shrink-0" style={{ color: "#C23150", background: "rgba(229,83,110,0.10)", border: "1px solid rgba(229,83,110,0.24)" }}>
               {calendarError}
@@ -317,6 +362,14 @@ export default function TeamCalendar() {
             </div>
 
             <div className="ml-auto flex items-center gap-3">
+              <button
+                onClick={exportCalendarPng}
+                className="tc-pill rounded-full px-4 py-1.5 text-sm font-medium shadow-sm"
+                style={{ background: "var(--card)", color: "var(--text)" }}
+              >
+                🖼️ Export PNG
+              </button>
+
               <button
                 onClick={sendToLark}
                 className="tc-pill rounded-full px-4 py-1.5 text-sm font-medium shadow-sm"
