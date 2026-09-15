@@ -1,54 +1,62 @@
 import { NextResponse } from "next/server";
 
-function buildMiniCalendar(date = new Date(), events = []) {
+function getCalendarGrid(date, events = []) {
   const year = date.getFullYear();
   const month = date.getMonth();
-
   const monthName = date.toLocaleString("en-US", { month: "long" });
 
   const firstDay = new Date(year, month, 1).getDay();
-  const days = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  const today = date.getDate();
 
-  const eventDays = new Set(
-    events.map((event) => new Date(event.start).getDate())
-  );
+  const eventMarkers = {};
 
-  let calendar = `${monthName} ${year}\n\n`;
-  calendar += "Su Mo Tu We Th Fr Sa\n";
-
-  let row = "";
-
-  for (let i = 0; i < firstDay; i++) {
-    row += "   ";
-  }
-
-  for (let day = 1; day <= days; day++) {
-    const current = new Date(year, month, day);
-
-    let marker = String(day).padStart(2, " ");
-
+  events.forEach((event) => {
+    const eventDate = new Date(event.start);
     if (
-      current.getDate() === today.getDate() &&
-      current.getMonth() === today.getMonth() &&
-      current.getFullYear() === today.getFullYear()
+      eventDate.getMonth() === month &&
+      eventDate.getFullYear() === year
     ) {
-      marker = `🔴${day}`;
-    } else if (eventDays.has(day)) {
-      marker = `•${day}`;
+      eventMarkers[eventDate.getDate()] = "•";
+    }
+  });
+
+  let rows = [];
+  let current = 1;
+
+  for (let week = 0; week < 6; week++) {
+    let row = [];
+
+    for (let day = 0; day < 7; day++) {
+      const position = week * 7 + day;
+
+      if (position < firstDay || current > totalDays) {
+        row.push(" ");
+      } else {
+        const marker = eventMarkers[current] || "";
+        const value = current === today
+          ? `🔵${current}`
+          : `${current}${marker}`;
+
+        row.push(value);
+        current++;
+      }
     }
 
-    row += marker.padStart(3, " ");
-
-    if ((firstDay + day) % 7 === 0) {
-      calendar += row + "\n";
-      row = "";
-    }
+    rows.push(row.join("   "));
   }
 
-  if (row) calendar += row;
+  return {
+    title: `${monthName} ${year}`,
+    grid: rows.join("\n"),
+  };
+}
 
-  return calendar;
+function formatTime(value) {
+  return new Date(value).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export async function POST(request) {
@@ -65,49 +73,82 @@ export async function POST(request) {
     const { events = [] } = await request.json();
 
     const now = new Date();
+    const calendar = getCalendarGrid(now, events);
 
-    const miniCalendar = buildMiniCalendar(now, events);
-
-    const todayEvents = events.length
+    const schedule = events.length
       ? events
           .map((event) => {
-            const start = new Date(event.start);
-
-            return `• ${start.toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-            })} — ${event.title}`;
+            return `**${formatTime(event.start)}**  ${event.title}`;
           })
-          .join("\n")
-      : "No scheduled events today.";
+          .join("\n\n")
+      : "No events scheduled today.";
+
+    const payload = {
+      msg_type: "interactive",
+      card: {
+        config: {
+          wide_screen_mode: true,
+        },
+        header: {
+          template: "blue",
+          title: {
+            tag: "plain_text",
+            content: "📅 SDC Creative Calendar",
+          },
+        },
+        elements: [
+          {
+            tag: "div",
+            fields: [
+              {
+                is_short: false,
+                text: {
+                  tag: "lark_md",
+                  content:
+                    `**${calendar.title}**\n\n` +
+                    "```\n" +
+                    "Su  Mo  Tu  We  Th  Fr  Sa\n" +
+                    calendar.grid +
+                    "\n```",
+                },
+              },
+              {
+                is_short: false,
+                text: {
+                  tag: "lark_md",
+                  content:
+                    `**📌 Today's Schedule**\n\n${schedule}`,
+                },
+              },
+            ],
+          },
+          {
+            tag: "hr",
+          },
+          {
+            tag: "action",
+            actions: [
+              {
+                tag: "button",
+                text: {
+                  tag: "plain_text",
+                  content: "View Full Calendar",
+                },
+                type: "primary",
+                url: "https://sdc-engine.vercel.app/calendar",
+              },
+            ],
+          },
+        ],
+      },
+    };
 
     const response = await fetch(webhook, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        msg_type: "interactive",
-        card: {
-          header: {
-            title: {
-              tag: "plain_text",
-              content: "📅 SDC Creative Calendar",
-            },
-          },
-          elements: [
-            {
-              tag: "div",
-              text: {
-                tag: "lark_md",
-                content:
-                  `\`\`\`\n${miniCalendar}\n\`\`\`\n` +
-                  `**📌 Today's Schedule**\n\n${todayEvents}`,
-              },
-            },
-          ],
-        },
-      }),
+      body: JSON.stringify(payload),
     });
 
     const result = await response.json().catch(() => ({}));
