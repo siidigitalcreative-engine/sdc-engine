@@ -16,6 +16,10 @@ export default function AppShell({ children }) {
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
+    if (currentMember?.theme) setDark(currentMember.theme === "dark");
+  }, [currentMember]);
+
+  useEffect(() => {
     const saved = readThemeCookie();
     if (saved === "dark" || saved === "light") setDark(saved === "dark");
   }, []);
@@ -23,6 +27,7 @@ export default function AppShell({ children }) {
   const toggle = () => setDark((current) => {
     const next = !current;
     document.cookie = `sdc_theme=${next ? "dark" : "light"}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    fetch("/api/members", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: currentMember?.id, data: { theme: next ? "dark" : "light" } }) }).catch(() => {});
     return next;
   });
 
