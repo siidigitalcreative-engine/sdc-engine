@@ -123,6 +123,7 @@ export default function TeamCalendar() {
       title: e.title,
       start: e.start instanceof Date ? e.start.toISOString() : e.start,
       color: catOf(e.calId)?.color || "#E5536E",
+      allDay: !!e.allDay,
     })),
   });
 
