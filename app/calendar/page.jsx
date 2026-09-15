@@ -336,8 +336,8 @@ export default function TeamCalendar() {
               {calendarError}
             </div>
           )}
-          <header className="flex items-center gap-3 px-5 py-4 shrink-0" style={{ background: HEADER_BG }}>
-            <h2 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>{headerLabel()}</h2>
+          <header className="flex flex-wrap items-center gap-2 sm:gap-3 px-4 sm:px-5 py-3 sm:py-4 shrink-0" style={{ background: HEADER_BG }}>
+            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>{headerLabel()}</h2>
             <button onClick={() => setCursor(new Date())}
               className="tc-pill rounded-full px-4 py-1.5 text-sm font-medium shadow-sm ml-1"
               style={{ background: "var(--card)", color: "var(--text)" }}>Today</button>
@@ -346,7 +346,8 @@ export default function TeamCalendar() {
               <button onClick={() => nav(1)} className="tc-ib h-8 w-8 flex items-center justify-center rounded-full" aria-label="Next"><ChevronRight size={20} /></button>
             </div>
 
-            <div className="ml-auto flex items-center gap-3">
+            <div className="ml-auto flex flex-wrap items-center gap-2 sm:gap-3">
+              <button onClick={() => { const d = new Date(cursor); d.setHours(9, 0, 0, 0); openCreateAt(d); }} className="md:hidden tc-pill flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}><Plus size={16} /> New</button>
               <button
                 onClick={exportCalendarPng}
                 className="tc-pill rounded-full px-4 py-1.5 text-sm font-medium shadow-sm"
