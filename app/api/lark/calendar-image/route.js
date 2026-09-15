@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ImageResponse } from "next/og";
-import { buildCalendarElement, IMG_W, IMG_H } from "../../../lib/calendar-image";
+import { buildCalendarImage } from "../../../lib/calendar-image";
 
 export const runtime = "edge";
 const LARK = "https://open.larksuite.com";
@@ -31,7 +31,8 @@ export async function POST(request) {
     const events = Array.isArray(body.events) ? body.events : [];
 
     // 1) render the calendar to PNG bytes
-    const image = new ImageResponse(buildCalendarElement(events, { month: body.month }), { width: IMG_W, height: IMG_H });
+    const { element, width, height } = buildCalendarImage(events, { month: body.month });
+    const image = new ImageResponse(element, { width, height });
     const png = new Uint8Array(await image.arrayBuffer());
 
     // 2) upload via the app -> image_key  (app-level; does NOT require the bot to be in any chat)
