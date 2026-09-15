@@ -164,7 +164,7 @@ export default function DashboardPage() {
   return (
     <>
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <header className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0 flex-wrap">
+          <header className="flex items-center gap-3 px-4 sm:px-6 pt-6 pb-4 shrink-0 flex-wrap">
             <div className="mr-auto">
               <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>{greeting}, {m.name.split(" ")[0]}!</h1>
               <p className="text-sm" style={{ color: "var(--muted)" }}>Here's what's on {currentMember?.id === memberId ? "your" : m.name.split(" ")[0] + "'s"} plate</p>
@@ -179,11 +179,11 @@ export default function DashboardPage() {
             </div>
             </header>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pb-6">
             <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
               {/* left column */}
               <div style={{ flex: "1 1 440px", minWidth: 0 }} className="flex flex-col gap-5">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-3 gap-3 sm:gap-4">
                   <CountCard icon={Layers} label="Projects" value={counts.projects} tint="rgba(124,111,240,0.16)" tile="#7C6FF0" />
                   <CountCard icon={CheckSquare} label="Tasks" value={counts.tasks} tint="rgba(62,142,208,0.16)" tile="#3E8ED0" />
                   <CountCard icon={CheckCircle} label="Completed" value={counts.done} tint="rgba(242,106,60,0.20)" tile={ACCENT_GRAD} />
@@ -230,12 +230,12 @@ export default function DashboardPage() {
 
 function CountCard({ icon: Icon, label, value, tint, tile }) {
   return (
-    <div className="rounded-2xl p-5" style={{ background: `linear-gradient(140deg, var(--card) 35%, ${tint})`, border: "1px solid var(--border)" }}>
+    <div className="rounded-2xl p-4 sm:p-5" style={{ background: `linear-gradient(140deg, var(--card) 35%, ${tint})`, border: "1px solid var(--border)" }}>
       <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-6" style={{ background: tile }}>
         <Icon size={18} style={{ color: tile === "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)" ? ON_ACCENT : "#fff" }} />
       </div>
       <div className="font-bold" style={{ color: "var(--text)", fontSize: 30, lineHeight: 1 }}>{value}</div>
-      <div className="text-sm mt-1.5" style={{ color: "var(--muted)" }}>{label}</div>
+      <div className="text-xs sm:text-sm mt-1.5 whitespace-nowrap" style={{ color: "var(--muted)" }}>{label}</div>
     </div>
   );
 }
