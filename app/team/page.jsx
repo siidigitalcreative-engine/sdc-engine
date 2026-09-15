@@ -191,10 +191,19 @@ function MemberCard({ m, dark, isCurrent, onEdit, onDelete }) {
 
       <div className="grid grid-cols-3 gap-y-4 mt-5">
         {cells.map((c, i) => (
-          <div key={i} className="text-center px-1">
-            <div className="font-semibold flex items-center justify-center gap-1 truncate" style={{ color: t.text, fontSize: 14 }}>
-              {c.dot && <span style={{ height: 7, width: 7, borderRadius: "50%", background: c.dot, display: "inline-block" }} />}
-              {c.v}
+          <div key={i} className="text-center px-1 min-w-0">
+            <div
+              className="font-semibold flex items-center justify-center gap-1 leading-tight min-w-0"
+              style={{
+                color: t.text,
+                fontSize: i >= 3 ? 13 : 14,
+                minHeight: 20,
+                whiteSpace: i >= 3 ? "normal" : "nowrap",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {c.dot && <span style={{ height: 7, width: 7, borderRadius: "50%", background: c.dot, display: "inline-block", flex: "0 0 auto" }} />}
+              <span className="min-w-0">{c.v}</span>
             </div>
             <div className="text-xs mt-0.5" style={{ color: t.muted }}>{c.l}</div>
           </div>
