@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, ChevronLeft, ChevronRight, Moon, Sun, Sparkles, Clock, CheckCircle,
   Layers, ArrowUpRight,
 } from "lucide-react";
+import { useAuth } from "../auth";
 
 const CANVAS = "var(--surface)";
 const SIDEBAR = "var(--sidebar)";
@@ -29,16 +30,6 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 /* ---------- data ---------- */
 const today = new Date();
 const dOff = (n) => { const d = startOfDay(today); d.setDate(d.getDate() + n); return d; };
-
-const MEMBERS = [
-  { i: "CN", name: "Che Navarro", role: "Digital Creative", c: "#7C6FF0" },
-  { i: "RG", name: "Ravi Gurnamal", role: "Manager", c: "#3FA37A" },
-  { i: "MA", name: "Maya Alonzo", role: "Designer", c: "#F0784B" },
-  { i: "JL", name: "Jules Lim", role: "Motion", c: "#E0A93C" },
-  { i: "SP", name: "Sofia Perez", role: "Content", c: "#E5536E" },
-  { i: "DT", name: "Diego Tan", role: "Web", c: "#3E8ED0" },
-];
-const memberOf = (i) => MEMBERS.find((m) => m.i === i) || MEMBERS[0];
 
 const STATUSES = {
   todo: { name: "To Do", color: "#8E8A96", soft: "#ECEBEE" },
@@ -81,12 +72,19 @@ const NAV = [
 
 
 export default function DashboardPage() {
-  const [member, setMember] = useState("CN");
+  const { members, currentMember } = useAuth();
+  const [member, setMember] = useState(currentMember?.i || members[0]?.i || "");
   const [day, setDay] = useState(startOfDay(new Date()));
   const [monthCursor, setMonthCursor] = useState(startOfMonth(new Date()));
   const now = new Date();
 
-  const m = memberOf(member);
+  useEffect(() => {
+    if (!member || !members.some((x) => x.i === member)) {
+      setMember(currentMember?.i || members[0]?.i || "");
+    }
+  }, [members, currentMember, member]);
+
+  const m = members.find((x) => x.i === member) || currentMember || members[0];
   const mine = useMemo(() => TASKS.filter((t) => t.who.includes(member)), [member]);
   const counts = useMemo(() => ({
     projects: new Set(mine.map((t) => t.project)).size,
@@ -99,6 +97,8 @@ export default function DashboardPage() {
     .sort((a, b) => (a.time ? hm(a.time) : 9999) - (b.time ? hm(b.time) : 9999)), [mine, day]);
   const timed = dayTasks.filter((t) => t.time);
 
+  if (!m) return null;
+
   const greeting = (() => { const h = now.getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; })();
   const dayLabel = isSameDay(day, now) ? "Today" : day.toLocaleDateString("default", { weekday: "long", month: "short", day: "numeric" });
 
@@ -108,10 +108,10 @@ export default function DashboardPage() {
           <header className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0 flex-wrap">
             <div className="mr-auto">
               <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>{greeting}, {m.name.split(" ")[0]}!</h1>
-              <p className="text-sm" style={{ color: "var(--muted)" }}>Here's what's on {member === "CN" ? "your" : m.name.split(" ")[0] + "'s"} plate</p>
+              <p className="text-sm" style={{ color: "var(--muted)" }}>Here's what's on {currentMember?.i === member ? "your" : m.name.split(" ")[0] + "'s"} plate</p>
             </div>
             <div className="flex items-center">
-              {MEMBERS.map((x) => (
+              {members.map((x) => (
                 <button key={x.i} onClick={() => setMember(x.i)} title={x.name}
                   className="db-pill h-9 w-9 rounded-full flex items-center justify-center text-white font-semibold"
                   style={{ background: x.c, fontSize: 12, marginLeft: -6, border: member === x.i ? `2px solid ${ACCENT}` : "2px solid var(--card)", zIndex: member === x.i ? 2 : 1, opacity: member === x.i ? 1 : 0.7 }}>{x.i}</button>
