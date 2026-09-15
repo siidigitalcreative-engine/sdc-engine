@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import Link from "next/link";
 import {
   ChevronLeft, ChevronRight, Plus, X, Trash2, Search,
   Clock, AlignLeft, Sparkles, Users,
@@ -21,11 +20,11 @@ const TIME_INK = "rgba(42,40,51,0.58)";
 const PAGE_BG = "var(--page)";
 const HEADER_BG = "var(--header)";
 const NAV = [
-  { id: "dashboard", name: "Dashboard", icon: LayoutGrid, href: "/dashboard" },
-  { id: "calendar", name: "Calendar", icon: CalIcon, href: "/calendar" },
-  { id: "tasks", name: "Tasks", icon: CheckSquare, href: "/tasks" },
+  { id: "dashboard", name: "Dashboard", icon: LayoutGrid },
+  { id: "calendar", name: "Calendar", icon: CalIcon },
+  { id: "tasks", name: "Tasks", icon: CheckSquare },
   { id: "projects", name: "Projects", icon: Folder },
-  { id: "team", name: "Team Members", icon: Users, href: "/team" },
+  { id: "team", name: "Team Members", icon: Users },
   { id: "reports", name: "Reports", icon: BarChart },
 ];
 const ME = { i: "CN", name: "Che Navarro", role: "Digital Creative", c: "#7C6FF0" };
@@ -101,38 +100,9 @@ function packEvents(items) {
   return out;
 }
 
-const STYLES = `
-.theme-light{
-  --page:linear-gradient(165deg,#F4F5F7 0%,#EDEEF1 100%);
-  --surface:#FFFFFF; --sidebar:#F6F7F9;
-  --header:linear-gradient(180deg,#FFFFFF 0%,#FAFAFC 100%);
-  --card:#FFFFFF; --col:#F4F5F7; --border:#E9EAEE; --grid:#F0F1F4; --dim:rgba(17,17,20,0.02);
-  --text:#111014; --text-2:#5B5D66; --muted:#9A9CA6; --faint:#C4C6CE;
-  --hover:rgba(17,17,20,0.05); --hover-cell:rgba(17,17,20,0.03); --hover-row:#F6F7F9; color-scheme:light; --on-accent:#ffffff;
-}
-.theme-dark{
-  --page:linear-gradient(165deg,#0D0D10 0%,#111114 100%);
-  --surface:#141417; --sidebar:#0D0D0F;
-  --header:linear-gradient(180deg,#161619 0%,#141417 100%);
-  --card:#1C1C21; --col:#171719; --border:rgba(255,255,255,0.08); --grid:rgba(255,255,255,0.05); --dim:rgba(255,255,255,0.03);
-  --text:#F1F1F4; --text-2:var(--text-2); --muted:rgba(255,255,255,0.40); --faint:rgba(255,255,255,0.28);
-  --hover:rgba(255,255,255,0.08); --hover-cell:rgba(255,255,255,0.05); --hover-row:rgba(255,255,255,0.04); color-scheme:dark; --on-accent:#2A2210;
-}
-input,textarea,select{background:transparent;color:var(--text)}
-input::placeholder,textarea::placeholder{color:var(--muted)}
-.tc-mini-day:hover{background:var(--hover)}
-.tc-cat:hover{background:var(--hover)}
-.tc-cell:hover{background:var(--hover-cell)}
-.tc-evt{transition:filter .12s ease}
-.tc-evt:hover{filter:brightness(0.96)}
-.tc-ib:hover{background:var(--hover)}
-.tc-ibd:hover{background:rgba(255,255,255,0.10)}
-.tc-pill:hover{filter:brightness(1.05)}
-.tc-nav:hover{background:var(--hover)}
-`;
+
 
 export default function TeamCalendar() {
-  const [dark, setDark] = useState(true);
   const [view, setView] = useState("month");
   const [cursor, setCursor] = useState(new Date());
   const [events, setEvents] = useState(SEED_EVENTS);
@@ -197,44 +167,8 @@ export default function TeamCalendar() {
     visibleEvents.filter((e) => isSameDay(e.start, day)).sort((a, b) => (a.allDay === b.allDay ? a.start - b.start : a.allDay ? -1 : 1));
 
   return (
-    <div className={`h-screen p-3 sm:p-5 ${dark ? "theme-dark" : "theme-light"}`} style={{ minHeight: 560, background: PAGE_BG, color: "var(--text)", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <style>{STYLES}</style>
-      <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex" style={{ background: CANVAS }}>
-
-        {/* ===== sidebar (shared nav) ===== */}
-        <aside className="w-64 shrink-0 hidden md:flex flex-col gap-5 p-4 overflow-y-auto overflow-x-hidden" style={{ background: SIDEBAR, borderRight: "1px solid var(--border)" }}>
-          <div className="flex items-center gap-2.5 px-1 pt-1">
-            <span className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: ACCENT_GRAD }}><Sparkles size={18} style={{ color: ON_ACCENT }} /></span>
-            <div className="leading-tight">
-              <p className="font-semibold" style={{ fontSize: 15, color: "var(--text)" }}>SDC</p>
-              <p style={{ color: "var(--muted)" }} className="text-xs">Creative team</p>
-            </div>
-          </div>
-          <div className="flex flex-col items-center text-center py-3 rounded-2xl" style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
-            <span className="h-14 w-14 rounded-full flex items-center justify-center text-white font-semibold mb-2" style={{ background: ME.c, fontSize: 20, border: "3px solid var(--border)" }}>{ME.i}</span>
-            <p className="font-semibold text-sm" style={{ color: "var(--text)" }}>{ME.name}</p>
-            <p style={{ color: "var(--muted)" }} className="text-xs">{ME.role}</p>
-          </div>
-          <nav className="flex flex-col gap-1">
-            {NAV.map((n) => { const on = n.id === "calendar"; const Icon = n.icon; return (
-              n.href ? (
-                <Link href={n.href} key={n.id} className="tc-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={on ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
-                  <Icon size={18} /> {n.name}
-                </Link>
-              ) : (
-                <button key={n.id} type="button" className="tc-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={{ color: "var(--text-2)", opacity: 0.55, cursor: "default" }}>
-                  <Icon size={18} /> {n.name}
-                </button>
-              )
-            ); })}
-          </nav>
-          <button className="tc-nav mt-auto flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={{ color: "var(--text-2)" }}>
-            <Settings size={18} /> Settings
-          </button>
-        </aside>
-
-        {/* ===== main ===== */}
-        <main className="flex-1 min-w-0 flex flex-col">
+    <>
+      <main className="flex-1 min-w-0 flex flex-col">
           <header className="flex items-center gap-3 px-5 py-4 shrink-0" style={{ background: HEADER_BG }}>
             <h2 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>{headerLabel()}</h2>
             <button onClick={() => setCursor(new Date())}
@@ -246,7 +180,6 @@ export default function TeamCalendar() {
             </div>
 
             <div className="ml-auto flex items-center gap-3">
-              <button onClick={() => setDark((d) => !d)} aria-label="Toggle theme" className="tc-ib h-9 w-9 flex items-center justify-center rounded-full shadow-sm" style={{ background: "var(--card)", color: "var(--text)" }}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button>
               <div className="relative hidden lg:block">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search"
@@ -302,13 +235,12 @@ export default function TeamCalendar() {
             </div>
           </div>
         </main>
-      </div>
 
       {modal && (
         <EventModal modal={modal} calendars={calendars} setForm={setForm}
           onClose={() => setModal(null)} onSave={saveModal} onDelete={deleteEvent} />
       )}
-    </div>
+    </>
   );
 }
 
