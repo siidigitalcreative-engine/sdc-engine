@@ -76,7 +76,7 @@ export default function TeamPage() {
 
         <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
           {list.length ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(285px, 1fr))", gap: 20 }}>
               {list.map((m) => (
                 <MemberCard
                   key={m.id}
@@ -198,8 +198,8 @@ function MemberCard({ m, dark, isCurrent, onEdit, onDelete }) {
                 color: t.text,
                 fontSize: i >= 3 ? 13 : 14,
                 minHeight: 20,
-                whiteSpace: i >= 3 ? "normal" : "nowrap",
-                overflowWrap: "anywhere",
+                whiteSpace: "nowrap",
+                overflowWrap: "normal",
               }}
             >
               {c.dot && <span style={{ height: 7, width: 7, borderRadius: "50%", background: c.dot, display: "inline-block", flex: "0 0 auto" }} />}
