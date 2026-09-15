@@ -69,14 +69,23 @@ export function buildTasksImage(tasks = []) {
                   </div>
                   <div style={{ display: "flex", fontSize: 13, fontWeight: 600, color: "#1F2430" }}>{String(t.title || "").slice(0, 30)}</div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ display: "flex", fontSize: 11, color: "#9A9CA6" }}>{String(t.project || "").slice(0, 22)}</div>
-                    <div style={{ display: "flex" }}>
-                      {(t.assignees || []).slice(0, 3).map((a, ai) => (
-                        <div key={ai} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 9, backgroundColor: a.c || "#9A9CA6", marginLeft: ai ? -5 : 0, border: "1.5px solid #ffffff" }}>
-                          <div style={{ display: "flex", fontSize: 9, fontWeight: 700, color: "#ffffff" }}>{a.i}</div>
+                    <div style={{ display: "flex", fontSize: 11, color: "#9A9CA6", flexShrink: 1 }}>{String(t.project || "").slice(0, 20)}</div>
+                    {(t.assignees || []).length === 1 ? (
+                      <div style={{ display: "flex", alignItems: "center", flexShrink: 0, marginLeft: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 9, backgroundColor: t.assignees[0].c || "#9A9CA6", marginRight: 5 }}>
+                          <div style={{ display: "flex", fontSize: 9, fontWeight: 700, color: "#ffffff" }}>{t.assignees[0].i}</div>
                         </div>
-                      ))}
-                    </div>
+                        <div style={{ display: "flex", fontSize: 11, fontWeight: 600, color: "#4A4753" }}>{String(t.assignees[0].name || t.assignees[0].i || "").slice(0, 14)}</div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexShrink: 0, marginLeft: 8 }}>
+                        {(t.assignees || []).slice(0, 3).map((a, ai) => (
+                          <div key={ai} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 9, backgroundColor: a.c || "#9A9CA6", marginLeft: ai ? -5 : 0, border: "1.5px solid #ffffff" }}>
+                            <div style={{ display: "flex", fontSize: 9, fontWeight: 700, color: "#ffffff" }}>{a.i}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
