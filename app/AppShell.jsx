@@ -1,26 +1,66 @@
 "use client";
-import { useState, useEffect } from "react";
+
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { ThemeCtx } from "./theme";
+import { AuthProvider, useAuth } from "./auth";
 import Sidebar from "./Sidebar";
 
 export default function AppShell({ children }) {
   const [dark, setDark] = useState(true);
+
   useEffect(() => {
-    try { const v = localStorage.getItem("sdc-theme"); if (v) setDark(v === "dark"); } catch {}
+    try {
+      const v = localStorage.getItem("sdc-theme");
+      if (v) setDark(v === "dark");
+    } catch {}
   }, []);
+
   const toggle = () => setDark((d) => {
     const next = !d;
     try { localStorage.setItem("sdc-theme", next ? "dark" : "light"); } catch {}
     return next;
   });
+
   return (
     <ThemeCtx.Provider value={{ dark, toggle }}>
-      <div className={`h-screen p-3 sm:p-5 ${dark ? "theme-dark" : "theme-light"}`} style={{ minHeight: 560, background: "var(--page)", color: "var(--text)", fontFamily: "'Inter', system-ui, sans-serif" }}>
-        <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex" style={{ background: "var(--surface)" }}>
-          <Sidebar />
-          {children}
+      <AuthProvider>
+        <AppFrame dark={dark}>{children}</AppFrame>
+      </AuthProvider>
+    </ThemeCtx.Provider>
+  );
+}
+
+function AppFrame({ children, dark }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { ready, currentMember } = useAuth();
+  const isLogin = pathname === "/login";
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!currentMember && !isLogin) router.replace("/login");
+    if (currentMember && isLogin) router.replace("/dashboard");
+  }, [ready, currentMember, isLogin, router]);
+
+  const shellClass = `h-screen p-3 sm:p-5 ${dark ? "theme-dark" : "theme-light"}`;
+
+  if (!ready || (!currentMember && !isLogin) || (currentMember && isLogin)) {
+    return (
+      <div className={shellClass} style={{ minHeight: 560, background: "var(--page)", color: "var(--text)", fontFamily: "'Inter', system-ui, sans-serif" }}>
+        <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center" style={{ background: "var(--surface)" }}>
+          <div className="h-9 w-9 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: "#F26A3C", borderRightColor: "#F26A3C" }} />
         </div>
       </div>
-    </ThemeCtx.Provider>
+    );
+  }
+
+  return (
+    <div className={shellClass} style={{ minHeight: 560, background: "var(--page)", color: "var(--text)", fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex" style={{ background: "var(--surface)" }}>
+        {!isLogin && <Sidebar />}
+        {children}
+      </div>
+    </div>
   );
 }
