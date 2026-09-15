@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useAuth } from "../auth";
 import {
   ChevronLeft, ChevronRight, Plus, X, Trash2, Search,
   Clock, AlignLeft, Sparkles, Users,
@@ -66,12 +67,6 @@ const SEED_CALENDARS = [
   { id: "deadline", name: "Deadlines", color: "#E5536E", soft: "#FBE1E7", fill: "#F8D3DE", ink: "#C23150", visible: true },
 ];
 
-const TEAM = [
-  { i: "CN", c: "#7C6FF0" }, { i: "RG", c: "#3FA37A" }, { i: "MA", c: "#F0784B" },
-  { i: "JL", c: "#E0A93C" }, { i: "SP", c: "#E5536E" }, { i: "DT", c: "#3E8ED0" },
-];
-const teamColor = (i) => (TEAM.find((t) => t.i === i)?.c) || "#9A9AA2";
-
 const SEED_EVENTS = [
   { id: 1, title: "Team content sync", calId: "meet", start: at(0, 10), end: at(0, 11), allDay: false, desc: "Weekly planning across all brands", attendees: ["CN", "RG", "MA"] },
   { id: 2, title: "Quencha shoot review", calId: "shoots", start: at(0, 14), end: at(0, 15, 30), allDay: false, desc: "", attendees: ["RG", "SP"] },
@@ -103,17 +98,116 @@ function packEvents(items) {
 
 
 export default function TeamCalendar() {
+  const { members } = useAuth();
+  const memberByRef = useMemo(() => {
+    const map = {};
+    members.forEach((member) => {
+      map[member.id] = member;
+      map[member.i] = member; // supports old seed references until they are migrated
+    });
+    return map;
+  }, [members]);
+  const normalizeMemberRefs = (refs = []) => [...new Set(refs.map((ref) => memberByRef[ref]?.id).filter(Boolean))];
+
   const [view, setView] = useState("month");
   const [cursor, setCursor] = useState(new Date());
-  const [events, setEvents] = useState(SEED_EVENTS);
+  const [events, setEvents] = useState([]);
+  const [calendarError, setCalendarError] = useState("");
+  const [savingEvent, setSavingEvent] = useState(false);
+
+  const sendToLark = async () => {
+    try {
+      const response = await fetch("/api/lark/calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          events: events
+            .filter((event) => isSameDay(event.start, new Date()))
+            .map((event) => ({
+              title: event.title,
+              start: event.start,
+              end: event.end,
+              calId: event.calId,
+              attendees: event.attendees,
+            })),
+        }),
+      });
+
+      if (!response.ok) throw new Error("Unable to send to Lark");
+    } catch (error) {
+      setCalendarError(error.message || "Unable to send to Lark");
+    }
+  };
+  const calendarEtagRef = useRef(null);
+  const loadingCalendarRef = useRef(false);
   const [calendars, setCalendars] = useState(SEED_CALENDARS);
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState(null);
   const [now, setNow] = useState(new Date());
   const scrollRef = useRef(null);
 
+  const hydrateEvents = useCallback((items = []) => (
+    items.map((event) => ({
+      ...event,
+      start: new Date(event.start),
+      end: new Date(event.end),
+    }))
+  ), []);
+
+  const loadCalendar = useCallback(async ({ force = false } = {}) => {
+    if (loadingCalendarRef.current) return;
+    loadingCalendarRef.current = true;
+    try {
+      const headers = {};
+      if (!force && calendarEtagRef.current) headers["If-None-Match"] = calendarEtagRef.current;
+      const response = await fetch("/api/calendar", { headers, cache: "no-store" });
+      if (response.status === 304) return;
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Unable to load calendar events.");
+      }
+      const body = await response.json();
+      const etag = response.headers.get("etag");
+      if (etag) calendarEtagRef.current = etag;
+      setEvents(hydrateEvents(Array.isArray(body.events) ? body.events : []));
+      setCalendarError("");
+    } catch (error) {
+      setCalendarError(error.message || "Unable to load calendar events.");
+    } finally {
+      loadingCalendarRef.current = false;
+    }
+  }, [hydrateEvents]);
+
+  const applyCalendarResponse = useCallback(async (response, fallback) => {
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || fallback);
+    }
+    const body = await response.json();
+    const etag = response.headers.get("etag");
+    if (etag) calendarEtagRef.current = etag;
+    setEvents(hydrateEvents(Array.isArray(body.events) ? body.events : []));
+    setCalendarError("");
+    return body;
+  }, [hydrateEvents]);
+
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
   useEffect(() => { if ((view === "week" || view === "day") && scrollRef.current) scrollRef.current.scrollTop = 7 * HOUR_H; }, [view]);
+  useEffect(() => {
+    loadCalendar({ force: true });
+    const poll = () => {
+      if (document.visibilityState === "visible") loadCalendar();
+    };
+    const id = window.setInterval(poll, 3000);
+    const onFocus = () => loadCalendar({ force: true });
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", poll);
+    };
+  }, [loadCalendar]);
 
   const calById = useMemo(() => Object.fromEntries(calendars.map((c) => [c.id, c])), [calendars]);
   const catOf = (id) => calById[id] || { color: "#9A9AA2", soft: "#EEE", fill: "#E4E4E4", ink: "#555" };
@@ -127,20 +221,61 @@ export default function TeamCalendar() {
     const end = new Date(start); if (!allDay) end.setHours(start.getHours() + 1);
     setModal({ mode: "create", form: { id: null, title: "", calId: calendars[0].id, date: toDateInput(start), start: toTimeInput(start), end: toTimeInput(end), allDay, desc: "", attendees: [] } });
   };
-  const openEdit = (ev) => setModal({ mode: "edit", form: { id: ev.id, title: ev.title, calId: ev.calId, date: toDateInput(ev.start), start: toTimeInput(ev.start), end: toTimeInput(ev.end), allDay: ev.allDay, desc: ev.desc || "", attendees: ev.attendees || [] } });
+  const openEdit = (ev) => setModal({ mode: "edit", form: { id: ev.id, title: ev.title, calId: ev.calId, date: toDateInput(ev.start), start: toTimeInput(ev.start), end: toTimeInput(ev.end), allDay: ev.allDay, desc: ev.desc || "", attendees: normalizeMemberRefs(ev.attendees || []) } });
   const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
-  const saveModal = () => {
+  const saveModal = async () => {
+    if (savingEvent) return;
     const f = modal.form;
     const title = f.title.trim() || "(No title)";
     let start, end;
     if (f.allDay) { start = fromInputs(f.date, "00:00"); end = new Date(start); }
     else { start = fromInputs(f.date, f.start); end = fromInputs(f.date, f.end); if (end <= start) { end = new Date(start); end.setHours(start.getHours() + 1); } }
-    const base = { title, calId: f.calId, start, end, allDay: f.allDay, desc: f.desc, attendees: f.attendees };
-    if (modal.mode === "edit") setEvents((evs) => evs.map((e) => (e.id === f.id ? { ...e, ...base } : e)));
-    else setEvents((evs) => [...evs, { ...base, id: Date.now() }]);
-    setModal(null);
+    const base = {
+      title,
+      calId: f.calId,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      allDay: f.allDay,
+      desc: f.desc,
+      attendees: normalizeMemberRefs(f.attendees),
+    };
+
+    setSavingEvent(true);
+    setCalendarError("");
+    try {
+      const isEdit = modal.mode === "edit";
+      const response = await fetch("/api/calendar", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isEdit ? { id: f.id, data: base } : { data: base }),
+      });
+      await applyCalendarResponse(response, isEdit ? "Unable to update event." : "Unable to create event.");
+      setModal(null);
+    } catch (error) {
+      setCalendarError(error.message || "Unable to save event.");
+    } finally {
+      setSavingEvent(false);
+    }
   };
-  const deleteEvent = () => { setEvents((evs) => evs.filter((e) => e.id !== modal.form.id)); setModal(null); };
+
+  const deleteEvent = async () => {
+    if (savingEvent || !modal?.form?.id) return;
+    setSavingEvent(true);
+    setCalendarError("");
+    try {
+      const response = await fetch("/api/calendar", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: modal.form.id }),
+      });
+      await applyCalendarResponse(response, "Unable to delete event.");
+      setModal(null);
+    } catch (error) {
+      setCalendarError(error.message || "Unable to delete event.");
+    } finally {
+      setSavingEvent(false);
+    }
+  };
 
   const nav = (dir) => {
     if (view === "month") setCursor((c) => addMonths(c, dir));
@@ -169,6 +304,11 @@ export default function TeamCalendar() {
   return (
     <>
       <main className="flex-1 min-w-0 flex flex-col">
+          {calendarError && (
+            <div className="mx-5 mt-3 rounded-xl px-4 py-2.5 text-sm shrink-0" style={{ color: "#C23150", background: "rgba(229,83,110,0.10)", border: "1px solid rgba(229,83,110,0.24)" }}>
+              {calendarError}
+            </div>
+          )}
           <header className="flex items-center gap-3 px-5 py-4 shrink-0" style={{ background: HEADER_BG }}>
             <h2 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>{headerLabel()}</h2>
             <button onClick={() => setCursor(new Date())}
@@ -180,6 +320,13 @@ export default function TeamCalendar() {
             </div>
 
             <div className="ml-auto flex items-center gap-3">
+              <button
+                onClick={sendToLark}
+                className="tc-pill rounded-full px-4 py-1.5 text-sm font-medium shadow-sm"
+                style={{ background: "var(--card)", color: "var(--text)" }}
+              >
+                📤 Send to Lark
+              </button>
               <div className="relative hidden lg:block">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search"
@@ -228,7 +375,7 @@ export default function TeamCalendar() {
                   onDayCreate={(d) => { const x = new Date(d); x.setHours(9, 0, 0, 0); openCreateAt(x); }}
                   onEventClick={openEdit} onMore={(d) => { setCursor(d); setView("day"); }} />
               ) : (
-                <TimeGrid days={days} now={now} scrollRef={scrollRef} catOf={catOf} events={visibleEvents}
+                <TimeGrid days={days} now={now} scrollRef={scrollRef} catOf={catOf} events={visibleEvents} memberByRef={memberByRef}
                   onEventClick={openEdit} onSlotCreate={openCreateAt} onAllDayCreate={(d) => openCreateAt(d, true)}
                   onDayHeaderClick={(d) => { setCursor(d); setView("day"); }} />
               )}
@@ -237,22 +384,24 @@ export default function TeamCalendar() {
         </main>
 
       {modal && (
-        <EventModal modal={modal} calendars={calendars} setForm={setForm}
-          onClose={() => setModal(null)} onSave={saveModal} onDelete={deleteEvent} />
+        <EventModal modal={modal} calendars={calendars} members={members} setForm={setForm}
+          onClose={() => !savingEvent && setModal(null)} onSave={saveModal} onDelete={deleteEvent}
+          saving={savingEvent} error={calendarError} />
       )}
     </>
   );
 }
 
 /* ---------- attendee avatars ---------- */
-function AttendeeStack({ list, ring = "var(--card)", size = 18 }) {
-  if (!list || !list.length) return null;
+function AttendeeStack({ list, memberByRef, ring = "var(--card)", size = 18 }) {
+  const visible = (list || []).map((ref) => memberByRef[ref]).filter(Boolean);
+  if (!visible.length) return null;
   return (
     <div className="flex items-center">
-      {list.slice(0, 4).map((a, i) => (
-        <span key={i} className="rounded-full flex items-center justify-center font-semibold shrink-0"
-          style={{ width: size, height: size, background: teamColor(a), color: "#fff", fontSize: size * 0.42, border: `1.5px solid ${ring}`, marginLeft: i ? -6 : 0 }}>
-          {a[0]}
+      {visible.slice(0, 4).map((member, i) => (
+        <span key={member.id} title={member.name} className="rounded-full flex items-center justify-center font-semibold shrink-0"
+          style={{ width: size, height: size, background: member.c, color: "#fff", fontSize: size * 0.36, border: `1.5px solid ${ring}`, marginLeft: i ? -6 : 0 }}>
+          {member.i}
         </span>
       ))}
     </div>
@@ -309,7 +458,7 @@ function MonthView({ cells, cursor, today, eventsForDay, catOf, onDayCreate, onE
 }
 
 /* ================= WEEK / DAY ================= */
-function TimeGrid({ days, now, scrollRef, catOf, events, onEventClick, onSlotCreate, onAllDayCreate, onDayHeaderClick }) {
+function TimeGrid({ days, now, scrollRef, catOf, events, memberByRef, onEventClick, onSlotCreate, onAllDayCreate, onDayHeaderClick }) {
   const timedFor = (day) =>
     packEvents(events.filter((e) => !e.allDay && isSameDay(e.start, day))
       .map((e) => ({ ...e, s: minutesOf(e.start), en: Math.max(minutesOf(e.end), minutesOf(e.start) + 30) })));
@@ -388,7 +537,7 @@ function TimeGrid({ days, now, scrollRef, catOf, events, onEventClick, onSlotCre
                       <div className="font-semibold truncate" style={{ fontSize: 11.5 }}>{ev.title}</div>
                       {height > 36 && <div className="truncate" style={{ fontSize: 10.5, color: TIME_INK }}>{fmtTime(ev.start)} – {fmtTime(ev.end)}</div>}
                       {height > 62 && ev.attendees?.length > 0 && (
-                        <div className="mt-auto pt-1"><AttendeeStack list={ev.attendees} ring={c.fill} size={19} /></div>
+                        <div className="mt-auto pt-1"><AttendeeStack list={ev.attendees} memberByRef={memberByRef} ring={c.fill} size={19} /></div>
                       )}
                     </div>
                   );
@@ -458,10 +607,10 @@ function MiniMonth({ cursor, onPick }) {
 }
 
 /* ================= EVENT MODAL ================= */
-function EventModal({ modal, calendars, setForm, onClose, onSave, onDelete }) {
+function EventModal({ modal, calendars, members, setForm, onClose, onSave, onDelete, saving, error }) {
   const f = modal.form;
   const cal = calendars.find((c) => c.id === f.calId) || calendars[0];
-  const toggleAttendee = (i) => setForm({ attendees: f.attendees.includes(i) ? f.attendees.filter((a) => a !== i) : [...f.attendees, i] });
+  const toggleAttendee = (id) => setForm({ attendees: f.attendees.includes(id) ? f.attendees.filter((a) => a !== id) : [...f.attendees, id] });
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(20,18,26,0.4)" }} onClick={onClose}>
       <div className="rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style={{ background: "var(--card)" }} onClick={(e) => e.stopPropagation()}>
@@ -474,6 +623,11 @@ function EventModal({ modal, calendars, setForm, onClose, onSave, onDelete }) {
         </div>
 
         <div className="p-5 space-y-4">
+          {error && (
+            <div className="rounded-lg px-3 py-2 text-xs" style={{ color: "#C23150", background: "rgba(229,83,110,0.10)", border: "1px solid rgba(229,83,110,0.20)" }}>
+              {error}
+            </div>
+          )}
           <input autoFocus value={f.title} onChange={(e) => setForm({ title: e.target.value })} placeholder="Add title"
             className="w-full text-lg outline-none pb-1" style={{ borderBottom: "2px solid var(--border)" }} />
 
@@ -508,10 +662,10 @@ function EventModal({ modal, calendars, setForm, onClose, onSave, onDelete }) {
           <div className="flex items-start gap-3">
             <Users size={18} style={{ color: "var(--muted)", marginTop: 4 }} />
             <div className="flex flex-wrap gap-1.5">
-              {TEAM.map((t) => {
-                const on = f.attendees.includes(t.i);
+              {members.map((t) => {
+                const on = f.attendees.includes(t.id);
                 return (
-                  <button key={t.i} onClick={() => toggleAttendee(t.i)}
+                  <button key={t.id} onClick={() => toggleAttendee(t.id)} title={t.name}
                     className="h-8 w-8 rounded-full flex items-center justify-center text-white font-semibold"
                     style={{ background: t.c, fontSize: 11, opacity: on ? 1 : 0.35, outline: on ? `2px solid ${t.c}` : "none", outlineOffset: 1 }}>
                     {t.i}
@@ -530,13 +684,13 @@ function EventModal({ modal, calendars, setForm, onClose, onSave, onDelete }) {
 
         <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: "1px solid var(--border)" }}>
           {modal.mode === "edit" ? (
-            <button onClick={onDelete} className="tc-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg" style={{ color: "#E5536E" }}>
-              <Trash2 size={16} /> Delete
+            <button disabled={saving} onClick={onDelete} className="tc-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "#E5536E" }}>
+              <Trash2 size={16} /> {saving ? "Saving…" : "Delete"}
             </button>
           ) : <span />}
           <div className="flex gap-2">
-            <button onClick={onClose} className="tc-ib text-sm px-4 py-2 rounded-full" style={{ color: "var(--text-2)" }}>Cancel</button>
-            <button onClick={onSave} className="tc-pill text-sm px-5 py-2 rounded-full font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>Save</button>
+            <button disabled={saving} onClick={onClose} className="tc-ib text-sm px-4 py-2 rounded-full disabled:opacity-50" style={{ color: "var(--text-2)" }}>Cancel</button>
+            <button disabled={saving} onClick={onSave} className="tc-pill text-sm px-5 py-2 rounded-full font-medium shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>{saving ? "Saving…" : "Save"}</button>
           </div>
         </div>
       </div>
