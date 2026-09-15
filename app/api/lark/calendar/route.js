@@ -1,25 +1,30 @@
-import { NextResponse } from “next/server”;
+import { NextResponse } from "next/server";
 
-function buildMiniCalendar(date = new Date(), events = []) { const year
-= date.getFullYear(); const month = date.getMonth();
+function buildMiniCalendar(date = new Date(), events = []) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
 
-const monthName = date.toLocaleString(“en-US”, { month: “long” });
+  const monthName = date.toLocaleString("en-US", { month: "long" });
 
-const firstDay = new Date(year, month, 1).getDay(); const days = new
-Date(year, month + 1, 0).getDate(); const today = new Date();
+  const firstDay = new Date(year, month, 1).getDay();
+  const days = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
 
-const eventDays = new Set( events.map((event) => new
-Date(event.start).getDate()) );
+  const eventDays = new Set(
+    events.map((event) => new Date(event.start).getDate())
+  );
 
-let calendar = ${monthName} ${year}\n\n; calendar += “Su Mo Tu We Th Fr
-Sa”;
+  let calendar = `${monthName} ${year}\n\n`;
+  calendar += "Su Mo Tu We Th Fr Sa\n";
 
-let row = ““;
+  let row = "";
 
-for (let i = 0; i < firstDay; i++) { row += ” “; }
+  for (let i = 0; i < firstDay; i++) {
+    row += "   ";
+  }
 
-for (let day = 1; day <= days; day++) { const current = new Date(year,
-month, day);
+  for (let day = 1; day <= days; day++) {
+    const current = new Date(year, month, day);
 
     let marker = String(day).padStart(2, " ");
 
@@ -39,15 +44,16 @@ month, day);
       calendar += row + "\n";
       row = "";
     }
+  }
 
+  if (row) calendar += row;
+
+  return calendar;
 }
 
-if (row) calendar += row;
-
-return calendar; }
-
-export async function POST(request) { try { const webhook =
-process.env.LARK_CALENDAR_BOT_WEBHOOK;
+export async function POST(request) {
+  try {
+    const webhook = process.env.LARK_CALENDAR_BOT_WEBHOOK;
 
     if (!webhook) {
       return NextResponse.json(
@@ -110,6 +116,12 @@ process.env.LARK_CALENDAR_BOT_WEBHOOK;
       ok: response.ok,
       result,
     });
-
-} catch (error) { return NextResponse.json( { error: error.message ||
-“Unable to send calendar”, }, { status: 500 } ); } }
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error.message || "Unable to send calendar",
+      },
+      { status: 500 }
+    );
+  }
+}
