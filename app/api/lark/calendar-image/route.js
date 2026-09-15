@@ -1,39 +1,50 @@
 import { NextResponse } from "next/server";
 import zlib from "zlib";
 
-function createPng(width, height) {
-  const raw = [];
+function crc32(buffer) {
+  let crc = 0xffffffff;
 
-  for (let y = 0; y < height; y++) {
-    raw.push(0);
-    for (let x = 0; x < width; x++) {
-      let r = 255;
-      let g = 255;
-      let b = 255;
-
-      if (x < 6 || y < 6 || x > width - 7 || y > height - 7) {
-        r = 245;
-        g = 245;
-        b = 245;
-      }
-
-      raw.push(r, g, b, 255);
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let i = 0; i < 8; i++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
     }
   }
 
-  function chunk(type, data) {
-    const buffer = Buffer.alloc(12 + data.length);
-    buffer.writeUInt32BE(data.length, 0);
-    buffer.write(type, 4);
-    data.copy(buffer, 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
-    const crc = require("crc-32").buf(Buffer.concat([
-      Buffer.from(type),
-      data
-    ])) >>> 0;
+function pngChunk(type, data) {
+  const typeBuffer = Buffer.from(type);
+  const output = Buffer.alloc(data.length + 12);
 
-    buffer.writeUInt32BE(crc, 8 + data.length);
-    return buffer;
+  output.writeUInt32BE(data.length, 0);
+  typeBuffer.copy(output, 4);
+  data.copy(output, 8);
+
+  const crc = crc32(Buffer.concat([typeBuffer, data]));
+  output.writeUInt32BE(crc, data.length + 8);
+
+  return output;
+}
+
+function createPng(width, height) {
+  const rows = [];
+
+  for (let y = 0; y < height; y++) {
+    const row = Buffer.alloc(1 + width * 4);
+    row[0] = 0;
+
+    for (let x = 0; x < width; x++) {
+      const index = 1 + x * 4;
+
+      row[index] = 255;
+      row[index + 1] = 255;
+      row[index + 2] = 255;
+      row[index + 3] = 255;
+    }
+
+    rows.push(row);
   }
 
   const signature = Buffer.from([
@@ -41,20 +52,18 @@ function createPng(width, height) {
   ]);
 
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width,0);
-  ihdr.writeUInt32BE(height,4);
-  ihdr[8]=8;
-  ihdr[9]=6;
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6;
 
-  const idat = zlib.deflateSync(Buffer.from(raw));
-
-  const iend = Buffer.alloc(0);
+  const compressed = zlib.deflateSync(Buffer.concat(rows));
 
   return Buffer.concat([
     signature,
-    chunk("IHDR", ihdr),
-    chunk("IDAT", idat),
-    chunk("IEND", iend)
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", compressed),
+    pngChunk("IEND", Buffer.alloc(0)),
   ]);
 }
 
@@ -64,12 +73,12 @@ async function getToken() {
     {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         app_id: process.env.LARK_APP_ID,
-        app_secret: process.env.LARK_APP_SECRET
-      })
+        app_secret: process.env.LARK_APP_SECRET,
+      }),
     }
   );
 
@@ -82,7 +91,7 @@ async function getToken() {
   return data.tenant_access_token;
 }
 
-export async function POST(request) {
+export async function POST() {
   try {
     const token = await getToken();
 
@@ -101,9 +110,9 @@ export async function POST(request) {
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: form
+        body: form,
       }
     );
 
@@ -119,15 +128,15 @@ export async function POST(request) {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           receive_id: process.env.LARK_CHAT_ID,
           msg_type: "image",
           content: JSON.stringify({
-            image_key: uploadData.data.image_key
-          })
-        })
+            image_key: uploadData.data.image_key,
+          }),
+        }),
       }
     );
 
@@ -139,18 +148,15 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      sendData
+      sendData,
     });
-
   } catch (error) {
-    console.error("LARK CALENDAR ERROR", error);
-
     return NextResponse.json(
       {
-        error: error.message
+        error: error.message,
       },
       {
-        status: 500
+        status: 500,
       }
     );
   }
