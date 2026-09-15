@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import Link from "next/link";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, ChevronLeft, ChevronRight, Moon, Sun, Sparkles, Clock, CheckCircle,
@@ -71,38 +70,17 @@ const TASKS = [
 ];
 
 const NAV = [
-  { id: "dashboard", name: "Dashboard", icon: LayoutGrid, href: "/dashboard" },
-  { id: "calendar", name: "Calendar", icon: Calendar, href: "/calendar" },
-  { id: "tasks", name: "Tasks", icon: CheckSquare, href: "/tasks" },
+  { id: "dashboard", name: "Dashboard", icon: LayoutGrid },
+  { id: "calendar", name: "Calendar", icon: Calendar },
+  { id: "tasks", name: "Tasks", icon: CheckSquare },
   { id: "projects", name: "Projects", icon: Folder },
-  { id: "team", name: "Team Members", icon: Users, href: "/team" },
+  { id: "team", name: "Team Members", icon: Users },
   { id: "reports", name: "Reports", icon: BarChart },
 ];
 
-const STYLES = `
-.theme-light{
-  --page:linear-gradient(165deg,#F4F5F7 0%,#EDEEF1 100%);
-  --surface:#FFFFFF; --sidebar:#F6F7F9;
-  --card:#FFFFFF; --col:#F4F5F7; --border:#E9EAEE; --grid:#F0F1F4; --dim:rgba(17,17,20,0.02);
-  --text:#111014; --text-2:#5B5D66; --muted:#9A9CA6; --faint:#C4C6CE;
-  --hover:rgba(17,17,20,0.05); --hover-row:#F6F7F9; color-scheme:light; --on-accent:#ffffff;
-}
-.theme-dark{
-  --page:linear-gradient(165deg,#0D0D10 0%,#111114 100%);
-  --surface:#141417; --sidebar:#0D0D0F;
-  --card:#1C1C21; --col:#171719; --border:rgba(255,255,255,0.08); --grid:rgba(255,255,255,0.05); --dim:rgba(255,255,255,0.03);
-  --text:#F1F1F4; --text-2:var(--text-2); --muted:rgba(255,255,255,0.40); --faint:rgba(255,255,255,0.28);
-  --hover:rgba(255,255,255,0.08); --hover-row:rgba(255,255,255,0.04); color-scheme:dark; --on-accent:#2A2210;
-}
-.db-nav:hover{background:var(--hover)}
-.db-ib:hover{background:var(--hover)}
-.db-pill:hover{filter:brightness(1.05)}
-.db-row:hover{filter:brightness(0.985)}
-.db-day:hover{background:var(--hover)}
-`;
+
 
 export default function DashboardPage() {
-  const [dark, setDark] = useState(true);
   const [member, setMember] = useState("CN");
   const [day, setDay] = useState(startOfDay(new Date()));
   const [monthCursor, setMonthCursor] = useState(startOfMonth(new Date()));
@@ -125,51 +103,8 @@ export default function DashboardPage() {
   const dayLabel = isSameDay(day, now) ? "Today" : day.toLocaleDateString("default", { weekday: "long", month: "short", day: "numeric" });
 
   return (
-    <div className={`h-screen p-3 sm:p-5 ${dark ? "theme-dark" : "theme-light"}`} style={{ minHeight: 560, background: PAGE_BG, color: "var(--text)", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      <style>{STYLES}</style>
-      <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex" style={{ background: CANVAS }}>
-
-        {/* ===== sidebar ===== */}
-        <aside className="w-64 shrink-0 hidden md:flex flex-col gap-5 p-4 overflow-y-auto overflow-x-hidden" style={{ background: SIDEBAR, borderRight: "1px solid var(--border)" }}>
-          <div className="flex items-center gap-2.5 px-1 pt-1">
-            <span className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: ACCENT_GRAD }}><Sparkles size={18} style={{ color: ON_ACCENT }} /></span>
-            <div className="leading-tight">
-              <p className="font-semibold" style={{ fontSize: 15, color: "var(--text)" }}>SDC</p>
-              <p style={{ color: "var(--muted)" }} className="text-xs">Creative team</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col items-center text-center py-3 rounded-2xl" style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
-            <span className="h-14 w-14 rounded-full flex items-center justify-center text-white font-semibold mb-2" style={{ background: "#7C6FF0", fontSize: 20, border: "3px solid var(--border)" }}>CN</span>
-            <p className="font-semibold text-sm" style={{ color: "var(--text)" }}>Che Navarro</p>
-            <p style={{ color: "var(--muted)" }} className="text-xs">Digital Creative</p>
-          </div>
-
-          <nav className="flex flex-col gap-1">
-            {NAV.map((n) => {
-              const on = n.id === "dashboard"; const Icon = n.icon;
-              return (
-                n.href ? (
-                  <Link href={n.href} key={n.id} className="db-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left"
-                    style={on ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
-                    <Icon size={18} /> {n.name}
-                  </Link>
-                ) : (
-                  <button key={n.id} type="button" className="db-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left"
-                    style={{ color: "var(--text-2)", opacity: 0.55, cursor: "default" }}>
-                    <Icon size={18} /> {n.name}
-                  </button>
-                )
-              );
-            })}
-          </nav>
-          <button className="db-nav mt-auto flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={{ color: "var(--text-2)" }}>
-            <Settings size={18} /> Settings
-          </button>
-        </aside>
-
-        {/* ===== main ===== */}
-        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+    <>
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
           <header className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0 flex-wrap">
             <div className="mr-auto">
               <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>{greeting}, {m.name.split(" ")[0]}!</h1>
@@ -182,8 +117,7 @@ export default function DashboardPage() {
                   style={{ background: x.c, fontSize: 12, marginLeft: -6, border: member === x.i ? `2px solid ${ACCENT}` : "2px solid var(--card)", zIndex: member === x.i ? 2 : 1, opacity: member === x.i ? 1 : 0.7 }}>{x.i}</button>
               ))}
             </div>
-            <button onClick={() => setDark((d) => !d)} aria-label="Toggle theme" className="db-ib h-9 w-9 flex items-center justify-center rounded-full shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>{dark ? <Sun size={17} /> : <Moon size={17} />}</button>
-          </header>
+            </header>
 
           <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
             <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
@@ -229,8 +163,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </main>
-      </div>
-    </div>
+    </>
   );
 }
 
