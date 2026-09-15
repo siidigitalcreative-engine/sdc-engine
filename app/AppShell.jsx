@@ -14,37 +14,46 @@ function readThemeCookie() {
 
 export default function AppShell({ children }) {
   const [dark, setDark] = useState(false);
-
-  useEffect(() => {
-    if (currentMember?.theme) setDark(currentMember.theme === "dark");
-  }, [currentMember]);
+}
 
   useEffect(() => {
     const saved = readThemeCookie();
     if (saved === "dark" || saved === "light") setDark(saved === "dark");
   }, []);
 
-  const toggle = () => setDark((current) => {
-    const next = !current;
-    document.cookie = `sdc_theme=${next ? "dark" : "light"}; Path=/; Max-Age=31536000; SameSite=Lax`;
-    fetch("/api/members", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: currentMember?.id, data: { theme: next ? "dark" : "light" } }) }).catch(() => {});
-    return next;
-  });
-
   return (
-    <ThemeCtx.Provider value={{ dark, toggle }}>
+    <ThemeCtx.Provider value={{ dark, toggle: () => setDark((current) => !current) }}>
       <AuthProvider>
-        <AppFrame dark={dark}>{children}</AppFrame>
+        <AppFrame dark={dark} setDark={setDark}>{children}</AppFrame>
       </AuthProvider>
     </ThemeCtx.Provider>
   );
 }
 
-function AppFrame({ children, dark }) {
+function AppFrame({ children, dark, setDark }) {
   const pathname = usePathname();
   const router = useRouter();
   const { ready, currentMember } = useAuth();
   const isLogin = pathname === "/login";
+
+  useEffect(() => {
+    if (currentMember?.theme) {
+      setDark(currentMember.theme === "dark");
+    }
+  }, [currentMember, setDark]);
+
+  const toggle = () => {
+    setDark((current) => {
+      const next = !current;
+      document.cookie = `sdc_theme=${next ? "dark" : "light"}; Path=/; Max-Age=31536000; SameSite=Lax`;
+      fetch("/api/members", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: currentMember?.id, data: { theme: next ? "dark" : "light" } })
+      }).catch(() => {});
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!ready) return;
