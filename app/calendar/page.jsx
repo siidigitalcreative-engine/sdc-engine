@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import html2canvas from "html2canvas";
 import { useAuth } from "../auth";
 import {
   ChevronLeft, ChevronRight, Plus, X, Trash2, Search,
@@ -117,27 +118,32 @@ export default function TeamCalendar() {
 
   const sendToLark = async () => {
     try {
-      const response = await fetch("/api/lark/calendar", {
+      if (!calendarCaptureRef.current) throw new Error("Calendar preview unavailable");
+
+      const canvas = await html2canvas(calendarCaptureRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+      });
+
+      const image = canvas.toDataURL("image/png");
+
+      const response = await fetch("/api/lark/calendar-image", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          events: events
-            .filter((event) => isSameDay(event.start, new Date()))
-            .map((event) => ({
-              title: event.title,
-              start: event.start,
-              end: event.end,
-              calId: event.calId,
-              attendees: event.attendees,
-            })),
+          image,
         }),
       });
 
-      if (!response.ok) throw new Error("Unable to send to Lark");
+      if (!response.ok) throw new Error("Unable to send calendar image to Lark");
     } catch (error) {
       setCalendarError(error.message || "Unable to send to Lark");
     }
   };
+
   const calendarEtagRef = useRef(null);
   const loadingCalendarRef = useRef(false);
   const [calendars, setCalendars] = useState(SEED_CALENDARS);
@@ -145,6 +151,7 @@ export default function TeamCalendar() {
   const [modal, setModal] = useState(null);
   const [now, setNow] = useState(new Date());
   const scrollRef = useRef(null);
+  const calendarCaptureRef = useRef(null);
 
   const hydrateEvents = useCallback((items = []) => (
     items.map((event) => ({
@@ -369,7 +376,7 @@ export default function TeamCalendar() {
                 </ul>
               </div>
             </div>
-            <div className="flex-1 min-w-0 flex flex-col">
+            <div ref={calendarCaptureRef} className="flex-1 min-w-0 flex flex-col">
               {view === "month" ? (
                 <MonthView cells={monthCells} cursor={cursor} today={now} eventsForDay={eventsForDay} catOf={catOf}
                   onDayCreate={(d) => { const x = new Date(d); x.setHours(9, 0, 0, 0); openCreateAt(x); }}
