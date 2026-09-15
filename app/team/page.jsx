@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useTheme } from "../theme";
 import {
   LayoutGrid, Calendar as CalIcon, CheckSquare, Folder, Users, BarChart, Settings,
   Moon, Sun, Sparkles, Plus, ArrowUpRight, Search,
@@ -68,9 +69,10 @@ export default function TeamPage() {
 }
 
 function MemberCard({ m }) {
+  const { dark } = useTheme();
   const total = m.open + m.done;
   const pct = total ? Math.round((m.done / total) * 100) : 0;
-  const featured = !!m.featured;
+  const featured = !!m.featured && dark;
   const t = featured
     ? { bg: "#101014", border: "rgba(255,255,255,0.08)", text: "#FFFFFF", muted: "var(--muted)", inner: "#101014", track: "var(--border)", ibbg: "rgba(255,255,255,0.10)", ibcolor: "#fff" }
     : { bg: "var(--card)", border: "1px solid var(--border)", text: "var(--text)", muted: "var(--muted)", inner: "var(--card)", track: "var(--grid)", ibbg: "var(--col)", ibcolor: "var(--text-2)" };
