@@ -13,50 +13,66 @@ function readThemeCookie() {
 }
 
 export default function AppShell({ children }) {
-  const [dark, setDark] = useState(false);
+  return (
+    <AuthProvider>
+      <AppTheme>{children}</AppTheme>
+    </AuthProvider>
+  );
 }
 
+function AppTheme({ children }) {
+  const [dark, setDark] = useState(false);
+  const { currentMember } = useAuth();
+
   useEffect(() => {
+    if (currentMember?.theme) {
+      setDark(currentMember.theme === "dark");
+      return;
+    }
+
     const saved = readThemeCookie();
-    if (saved === "dark" || saved === "light") setDark(saved === "dark");
-  }, []);
+    if (saved === "dark" || saved === "light") {
+      setDark(saved === "dark");
+    }
+  }, [currentMember]);
+
+  const toggle = () => {
+    setDark((current) => {
+      const next = !current;
+
+      document.cookie = `sdc_theme=${next ? "dark" : "light"}; Path=/; Max-Age=31536000; SameSite=Lax`;
+
+      if (currentMember?.id) {
+        fetch("/api/members", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: currentMember.id,
+            data: { theme: next ? "dark" : "light" },
+          }),
+        }).catch(() => {});
+      }
+
+      return next;
+    });
+  };
 
   return (
-    <ThemeCtx.Provider value={{ dark, toggle: () => setDark((current) => !current) }}>
-      <AuthProvider>
-        <AppFrame dark={dark} setDark={setDark}>{children}</AppFrame>
-      </AuthProvider>
+    <ThemeCtx.Provider value={{ dark, toggle }}>
+      <AppFrame dark={dark}>{children}</AppFrame>
     </ThemeCtx.Provider>
   );
 }
 
-function AppFrame({ children, dark, setDark }) {
+function AppFrame({ children, dark }) {
   const pathname = usePathname();
   const router = useRouter();
   const { ready, currentMember } = useAuth();
   const isLogin = pathname === "/login";
 
   useEffect(() => {
-    if (currentMember?.theme) {
-      setDark(currentMember.theme === "dark");
-    }
-  }, [currentMember, setDark]);
-
-  const toggle = () => {
-    setDark((current) => {
-      const next = !current;
-      document.cookie = `sdc_theme=${next ? "dark" : "light"}; Path=/; Max-Age=31536000; SameSite=Lax`;
-      fetch("/api/members", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: currentMember?.id, data: { theme: next ? "dark" : "light" } })
-      }).catch(() => {});
-      return next;
-    });
-  };
-
-  useEffect(() => {
     if (!ready) return;
+
     if (!currentMember && !isLogin) router.replace("/login");
     if (currentMember && isLogin) router.replace("/dashboard");
   }, [ready, currentMember, isLogin, router]);
@@ -65,16 +81,16 @@ function AppFrame({ children, dark, setDark }) {
 
   if (!ready || (!currentMember && !isLogin) || (currentMember && isLogin)) {
     return (
-      <div className={shellClass} style={{ minHeight: 560, background: "var(--page)", color: "var(--text)", fontFamily: "'Inter', system-ui, sans-serif" }}>
-        <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center" style={{ background: "var(--surface)" }}>
-          <div className="h-9 w-9 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: "#F26A3C", borderRightColor: "#F26A3C" }} />
+      <div className={shellClass}>
+        <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center">
+          <div className="h-9 w-9 rounded-full border-2 border-transparent animate-spin" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className={shellClass} style={{ minHeight: 560, background: "var(--page)", color: "var(--text)", fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className={shellClass} style={{ minHeight: 560, background: "var(--page)", color: "var(--text)" }}>
       <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex" style={{ background: "var(--surface)" }}>
         {!isLogin && <Sidebar />}
         {children}
