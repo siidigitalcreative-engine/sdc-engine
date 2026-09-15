@@ -349,7 +349,7 @@ export default function TasksPage() {
     <>
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {/* toolbar */}
-          <header className="flex items-center gap-3 px-5 sm:px-7 pt-6 pb-4 shrink-0 flex-wrap">
+          <header className="flex items-center gap-3 px-4 sm:px-7 pt-6 pb-4 shrink-0 flex-wrap">
             <div className="mr-auto">
               <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Tasks</h1>
               <p className="text-sm" style={{ color: "var(--muted)" }}>Add and track work across the team</p>
@@ -374,7 +374,7 @@ export default function TasksPage() {
           </header>
 
           {/* stat cards */}
-          <div className="px-5 sm:px-7 pb-4 grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+          <div className="px-4 sm:px-7 pb-4 grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
             <StatCard icon={CheckSquare} tint="#F26A3C" soft="#FCE3D6" label="Total tasks" value={stats.total} note="all tasks" />
             <StatCard icon={Clock} tint="#3E8ED0" soft="#E3EEF9" label="In progress" value={stats.inprogress} note="being worked on" />
             <StatCard icon={CheckSquare} tint="#3FA37A" soft="#DEF1E7" label="Completed" value={stats.done} note="finished" />
@@ -383,20 +383,20 @@ export default function TasksPage() {
 
           {/* body */}
           {view === "board" ? (
-            <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden px-5 sm:px-7 pb-6">
-              <div className="flex gap-4 h-full" style={{ minWidth: "min-content" }}>
+            <div className="flex-1 min-h-0 overflow-y-auto md:overflow-x-auto md:overflow-y-hidden px-4 sm:px-7 pb-6">
+              <div className="flex flex-col md:flex-row gap-4 md:h-full">
                 {STATUSES.map((s) => {
                   const items = filtered.filter((t) => t.status === s.id);
                   const isOver = overCol === s.id;
                   return (
-                    <div key={s.id} className="flex flex-col rounded-2xl shrink-0" style={{ width: 288, background: isOver ? "var(--grid)" : "var(--col)", outline: isOver ? `2px dashed ${ACCENT}` : "none" }}
+                    <div key={s.id} className="flex flex-col rounded-2xl w-full md:w-72 md:shrink-0" style={{ background: isOver ? "var(--grid)" : "var(--col)", outline: isOver ? `2px dashed ${ACCENT}` : "none" }}
                       onDragOver={(e) => { e.preventDefault(); setOverCol(s.id); }} onDragLeave={() => setOverCol((c) => (c === s.id ? null : c))} onDrop={(e) => { e.preventDefault(); drop(s.id); }}>
                       <div className="flex items-center gap-2 px-3 py-3 shrink-0">
                         <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
                         <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>{s.name}</span>
                         <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--card)", color: "var(--text-2)" }}>{items.length}</span>
                       </div>
-                      <div className="flex-1 min-h-0 overflow-y-auto px-2.5 space-y-2.5">
+                      <div className="px-2.5 pb-1 space-y-2.5 md:flex-1 md:min-h-0 md:overflow-y-auto">
                         {items.map((t) => (
                           <TaskCard key={t.id} t={t} memberByRef={memberByRef} onClick={() => openEdit(t)}
                             onDragStart={() => setDragId(t.id)} onDragEnd={() => { setDragId(null); setOverCol(null); }} dragging={dragId === t.id} />
@@ -411,7 +411,7 @@ export default function TasksPage() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 min-h-0 overflow-auto px-5 sm:px-7 pb-6">
+            <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-7 pb-6">
               <div className="rounded-2xl overflow-hidden shadow-sm" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
                   <thead>
