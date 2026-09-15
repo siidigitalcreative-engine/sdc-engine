@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, ChevronLeft, ChevronRight, Moon, Sun, Sparkles, Clock, CheckCircle,
@@ -25,12 +25,18 @@ const isSameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() 
 const minutesOf = (d) => d.getHours() * 60 + d.getMinutes();
 const hm = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
 const fmtHM = (mins) => { let h = Math.floor(mins / 60); const m = mins % 60; const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12; return m ? `${h}:${String(m).padStart(2,"0")} ${ap}` : `${h} ${ap}`; };
+const fromDateInput = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
+  const [y, m, d] = String(value).split("-").map(Number);
+  return new Date(y, m - 1, d);
+};
+const taskIsOnDay = (task, day) => {
+  const start = fromDateInput(task?.start);
+  return Boolean(start && isSameDay(start, day));
+};
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /* ---------- data ---------- */
-const today = new Date();
-const dOff = (n) => { const d = startOfDay(today); d.setDate(d.getDate() + n); return d; };
-
 const STATUSES = {
   todo: { name: "To Do", color: "#8E8A96", soft: "#ECEBEE" },
   inprogress: { name: "In Progress", color: "#3E8ED0", soft: "#E3EEF9" },
@@ -45,21 +51,6 @@ const PROJ_PALETTE = [
 ];
 const projColor = (p) => PROJ_PALETTE[Math.max(0, PROJECTS.indexOf(p)) % PROJ_PALETTE.length];
 
-const TASKS = [
-  { id: 1, title: "Team content sync", project: "Sunbeams Lifestyle", status: "inprogress", who: ["CN", "RG"], date: dOff(0), time: "10:00", dur: 60 },
-  { id: 2, title: "Quencha shoot review", project: "Quencha", status: "inprogress", who: ["CN"], date: dOff(0), time: "14:00", dur: 90 },
-  { id: 3, title: "SCRUBZ copy review", project: "SCRUBZ", status: "todo", who: ["CN"], date: dOff(0), time: "12:00", dur: 45 },
-  { id: 4, title: "CRYSALIS palette QA", project: "CRYSALIS", status: "done", who: ["CN"], date: dOff(0) },
-  { id: 5, title: "PRIMEO landing review", project: "PRIMEO", status: "todo", who: ["CN", "MA"], date: dOff(0), time: "16:00", dur: 60 },
-  { id: 6, title: "Checkout flow redesign", project: "Website Revamp", status: "inreview", who: ["CN", "JL"], date: dOff(1), time: "11:00", dur: 60 },
-  { id: 7, title: "Design system audit", project: "Sunbeams Lifestyle", status: "done", who: ["CN"], date: dOff(-2) },
-  { id: 8, title: "Reel edits — FITSPIRE", project: "FITSPIRE", status: "done", who: ["SP"], date: dOff(0), time: "09:30", dur: 60 },
-  { id: 9, title: "Nest blog publish", project: "Nest Design Lab", status: "inprogress", who: ["MA"], date: dOff(0), time: "13:00", dur: 60 },
-  { id: 10, title: "Vendor call", project: "Sunbeams Lifestyle", status: "todo", who: ["RG", "CN"], date: dOff(2), time: "15:00", dur: 60 },
-  { id: 11, title: "Quencha PDP wireframe", project: "Quencha", status: "inprogress", who: ["CN"], date: dOff(-1), time: "10:00", dur: 120 },
-  { id: 12, title: "Email QA", project: "Daily Tasks", status: "inreview", who: ["RG"], date: dOff(0), time: "11:30", dur: 30 },
-];
-
 const NAV = [
   { id: "dashboard", name: "Dashboard", icon: LayoutGrid },
   { id: "calendar", name: "Calendar", icon: Calendar },
@@ -73,34 +64,102 @@ const NAV = [
 
 export default function DashboardPage() {
   const { members, currentMember } = useAuth();
-  const [member, setMember] = useState(currentMember?.i || members[0]?.i || "");
+  const [memberId, setMemberId] = useState(currentMember?.id || members[0]?.id || "");
   const [day, setDay] = useState(startOfDay(new Date()));
   const [monthCursor, setMonthCursor] = useState(startOfMonth(new Date()));
+  const [tasks, setTasks] = useState([]);
+  const [taskError, setTaskError] = useState("");
+  const taskEtagRef = useRef(null);
+  const loadingTasksRef = useRef(false);
   const now = new Date();
 
-  useEffect(() => {
-    if (!member || !members.some((x) => x.i === member)) {
-      setMember(currentMember?.i || members[0]?.i || "");
+  const loadTasks = useCallback(async ({ force = false } = {}) => {
+    if (loadingTasksRef.current) return;
+    loadingTasksRef.current = true;
+    try {
+      const headers = {};
+      if (!force && taskEtagRef.current) headers["If-None-Match"] = taskEtagRef.current;
+      const response = await fetch("/api/tasks", { headers, cache: "no-store" });
+      if (response.status === 304) return;
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Unable to load tasks.");
+      }
+      const body = await response.json();
+      const etag = response.headers.get("etag");
+      if (etag) taskEtagRef.current = etag;
+      setTasks(Array.isArray(body.tasks) ? body.tasks : []);
+      setTaskError("");
+    } catch (error) {
+      setTaskError(error.message || "Unable to load tasks.");
+    } finally {
+      loadingTasksRef.current = false;
     }
-  }, [members, currentMember, member]);
+  }, []);
 
-  const m = members.find((x) => x.i === member) || currentMember || members[0];
-  const mine = useMemo(() => TASKS.filter((t) => t.who.includes(member)), [member]);
+  useEffect(() => {
+    loadTasks({ force: true });
+    const poll = () => {
+      if (document.visibilityState === "visible") loadTasks();
+    };
+    const id = window.setInterval(poll, 3000);
+    const onFocus = () => loadTasks({ force: true });
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", poll);
+    };
+  }, [loadTasks]);
+
+  useEffect(() => {
+    if (!memberId || !members.some((x) => x.id === memberId)) {
+      setMemberId(currentMember?.id || members[0]?.id || "");
+    }
+  }, [members, currentMember, memberId]);
+
+  const m = members.find((x) => x.id === memberId) || currentMember || members[0];
+  const mine = useMemo(() => {
+    if (!m) return [];
+    return tasks.filter((task) => {
+      const assignees = Array.isArray(task.assignees) ? task.assignees : [];
+      // Supports both current member IDs and any older task records that still contain initials.
+      return assignees.includes(m.id) || assignees.includes(m.i);
+    });
+  }, [tasks, m]);
+
   const counts = useMemo(() => ({
-    projects: new Set(mine.map((t) => t.project)).size,
+    projects: new Set(mine.map((t) => t.project).filter(Boolean)).size,
     tasks: mine.length,
     done: mine.filter((t) => t.status === "done").length,
   }), [mine]);
 
-  const dayTasks = useMemo(() => mine
-    .filter((t) => isSameDay(t.date, day))
-    .sort((a, b) => (a.time ? hm(a.time) : 9999) - (b.time ? hm(b.time) : 9999)), [mine, day]);
-  const timed = dayTasks.filter((t) => t.time);
+  const selectedIsToday = isSameDay(day, now);
+  const dayTasks = useMemo(() => {
+    return mine
+      .filter((task) => taskIsOnDay(task, day) || (selectedIsToday && task.status === "inprogress"))
+      .sort((a, b) => {
+        const aScheduled = taskIsOnDay(a, day);
+        const bScheduled = taskIsOnDay(b, day);
+        if (aScheduled !== bScheduled) return aScheduled ? -1 : 1;
+        const aTime = a.time ? hm(a.time) : 9999;
+        const bTime = b.time ? hm(b.time) : 9999;
+        if (aTime !== bTime) return aTime - bTime;
+        return String(a.title || "").localeCompare(String(b.title || ""));
+      });
+  }, [mine, day, selectedIsToday]);
+
+  // The hourly schedule only shows tasks actually scheduled for the selected date.
+  // "In Progress" tasks from other dates still appear in Today's tasks, but not at an incorrect time on the schedule.
+  const timed = useMemo(() => mine
+    .filter((task) => taskIsOnDay(task, day) && task.time)
+    .sort((a, b) => hm(a.time) - hm(b.time)), [mine, day]);
 
   if (!m) return null;
 
   const greeting = (() => { const h = now.getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; })();
-  const dayLabel = isSameDay(day, now) ? "Today" : day.toLocaleDateString("default", { weekday: "long", month: "short", day: "numeric" });
+  const dayLabel = selectedIsToday ? "Today" : day.toLocaleDateString("default", { weekday: "long", month: "short", day: "numeric" });
 
   return (
     <>
@@ -108,13 +167,14 @@ export default function DashboardPage() {
           <header className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0 flex-wrap">
             <div className="mr-auto">
               <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>{greeting}, {m.name.split(" ")[0]}!</h1>
-              <p className="text-sm" style={{ color: "var(--muted)" }}>Here's what's on {currentMember?.i === member ? "your" : m.name.split(" ")[0] + "'s"} plate</p>
+              <p className="text-sm" style={{ color: "var(--muted)" }}>Here's what's on {currentMember?.id === memberId ? "your" : m.name.split(" ")[0] + "'s"} plate</p>
+              {taskError && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{taskError}</p>}
             </div>
             <div className="flex items-center">
               {members.map((x) => (
-                <button key={x.i} onClick={() => setMember(x.i)} title={x.name}
+                <button key={x.id} onClick={() => setMemberId(x.id)} title={x.name}
                   className="db-pill h-9 w-9 rounded-full flex items-center justify-center text-white font-semibold"
-                  style={{ background: x.c, fontSize: 12, marginLeft: -6, border: member === x.i ? `2px solid ${ACCENT}` : "2px solid var(--card)", zIndex: member === x.i ? 2 : 1, opacity: member === x.i ? 1 : 0.7 }}>{x.i}</button>
+                  style={{ background: x.c, fontSize: 12, marginLeft: -6, border: memberId === x.id ? `2px solid ${ACCENT}` : "2px solid var(--card)", zIndex: memberId === x.id ? 2 : 1, opacity: memberId === x.id ? 1 : 0.7 }}>{x.i}</button>
               ))}
             </div>
             </header>
@@ -135,9 +195,10 @@ export default function DashboardPage() {
                     <span className="flex items-center gap-1 text-sm" style={{ color: "var(--muted)" }}>Show all <ArrowUpRight size={15} /></span>
                   </div>
                   <div className="space-y-2.5">
-                    {dayTasks.length === 0 && <p className="text-sm py-6 text-center" style={{ color: "var(--muted)" }}>Nothing scheduled for this day.</p>}
+                    {dayTasks.length === 0 && <p className="text-sm py-6 text-center" style={{ color: "var(--muted)" }}>{selectedIsToday ? "No tasks scheduled today or currently in progress." : "Nothing scheduled for this day."}</p>}
                     {dayTasks.map((t) => {
-                      const pc = projColor(t.project); const s = STATUSES[t.status];
+                      const pc = projColor(t.project); const s = STATUSES[t.status] || STATUSES.todo;
+                      const scheduledThisDay = taskIsOnDay(t, day);
                       return (
                         <div key={t.id} className="db-row flex items-center gap-3 rounded-xl p-3" style={{ background: "var(--col)" }}>
                           <span className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: pc.soft }}>
@@ -145,7 +206,7 @@ export default function DashboardPage() {
                           </span>
                           <div className="min-w-0 flex-1">
                             <p className="font-medium truncate" style={{ color: "var(--text)" }}>{t.title}</p>
-                            <p className="text-xs truncate" style={{ color: "var(--muted)" }}>{t.project}{t.time ? ` · ${fmtHM(hm(t.time))}` : ""}</p>
+                            <p className="text-xs truncate" style={{ color: "var(--muted)" }}>{t.project}{scheduledThisDay && t.time ? ` · ${fmtHM(hm(t.time))}` : ""}</p>
                           </div>
                           <span className="rounded-full px-2.5 py-1 text-xs font-semibold shrink-0" style={{ background: s.soft, color: s.color }}>{s.name}</span>
                         </div>
@@ -157,7 +218,7 @@ export default function DashboardPage() {
 
               {/* right column */}
               <div style={{ flex: "1 1 320px" }} className="flex flex-col gap-5">
-                <MiniCal member={member} day={day} setDay={setDay} monthCursor={monthCursor} setMonthCursor={setMonthCursor} now={now} tasks={mine} />
+                <MiniCal day={day} setDay={setDay} monthCursor={monthCursor} setMonthCursor={setMonthCursor} now={now} tasks={mine} />
                 <Schedule items={timed} day={day} now={now} />
               </div>
             </div>
@@ -179,12 +240,12 @@ function CountCard({ icon: Icon, label, value, tint, tile }) {
   );
 }
 
-function MiniCal({ member, day, setDay, monthCursor, setMonthCursor, now, tasks }) {
+function MiniCal({ day, setDay, monthCursor, setMonthCursor, now, tasks }) {
   const cells = useMemo(() => {
     const gs = startOfWeek(startOfMonth(monthCursor));
     return Array.from({ length: 42 }, (_, i) => addDays(gs, i));
   }, [monthCursor]);
-  const hasTask = (d) => tasks.some((t) => isSameDay(t.date, d));
+  const hasTask = (d) => tasks.some((t) => taskIsOnDay(t, d));
   return (
     <div className="rounded-2xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-3">
@@ -238,11 +299,12 @@ function Schedule({ items, day, now }) {
         {items.map((t) => {
           const pc = projColor(t.project);
           const top = ((hm(t.time) - startH * 60) / 60) * rowH;
-          const height = Math.max((t.dur / 60) * rowH - 4, 26);
+          const duration = Math.max(30, Number(t.dur) || 60);
+          const height = Math.max((duration / 60) * rowH - 4, 26);
           return (
             <div key={t.id} className="absolute rounded-xl px-2.5 py-1.5 overflow-hidden" style={{ top: top + 1, height, left: 52, right: 0, background: pc.soft, borderLeft: `3px solid ${pc.color}` }}>
               <p className="font-semibold truncate" style={{ fontSize: 12, color: "#2A2833" }}>{t.title}</p>
-              {height > 34 && <p className="truncate" style={{ fontSize: 11, color: "rgba(42,40,51,0.6)" }}>{fmtHM(hm(t.time))} – {fmtHM(hm(t.time) + t.dur)}</p>}
+              {height > 34 && <p className="truncate" style={{ fontSize: 11, color: "rgba(42,40,51,0.6)" }}>{fmtHM(hm(t.time))} – {fmtHM(hm(t.time) + duration)}</p>}
             </div>
           );
         })}
