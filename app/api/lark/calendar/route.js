@@ -93,7 +93,7 @@ export async function POST(request) {
           template: "blue",
           title: {
             tag: "plain_text",
-            content: "📅 SDC Creative Calendar",
+            content: "📅 SDC Calendar",
           },
         },
         elements: [
