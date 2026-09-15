@@ -69,7 +69,8 @@ const NAV = [
 
 
 export default function TasksPage() {
-  const { members } = useAuth();
+  const { members, currentMember: authCurrentMember, member } = useAuth();
+  const currentMember = authCurrentMember || member || members.find((m) => m.id === "cn" || m.i === "CN") || null;
   const memberByRef = useMemo(() => {
     const map = {};
     members.forEach((member) => {
