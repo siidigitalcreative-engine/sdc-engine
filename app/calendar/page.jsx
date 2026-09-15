@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { useAuth } from "../auth";
 import {
   ChevronLeft, ChevronRight, Plus, X, Trash2, Search,
   Clock, AlignLeft, Sparkles, Users,
@@ -66,12 +67,6 @@ const SEED_CALENDARS = [
   { id: "deadline", name: "Deadlines", color: "#E5536E", soft: "#FBE1E7", fill: "#F8D3DE", ink: "#C23150", visible: true },
 ];
 
-const TEAM = [
-  { i: "CN", c: "#7C6FF0" }, { i: "RG", c: "#3FA37A" }, { i: "MA", c: "#F0784B" },
-  { i: "JL", c: "#E0A93C" }, { i: "SP", c: "#E5536E" }, { i: "DT", c: "#3E8ED0" },
-];
-const teamColor = (i) => (TEAM.find((t) => t.i === i)?.c) || "#9A9AA2";
-
 const SEED_EVENTS = [
   { id: 1, title: "Team content sync", calId: "meet", start: at(0, 10), end: at(0, 11), allDay: false, desc: "Weekly planning across all brands", attendees: ["CN", "RG", "MA"] },
   { id: 2, title: "Quencha shoot review", calId: "shoots", start: at(0, 14), end: at(0, 15, 30), allDay: false, desc: "", attendees: ["RG", "SP"] },
@@ -103,6 +98,17 @@ function packEvents(items) {
 
 
 export default function TeamCalendar() {
+  const { members } = useAuth();
+  const memberByRef = useMemo(() => {
+    const map = {};
+    members.forEach((member) => {
+      map[member.id] = member;
+      map[member.i] = member; // supports old seed references until they are migrated
+    });
+    return map;
+  }, [members]);
+  const normalizeMemberRefs = (refs = []) => [...new Set(refs.map((ref) => memberByRef[ref]?.id).filter(Boolean))];
+
   const [view, setView] = useState("month");
   const [cursor, setCursor] = useState(new Date());
   const [events, setEvents] = useState(SEED_EVENTS);
@@ -114,6 +120,21 @@ export default function TeamCalendar() {
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
   useEffect(() => { if ((view === "week" || view === "day") && scrollRef.current) scrollRef.current.scrollTop = 7 * HOUR_H; }, [view]);
+  useEffect(() => {
+    if (!members.length) return;
+    setEvents((current) => {
+      let changed = false;
+      const next = current.map((event) => {
+        const attendees = normalizeMemberRefs(event.attendees || []);
+        const previous = event.attendees || [];
+        const same = attendees.length === previous.length && attendees.every((ref, index) => ref === previous[index]);
+        if (same) return event;
+        changed = true;
+        return { ...event, attendees };
+      });
+      return changed ? next : current;
+    });
+  }, [members, memberByRef]);
 
   const calById = useMemo(() => Object.fromEntries(calendars.map((c) => [c.id, c])), [calendars]);
   const catOf = (id) => calById[id] || { color: "#9A9AA2", soft: "#EEE", fill: "#E4E4E4", ink: "#555" };
@@ -127,7 +148,7 @@ export default function TeamCalendar() {
     const end = new Date(start); if (!allDay) end.setHours(start.getHours() + 1);
     setModal({ mode: "create", form: { id: null, title: "", calId: calendars[0].id, date: toDateInput(start), start: toTimeInput(start), end: toTimeInput(end), allDay, desc: "", attendees: [] } });
   };
-  const openEdit = (ev) => setModal({ mode: "edit", form: { id: ev.id, title: ev.title, calId: ev.calId, date: toDateInput(ev.start), start: toTimeInput(ev.start), end: toTimeInput(ev.end), allDay: ev.allDay, desc: ev.desc || "", attendees: ev.attendees || [] } });
+  const openEdit = (ev) => setModal({ mode: "edit", form: { id: ev.id, title: ev.title, calId: ev.calId, date: toDateInput(ev.start), start: toTimeInput(ev.start), end: toTimeInput(ev.end), allDay: ev.allDay, desc: ev.desc || "", attendees: normalizeMemberRefs(ev.attendees || []) } });
   const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
   const saveModal = () => {
     const f = modal.form;
@@ -135,7 +156,7 @@ export default function TeamCalendar() {
     let start, end;
     if (f.allDay) { start = fromInputs(f.date, "00:00"); end = new Date(start); }
     else { start = fromInputs(f.date, f.start); end = fromInputs(f.date, f.end); if (end <= start) { end = new Date(start); end.setHours(start.getHours() + 1); } }
-    const base = { title, calId: f.calId, start, end, allDay: f.allDay, desc: f.desc, attendees: f.attendees };
+    const base = { title, calId: f.calId, start, end, allDay: f.allDay, desc: f.desc, attendees: normalizeMemberRefs(f.attendees) };
     if (modal.mode === "edit") setEvents((evs) => evs.map((e) => (e.id === f.id ? { ...e, ...base } : e)));
     else setEvents((evs) => [...evs, { ...base, id: Date.now() }]);
     setModal(null);
@@ -228,7 +249,7 @@ export default function TeamCalendar() {
                   onDayCreate={(d) => { const x = new Date(d); x.setHours(9, 0, 0, 0); openCreateAt(x); }}
                   onEventClick={openEdit} onMore={(d) => { setCursor(d); setView("day"); }} />
               ) : (
-                <TimeGrid days={days} now={now} scrollRef={scrollRef} catOf={catOf} events={visibleEvents}
+                <TimeGrid days={days} now={now} scrollRef={scrollRef} catOf={catOf} events={visibleEvents} memberByRef={memberByRef}
                   onEventClick={openEdit} onSlotCreate={openCreateAt} onAllDayCreate={(d) => openCreateAt(d, true)}
                   onDayHeaderClick={(d) => { setCursor(d); setView("day"); }} />
               )}
@@ -237,7 +258,7 @@ export default function TeamCalendar() {
         </main>
 
       {modal && (
-        <EventModal modal={modal} calendars={calendars} setForm={setForm}
+        <EventModal modal={modal} calendars={calendars} members={members} setForm={setForm}
           onClose={() => setModal(null)} onSave={saveModal} onDelete={deleteEvent} />
       )}
     </>
@@ -245,14 +266,15 @@ export default function TeamCalendar() {
 }
 
 /* ---------- attendee avatars ---------- */
-function AttendeeStack({ list, ring = "var(--card)", size = 18 }) {
-  if (!list || !list.length) return null;
+function AttendeeStack({ list, memberByRef, ring = "var(--card)", size = 18 }) {
+  const visible = (list || []).map((ref) => memberByRef[ref]).filter(Boolean);
+  if (!visible.length) return null;
   return (
     <div className="flex items-center">
-      {list.slice(0, 4).map((a, i) => (
-        <span key={i} className="rounded-full flex items-center justify-center font-semibold shrink-0"
-          style={{ width: size, height: size, background: teamColor(a), color: "#fff", fontSize: size * 0.42, border: `1.5px solid ${ring}`, marginLeft: i ? -6 : 0 }}>
-          {a[0]}
+      {visible.slice(0, 4).map((member, i) => (
+        <span key={member.id} title={member.name} className="rounded-full flex items-center justify-center font-semibold shrink-0"
+          style={{ width: size, height: size, background: member.c, color: "#fff", fontSize: size * 0.36, border: `1.5px solid ${ring}`, marginLeft: i ? -6 : 0 }}>
+          {member.i}
         </span>
       ))}
     </div>
@@ -309,7 +331,7 @@ function MonthView({ cells, cursor, today, eventsForDay, catOf, onDayCreate, onE
 }
 
 /* ================= WEEK / DAY ================= */
-function TimeGrid({ days, now, scrollRef, catOf, events, onEventClick, onSlotCreate, onAllDayCreate, onDayHeaderClick }) {
+function TimeGrid({ days, now, scrollRef, catOf, events, memberByRef, onEventClick, onSlotCreate, onAllDayCreate, onDayHeaderClick }) {
   const timedFor = (day) =>
     packEvents(events.filter((e) => !e.allDay && isSameDay(e.start, day))
       .map((e) => ({ ...e, s: minutesOf(e.start), en: Math.max(minutesOf(e.end), minutesOf(e.start) + 30) })));
@@ -388,7 +410,7 @@ function TimeGrid({ days, now, scrollRef, catOf, events, onEventClick, onSlotCre
                       <div className="font-semibold truncate" style={{ fontSize: 11.5 }}>{ev.title}</div>
                       {height > 36 && <div className="truncate" style={{ fontSize: 10.5, color: TIME_INK }}>{fmtTime(ev.start)} – {fmtTime(ev.end)}</div>}
                       {height > 62 && ev.attendees?.length > 0 && (
-                        <div className="mt-auto pt-1"><AttendeeStack list={ev.attendees} ring={c.fill} size={19} /></div>
+                        <div className="mt-auto pt-1"><AttendeeStack list={ev.attendees} memberByRef={memberByRef} ring={c.fill} size={19} /></div>
                       )}
                     </div>
                   );
@@ -458,10 +480,10 @@ function MiniMonth({ cursor, onPick }) {
 }
 
 /* ================= EVENT MODAL ================= */
-function EventModal({ modal, calendars, setForm, onClose, onSave, onDelete }) {
+function EventModal({ modal, calendars, members, setForm, onClose, onSave, onDelete }) {
   const f = modal.form;
   const cal = calendars.find((c) => c.id === f.calId) || calendars[0];
-  const toggleAttendee = (i) => setForm({ attendees: f.attendees.includes(i) ? f.attendees.filter((a) => a !== i) : [...f.attendees, i] });
+  const toggleAttendee = (id) => setForm({ attendees: f.attendees.includes(id) ? f.attendees.filter((a) => a !== id) : [...f.attendees, id] });
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(20,18,26,0.4)" }} onClick={onClose}>
       <div className="rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style={{ background: "var(--card)" }} onClick={(e) => e.stopPropagation()}>
@@ -508,10 +530,10 @@ function EventModal({ modal, calendars, setForm, onClose, onSave, onDelete }) {
           <div className="flex items-start gap-3">
             <Users size={18} style={{ color: "var(--muted)", marginTop: 4 }} />
             <div className="flex flex-wrap gap-1.5">
-              {TEAM.map((t) => {
-                const on = f.attendees.includes(t.i);
+              {members.map((t) => {
+                const on = f.attendees.includes(t.id);
                 return (
-                  <button key={t.i} onClick={() => toggleAttendee(t.i)}
+                  <button key={t.id} onClick={() => toggleAttendee(t.id)} title={t.name}
                     className="h-8 w-8 rounded-full flex items-center justify-center text-white font-semibold"
                     style={{ background: t.c, fontSize: 11, opacity: on ? 1 : 0.35, outline: on ? `2px solid ${t.c}` : "none", outlineOffset: 1 }}>
                     {t.i}
