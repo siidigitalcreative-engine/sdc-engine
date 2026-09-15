@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   ChevronLeft, ChevronRight, Plus, X, Trash2, Search,
   Clock, AlignLeft, Sparkles, Users,
@@ -20,11 +21,11 @@ const TIME_INK = "rgba(42,40,51,0.58)";
 const PAGE_BG = "var(--page)";
 const HEADER_BG = "var(--header)";
 const NAV = [
-  { id: "dashboard", name: "Dashboard", icon: LayoutGrid },
-  { id: "calendar", name: "Calendar", icon: CalIcon },
-  { id: "tasks", name: "Tasks", icon: CheckSquare },
+  { id: "dashboard", name: "Dashboard", icon: LayoutGrid, href: "/dashboard" },
+  { id: "calendar", name: "Calendar", icon: CalIcon, href: "/calendar" },
+  { id: "tasks", name: "Tasks", icon: CheckSquare, href: "/tasks" },
   { id: "projects", name: "Projects", icon: Folder },
-  { id: "team", name: "Team Members", icon: Users },
+  { id: "team", name: "Team Members", icon: Users, href: "/team" },
   { id: "reports", name: "Reports", icon: BarChart },
 ];
 const ME = { i: "CN", name: "Che Navarro", role: "Digital Creative", c: "#7C6FF0" };
@@ -216,9 +217,15 @@ export default function TeamCalendar() {
           </div>
           <nav className="flex flex-col gap-1">
             {NAV.map((n) => { const on = n.id === "calendar"; const Icon = n.icon; return (
-              <button key={n.id} className="tc-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={on ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
-                <Icon size={18} /> {n.name}
-              </button>
+              n.href ? (
+                <Link href={n.href} key={n.id} className="tc-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={on ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
+                  <Icon size={18} /> {n.name}
+                </Link>
+              ) : (
+                <button key={n.id} type="button" className="tc-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={{ color: "var(--text-2)", opacity: 0.55, cursor: "default" }}>
+                  <Icon size={18} /> {n.name}
+                </button>
+              )
             ); })}
           </nav>
           <button className="tc-nav mt-auto flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={{ color: "var(--text-2)" }}>
