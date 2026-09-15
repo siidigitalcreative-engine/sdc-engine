@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Link from "next/link";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, ChevronLeft, ChevronRight, Moon, Sun, Sparkles, Clock, CheckCircle,
@@ -70,11 +71,11 @@ const TASKS = [
 ];
 
 const NAV = [
-  { id: "dashboard", name: "Dashboard", icon: LayoutGrid },
-  { id: "calendar", name: "Calendar", icon: Calendar },
-  { id: "tasks", name: "Tasks", icon: CheckSquare },
+  { id: "dashboard", name: "Dashboard", icon: LayoutGrid, href: "/dashboard" },
+  { id: "calendar", name: "Calendar", icon: Calendar, href: "/calendar" },
+  { id: "tasks", name: "Tasks", icon: CheckSquare, href: "/tasks" },
   { id: "projects", name: "Projects", icon: Folder },
-  { id: "team", name: "Team Members", icon: Users },
+  { id: "team", name: "Team Members", icon: Users, href: "/team" },
   { id: "reports", name: "Reports", icon: BarChart },
 ];
 
@@ -148,10 +149,17 @@ export default function DashboardPage() {
             {NAV.map((n) => {
               const on = n.id === "dashboard"; const Icon = n.icon;
               return (
-                <button key={n.id} className="db-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left"
-                  style={on ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
-                  <Icon size={18} /> {n.name}
-                </button>
+                n.href ? (
+                  <Link href={n.href} key={n.id} className="db-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left"
+                    style={on ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
+                    <Icon size={18} /> {n.name}
+                  </Link>
+                ) : (
+                  <button key={n.id} type="button" className="db-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left"
+                    style={{ color: "var(--text-2)", opacity: 0.55, cursor: "default" }}>
+                    <Icon size={18} /> {n.name}
+                  </button>
+                )
               );
             })}
           </nav>
