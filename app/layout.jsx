@@ -1,4 +1,5 @@
 import "./globals.css";
+import AppShell from "./AppShell";
 
 export const metadata = {
   title: "SDC Engine",
@@ -8,7 +9,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }
