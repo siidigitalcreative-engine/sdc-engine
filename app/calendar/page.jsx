@@ -1,6 +1,5 @@
 "use client";
 
-import { toPng } from "html-to-image";
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
@@ -123,14 +122,28 @@ export default function TeamCalendar() {
       const target = calendarExportRef.current;
       if (!target) return;
 
-      const dataUrl = await toPng(target, {
-        cacheBust: true,
-        pixelRatio: 2,
-      });
+      const width = target.scrollWidth;
+      const height = target.scrollHeight;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width * 2;
+      canvas.height = height * 2;
+
+      const ctx = canvas.getContext("2d");
+      ctx.scale(2, 2);
+
+      const background = getComputedStyle(target).backgroundColor || "#ffffff";
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, width, height);
+
+      const text = "SDC Creative Calendar";
+      ctx.fillStyle = "#222222";
+      ctx.font = "600 24px Arial";
+      ctx.fillText(text, 24, 40);
 
       const link = document.createElement("a");
       link.download = "sdc-calendar.png";
-      link.href = dataUrl;
+      link.href = canvas.toDataURL("image/png");
       link.click();
     } catch (error) {
       console.error("PNG EXPORT ERROR", error);
