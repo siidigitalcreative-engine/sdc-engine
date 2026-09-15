@@ -91,6 +91,33 @@ export default function TasksPage() {
 
   const [active, setActive] = useState("tasks");
   const [tasks, setTasks] = useState([]);
+  const [projects, setProjects] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/projects", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { projects: [] }))
+      .then((b) => { if (active) setProjects(Array.isArray(b.projects) ? b.projects : []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  const addProject = async (name) => {
+    const res = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Unable to add project.");
+    const list = Array.isArray(body.projects) ? body.projects : [];
+    setProjects(list);
+    return list;
+  };
+  const deleteProject = async (name) => {
+    const res = await fetch("/api/projects", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Unable to delete project.");
+    const list = Array.isArray(body.projects) ? body.projects : [];
+    setProjects(list);
+    return list;
+  };
   const [taskError, setTaskError] = useState("");
   const [savingTask, setSavingTask] = useState(false);
   const taskEtagRef = useRef(null);
@@ -195,7 +222,7 @@ export default function TasksPage() {
   }), [tasks]);
 
   const blank = (status = "todo") => ({
-    id: null, title: "", project: PROJECTS[0], desc: "", status, priority: "medium",
+    id: null, title: "", project: projects[0] || "", desc: "", status, priority: "medium",
     assignees: [], start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [],
   });
   const openCreate = (status) => setModal({ mode: "create", form: blank(status) });
@@ -382,7 +409,7 @@ export default function TasksPage() {
           )}
         </main>
 
-      {modal && <TaskModal modal={modal} members={members} setForm={setForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} saving={savingTask} />}
+      {modal && <TaskModal modal={modal} members={members} setForm={setForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} />}
     </>
   );
 }
@@ -450,10 +477,29 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging })
 }
 
 /* ---------- modal ---------- */
-function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving = false }) {
+function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving = false, projects = [], onAddProject, onDeleteProject }) {
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
+  const [projDraft, setProjDraft] = useState("");
+  const [projError, setProjError] = useState("");
+  const [projBusy, setProjBusy] = useState(false);
+  const handleAddProject = async () => {
+    const name = projDraft.trim();
+    if (!name) return;
+    setProjBusy(true); setProjError("");
+    try { await onAddProject(name); setForm({ project: name }); setProjDraft(""); }
+    catch (e) { setProjError(e.message || "Unable to add project."); }
+    finally { setProjBusy(false); }
+  };
+  const handleDeleteProject = async () => {
+    if (!f.project) return;
+    setProjBusy(true); setProjError("");
+    const removed = f.project;
+    try { const list = await onDeleteProject(removed); if (Array.isArray(list) && !list.includes(removed)) setForm({ project: list[0] || "" }); }
+    catch (e) { setProjError(e.message || "Unable to delete project."); }
+    finally { setProjBusy(false); }
+  };
   const toggleAssignee = (id) => setForm({ assignees: f.assignees.includes(id) ? f.assignees.filter((a) => a !== id) : [...f.assignees, id] });
   const addTag = () => { const v = tagDraft.trim().replace(/^#/, ""); if (v && !f.tags.includes(v)) setForm({ tags: [...f.tags, v] }); setTagDraft(""); };
   const onFiles = (e) => { const add = Array.from(e.target.files).map((x) => ({ name: x.name, size: x.size })); setForm({ attachments: [...f.attachments, ...add] }); e.target.value = ""; };
@@ -476,9 +522,25 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
 
           <div className="grid grid-cols-2 gap-3">
             <Labeled label="Project">
-              <select value={f.project} onChange={(e) => setForm({ project: e.target.value })} className="w-full rounded-lg px-2.5 py-2 text-sm outline-none" style={field}>
-                {PROJECTS.map((p) => <option key={p}>{p}</option>)}
-              </select>
+              <div className="flex gap-1.5">
+                <select value={f.project} onChange={(e) => setForm({ project: e.target.value })} className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm outline-none" style={field}>
+                  {projects.length === 0 && <option value="">No projects yet</option>}
+                  {projects.map((p) => <option key={p}>{p}</option>)}
+                </select>
+                <button type="button" title="Delete this project" onClick={handleDeleteProject} disabled={!f.project || projBusy}
+                  className="tp-ib rounded-lg flex items-center justify-center shrink-0" style={{ width: 34, border: "1px solid var(--border)", color: "#E5536E" }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <div className="flex gap-1.5 mt-1.5">
+                <input value={projDraft} onChange={(e) => setProjDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddProject(); } }}
+                  placeholder="New project…" className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm outline-none" style={field} />
+                <button type="button" title="Add project" onClick={handleAddProject} disabled={!projDraft.trim() || projBusy}
+                  className="tp-ib rounded-lg flex items-center justify-center shrink-0" style={{ width: 34, border: "1px solid var(--border)", color: "var(--text-2)" }}>
+                  <Plus size={16} />
+                </button>
+              </div>
+              {projError && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{projError}</p>}
             </Labeled>
             <Labeled label="Status">
               <select value={f.status} onChange={(e) => setForm({ status: e.target.value })} className="w-full rounded-lg px-2.5 py-2 text-sm outline-none" style={field}>
