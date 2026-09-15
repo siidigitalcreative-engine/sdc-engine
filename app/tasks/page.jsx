@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useMemo, useEffect } from "react";
+import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useAuth } from "../auth";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
@@ -78,31 +78,106 @@ export default function TasksPage() {
     });
     return map;
   }, [members]);
-  const normalizeMemberRefs = (refs = []) => [...new Set(refs.map((ref) => memberByRef[ref]?.id).filter(Boolean))];
+  const normalizeMemberRefs = useCallback((refs = []) => [...new Set(
+    refs
+      .map((ref) => {
+        const key = String(ref || "").trim();
+        if (!key) return null;
+        return memberByRef[key]?.id || key;
+      })
+      .filter(Boolean)
+  )], [memberByRef]);
 
   const [active, setActive] = useState("tasks");
-  const [tasks, setTasks] = useState(SEED);
+  const [tasks, setTasks] = useState([]);
+  const [taskError, setTaskError] = useState("");
+  const [savingTask, setSavingTask] = useState(false);
+  const taskEtagRef = useRef(null);
+  const loadingTasksRef = useRef(false);
+  const mutationGenerationRef = useRef(0);
   const [view, setView] = useState("board");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [overCol, setOverCol] = useState(null);
 
+  const hydrateTasks = useCallback((items = []) => (
+    items.map((task) => ({
+      ...task,
+      start: task.start ? fromDateInput(task.start) : null,
+      due: task.due ? fromDateInput(task.due) : null,
+      assignees: Array.isArray(task.assignees) ? task.assignees : [],
+      tags: Array.isArray(task.tags) ? task.tags : [],
+      attachments: Array.isArray(task.attachments) ? task.attachments : [],
+    }))
+  ), []);
+
+  const loadTasks = useCallback(async ({ force = false } = {}) => {
+    if (loadingTasksRef.current) return;
+    loadingTasksRef.current = true;
+    const generationAtStart = mutationGenerationRef.current;
+    try {
+      const headers = {};
+      if (!force && taskEtagRef.current) headers["If-None-Match"] = taskEtagRef.current;
+      const response = await fetch("/api/tasks", { headers, cache: "no-store" });
+      if (response.status === 304) return;
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Unable to load tasks.");
+      }
+      const body = await response.json();
+
+      // Ignore a GET that started before a create/edit/delete operation.
+      // Otherwise an older response can visually undo a task edit even after
+      // the Blob write already succeeded.
+      if (generationAtStart !== mutationGenerationRef.current) return;
+
+      const etag = response.headers.get("etag");
+      if (etag) taskEtagRef.current = etag;
+      setTasks(hydrateTasks(Array.isArray(body.tasks) ? body.tasks : []));
+      setTaskError("");
+    } catch (error) {
+      if (generationAtStart === mutationGenerationRef.current) {
+        setTaskError(error.message || "Unable to load tasks.");
+      }
+    } finally {
+      loadingTasksRef.current = false;
+    }
+  }, [hydrateTasks]);
+
+  const applyTaskResponse = useCallback(async (response, fallback) => {
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || fallback);
+    }
+    const body = await response.json();
+    const etag = response.headers.get("etag");
+    if (etag) taskEtagRef.current = etag;
+    setTasks(hydrateTasks(Array.isArray(body.tasks) ? body.tasks : []));
+    setTaskError("");
+    return body;
+  }, [hydrateTasks]);
+
   useEffect(() => {
-    if (!members.length) return;
-    setTasks((current) => {
-      let changed = false;
-      const next = current.map((task) => {
-        const assignees = normalizeMemberRefs(task.assignees || []);
-        const previous = task.assignees || [];
-        const same = assignees.length === previous.length && assignees.every((ref, index) => ref === previous[index]);
-        if (same) return task;
-        changed = true;
-        return { ...task, assignees };
-      });
-      return changed ? next : current;
-    });
-  }, [members, memberByRef]);
+    loadTasks({ force: true });
+    const poll = () => {
+      if (document.visibilityState === "visible") loadTasks();
+    };
+    const id = window.setInterval(poll, 3000);
+    const onFocus = () => loadTasks({ force: true });
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", poll);
+    };
+  }, [loadTasks]);
+
+  // Member references are normalized only when opening/saving a task.
+  // Do not rewrite task state merely because the member list refreshed; doing
+  // so can make an unsaved local transformation look like persisted data.
+
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -125,16 +200,88 @@ export default function TasksPage() {
   const openCreate = (status) => setModal({ mode: "create", form: blank(status) });
   const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), tags: [...t.tags], attachments: [...t.attachments] } });
   const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
-  const save = () => {
+  const save = async () => {
+    if (savingTask || !modal) return;
     const f = modal.form;
-    const base = { ...f, title: f.title.trim() || "Untitled task", assignees: normalizeMemberRefs(f.assignees), start: fromDateInput(f.start), due: fromDateInput(f.due) };
-    if (modal.mode === "edit") setTasks((ts) => ts.map((t) => (t.id === f.id ? base : t)));
-    else setTasks((ts) => [...ts, { ...base, id: Date.now() }]);
-    setModal(null);
-  };
-  const remove = () => { setTasks((ts) => ts.filter((t) => t.id !== modal.form.id)); setModal(null); };
+    const base = {
+      title: f.title.trim() || "Untitled task",
+      project: f.project,
+      desc: f.desc,
+      status: f.status,
+      priority: f.priority,
+      // The modal stores stable member IDs. Save those exact IDs instead of
+      // resolving them again through a possibly-refreshing member map.
+      assignees: [...new Set((f.assignees || []).map((id) => String(id)).filter(Boolean))],
+      start: f.start || "",
+      due: f.due || "",
+      time: f.time || "",
+      tags: [...f.tags],
+      attachments: [...f.attachments],
+      progress: f.progress,
+    };
 
-  const drop = (statusId) => { if (dragId != null) setTasks((ts) => ts.map((t) => (t.id === dragId ? { ...t, status: statusId } : t))); setDragId(null); setOverCol(null); };
+    setSavingTask(true);
+    setTaskError("");
+    mutationGenerationRef.current += 1;
+    try {
+      const isEdit = modal.mode === "edit";
+      const response = await fetch("/api/tasks", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isEdit ? { id: f.id, data: base } : { data: base }),
+      });
+      await applyTaskResponse(response, isEdit ? "Unable to update task." : "Unable to create task.");
+      setModal(null);
+    } catch (error) {
+      setTaskError(error.message || "Unable to save task.");
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const remove = async () => {
+    if (savingTask || !modal?.form?.id) return;
+    setSavingTask(true);
+    setTaskError("");
+    mutationGenerationRef.current += 1;
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: modal.form.id }),
+      });
+      await applyTaskResponse(response, "Unable to delete task.");
+      setModal(null);
+    } catch (error) {
+      setTaskError(error.message || "Unable to delete task.");
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
+  const drop = async (statusId) => {
+    const id = dragId;
+    setDragId(null);
+    setOverCol(null);
+    if (id == null) return;
+
+    const previous = tasks;
+    mutationGenerationRef.current += 1;
+    setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, status: statusId } : t)));
+    setTaskError("");
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, data: { status: statusId } }),
+      });
+      await applyTaskResponse(response, "Unable to move task.");
+    } catch (error) {
+      setTasks(previous);
+      setTaskError(error.message || "Unable to move task.");
+      loadTasks({ force: true });
+    }
+  };
 
   return (
     <>
@@ -144,6 +291,7 @@ export default function TasksPage() {
             <div className="mr-auto">
               <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Tasks</h1>
               <p className="text-sm" style={{ color: "var(--muted)" }}>Add and track work across the team</p>
+              {taskError && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{taskError}</p>}
             </div>
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
@@ -233,7 +381,7 @@ export default function TasksPage() {
           )}
         </main>
 
-      {modal && <TaskModal modal={modal} members={members} setForm={setForm} onClose={() => setModal(null)} onSave={save} onDelete={remove} />}
+      {modal && <TaskModal modal={modal} members={members} setForm={setForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} saving={savingTask} />}
     </>
   );
 }
@@ -301,7 +449,7 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging })
 }
 
 /* ---------- modal ---------- */
-function TaskModal({ modal, members, setForm, onClose, onSave, onDelete }) {
+function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving = false }) {
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
@@ -397,11 +545,11 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete }) {
 
         <div className="flex items-center justify-between px-5 py-3.5 sticky bottom-0" style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}>
           {modal.mode === "edit" ? (
-            <button onClick={onDelete} className="tp-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg" style={{ color: "#E5536E" }}><Trash2 size={16} /> Delete</button>
+            <button disabled={saving} onClick={onDelete} className="tp-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "#E5536E" }}><Trash2 size={16} /> Delete</button>
           ) : <span />}
           <div className="flex gap-2">
-            <button onClick={onClose} className="tp-ib text-sm px-4 py-2 rounded-full" style={{ color: "var(--text-2)" }}>Cancel</button>
-            <button onClick={onSave} className="tp-pill text-sm px-5 py-2 rounded-full font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>Save task</button>
+            <button disabled={saving} onClick={onClose} className="tp-ib text-sm px-4 py-2 rounded-full disabled:opacity-50" style={{ color: "var(--text-2)" }}>Cancel</button>
+            <button disabled={saving} onClick={onSave} className="tp-pill text-sm px-5 py-2 rounded-full font-medium shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>{saving ? "Saving…" : "Save task"}</button>
           </div>
         </div>
       </div>
