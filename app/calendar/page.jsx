@@ -117,55 +117,47 @@ export default function TeamCalendar() {
   const [savingEvent, setSavingEvent] = useState(false);
 
 
+  const buildCalendarPayload = () => ({
+    month: (cursor instanceof Date ? cursor : new Date()).toISOString(),
+    events: (events || []).map((e) => ({
+      title: e.title,
+      start: e.start instanceof Date ? e.start.toISOString() : e.start,
+      color: catOf(e.calId)?.color || "#E5536E",
+    })),
+  });
+
   const exportCalendarPng = async () => {
     try {
-      const target = calendarExportRef.current;
-      if (!target) return;
-
-      const width = target.scrollWidth;
-      const height = target.scrollHeight;
-
-      const canvas = document.createElement("canvas");
-      canvas.width = width * 2;
-      canvas.height = height * 2;
-
-      const ctx = canvas.getContext("2d");
-      ctx.scale(2, 2);
-
-      const background = getComputedStyle(target).backgroundColor || "#ffffff";
-      ctx.fillStyle = background;
-      ctx.fillRect(0, 0, width, height);
-
-      const text = "SDC Creative Calendar";
-      ctx.fillStyle = "#222222";
-      ctx.font = "600 24px Arial";
-      ctx.fillText(text, 24, 40);
-
+      setCalendarError("");
+      const res = await fetch("/api/calendar-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildCalendarPayload()),
+      });
+      if (!res.ok) throw new Error("Unable to render calendar image.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.download = "sdc-calendar.png";
-      link.href = canvas.toDataURL("image/png");
+      link.href = url;
       link.click();
+      URL.revokeObjectURL(url);
     } catch (error) {
       console.error("PNG EXPORT ERROR", error);
-      setCalendarError("Unable to export calendar image.");
+      setCalendarError(error.message || "Unable to export calendar image.");
     }
   };
 
   const sendToLark = async () => {
     try {
-      const response = await fetch("/api/lark/calendar-image", {
+      setCalendarError("");
+      const res = await fetch("/api/lark/calendar-image", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          events,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildCalendarPayload()),
       });
-
-      if (!response.ok) {
-        throw new Error("Unable to send calendar to Lark");
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Unable to send calendar to Lark.");
     } catch (error) {
       setCalendarError(error.message || "Unable to send to Lark");
     }
