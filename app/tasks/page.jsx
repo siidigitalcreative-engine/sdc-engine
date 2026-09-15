@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
+import { useAuth } from "../auth";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, X, Search, Paperclip, Clock, Flag, Trash2, Tag, Sparkles, List, MoreHorizontal,
@@ -28,11 +29,6 @@ const PRIORITIES = [
   { id: "high",   name: "High",   color: "#E5536E", soft: "#FBE1E7" },
 ];
 const PROJECTS = ["Quencha", "CRYSALIS", "Website Revamp", "FITSPIRE", "SCRUBZ", "Sunbeams Lifestyle", "PRIMEO", "Nest Design Lab", "Daily Tasks"];
-const TEAM = [
-  { i: "CN", c: "#7C6FF0" }, { i: "RG", c: "#3FA37A" }, { i: "MA", c: "#F0784B" },
-  { i: "JL", c: "#E0A93C" }, { i: "SP", c: "#E5536E" }, { i: "DT", c: "#3E8ED0" },
-];
-const teamColor = (i) => (TEAM.find((t) => t.i === i)?.c) || "#9A9AA2";
 const statusOf = (id) => STATUSES.find((s) => s.id === id) || STATUSES[0];
 const priorityOf = (id) => PRIORITIES.find((p) => p.id === id) || PRIORITIES[0];
 
@@ -73,6 +69,17 @@ const NAV = [
 
 
 export default function TasksPage() {
+  const { members } = useAuth();
+  const memberByRef = useMemo(() => {
+    const map = {};
+    members.forEach((member) => {
+      map[member.id] = member;
+      map[member.i] = member; // supports old seed references until they are migrated
+    });
+    return map;
+  }, [members]);
+  const normalizeMemberRefs = (refs = []) => [...new Set(refs.map((ref) => memberByRef[ref]?.id).filter(Boolean))];
+
   const [active, setActive] = useState("tasks");
   const [tasks, setTasks] = useState(SEED);
   const [view, setView] = useState("board");
@@ -80,6 +87,22 @@ export default function TasksPage() {
   const [modal, setModal] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [overCol, setOverCol] = useState(null);
+
+  useEffect(() => {
+    if (!members.length) return;
+    setTasks((current) => {
+      let changed = false;
+      const next = current.map((task) => {
+        const assignees = normalizeMemberRefs(task.assignees || []);
+        const previous = task.assignees || [];
+        const same = assignees.length === previous.length && assignees.every((ref, index) => ref === previous[index]);
+        if (same) return task;
+        changed = true;
+        return { ...task, assignees };
+      });
+      return changed ? next : current;
+    });
+  }, [members, memberByRef]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -100,11 +123,11 @@ export default function TasksPage() {
     assignees: [], start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [],
   });
   const openCreate = (status) => setModal({ mode: "create", form: blank(status) });
-  const openEdit = (t) => setModal({ mode: "edit", form: { ...t, start: toDateInput(t.start), due: toDateInput(t.due), tags: [...t.tags], attachments: [...t.attachments] } });
+  const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), tags: [...t.tags], attachments: [...t.attachments] } });
   const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
   const save = () => {
     const f = modal.form;
-    const base = { ...f, title: f.title.trim() || "Untitled task", start: fromDateInput(f.start), due: fromDateInput(f.due) };
+    const base = { ...f, title: f.title.trim() || "Untitled task", assignees: normalizeMemberRefs(f.assignees), start: fromDateInput(f.start), due: fromDateInput(f.due) };
     if (modal.mode === "edit") setTasks((ts) => ts.map((t) => (t.id === f.id ? base : t)));
     else setTasks((ts) => [...ts, { ...base, id: Date.now() }]);
     setModal(null);
@@ -163,7 +186,7 @@ export default function TasksPage() {
                       </div>
                       <div className="flex-1 min-h-0 overflow-y-auto px-2.5 space-y-2.5">
                         {items.map((t) => (
-                          <TaskCard key={t.id} t={t} onClick={() => openEdit(t)}
+                          <TaskCard key={t.id} t={t} memberByRef={memberByRef} onClick={() => openEdit(t)}
                             onDragStart={() => setDragId(t.id)} onDragEnd={() => { setDragId(null); setOverCol(null); }} dragging={dragId === t.id} />
                         ))}
                       </div>
@@ -196,7 +219,7 @@ export default function TasksPage() {
                             {t.attachments.length > 0 && <div className="flex items-center gap-1 text-xs mt-0.5" style={{ color: "var(--muted)" }}><Paperclip size={11} />{t.attachments.length}</div>}
                           </td>
                           <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{t.project}</td>
-                          <td className="px-4 py-3"><AttendeeStack list={t.assignees} ring="var(--card)" size={22} /></td>
+                          <td className="px-4 py-3"><AttendeeStack list={t.assignees} memberByRef={memberByRef} ring="var(--card)" size={22} /></td>
                           <td className="px-4 py-3"><Pill label={p.name} color={p.color} soft={p.soft} /></td>
                           <td className="px-4 py-3"><Pill label={s.name} color={s.color} soft={s.soft} /></td>
                           <td className="px-4 py-3" style={{ color: od ? "#E5536E" : "var(--text-2)", fontWeight: od ? 600 : 400 }}>{fmtDate(t.due)}</td>
@@ -210,7 +233,7 @@ export default function TasksPage() {
           )}
         </main>
 
-      {modal && <TaskModal modal={modal} setForm={setForm} onClose={() => setModal(null)} onSave={save} onDelete={remove} />}
+      {modal && <TaskModal modal={modal} members={members} setForm={setForm} onClose={() => setModal(null)} onSave={save} onDelete={remove} />}
     </>
   );
 }
@@ -233,19 +256,20 @@ function Pill({ label, color, soft }) {
   return <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: soft, color }}>{label}</span>;
 }
 
-function AttendeeStack({ list, ring = "var(--card)", size = 22 }) {
-  if (!list || !list.length) return <span style={{ color: "var(--faint)" }} className="text-xs">—</span>;
+function AttendeeStack({ list, memberByRef, ring = "var(--card)", size = 22 }) {
+  const visible = (list || []).map((ref) => memberByRef[ref]).filter(Boolean);
+  if (!visible.length) return <span style={{ color: "var(--faint)" }} className="text-xs">—</span>;
   return (
     <div className="flex items-center">
-      {list.slice(0, 4).map((a, i) => (
-        <span key={i} className="rounded-full flex items-center justify-center font-semibold shrink-0"
-          style={{ width: size, height: size, background: teamColor(a), color: "#fff", fontSize: size * 0.42, border: `2px solid ${ring}`, marginLeft: i ? -7 : 0 }}>{a[0]}</span>
+      {visible.slice(0, 4).map((member, i) => (
+        <span key={member.id} title={member.name} className="rounded-full flex items-center justify-center font-semibold shrink-0"
+          style={{ width: size, height: size, background: member.c, color: "#fff", fontSize: size * 0.36, border: `2px solid ${ring}`, marginLeft: i ? -7 : 0 }}>{member.i}</span>
       ))}
     </div>
   );
 }
 
-function TaskCard({ t, onClick, onDragStart, onDragEnd, dragging }) {
+function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging }) {
   const p = priorityOf(t.priority), s = statusOf(t.status), prog = progressFor(t), od = isOverdue(t);
   return (
     <div draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onClick}
@@ -266,7 +290,7 @@ function TaskCard({ t, onClick, onDragStart, onDragEnd, dragging }) {
         <div className="rounded-full overflow-hidden" style={{ height: 5, background: "var(--grid)" }}><div style={{ width: `${prog}%`, height: "100%", background: s.color }} /></div>
       </div>
       <div className="flex items-center justify-between mt-3 pt-2.5" style={{ borderTop: "1px solid var(--grid)" }}>
-        <AttendeeStack list={t.assignees} size={20} />
+        <AttendeeStack list={t.assignees} memberByRef={memberByRef} size={20} />
         <div className="flex items-center gap-2.5 text-xs" style={{ color: od ? "#E5536E" : "var(--muted)", fontWeight: od ? 600 : 400 }}>
           {t.attachments.length > 0 && <span className="flex items-center gap-0.5" style={{ color: "var(--muted)" }}><Paperclip size={12} />{t.attachments.length}</span>}
           <span className="flex items-center gap-1"><Clock size={12} />{fmtDate(t.due)}</span>
@@ -277,11 +301,11 @@ function TaskCard({ t, onClick, onDragStart, onDragEnd, dragging }) {
 }
 
 /* ---------- modal ---------- */
-function TaskModal({ modal, setForm, onClose, onSave, onDelete }) {
+function TaskModal({ modal, members, setForm, onClose, onSave, onDelete }) {
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
-  const toggleAssignee = (i) => setForm({ assignees: f.assignees.includes(i) ? f.assignees.filter((a) => a !== i) : [...f.assignees, i] });
+  const toggleAssignee = (id) => setForm({ assignees: f.assignees.includes(id) ? f.assignees.filter((a) => a !== id) : [...f.assignees, id] });
   const addTag = () => { const v = tagDraft.trim().replace(/^#/, ""); if (v && !f.tags.includes(v)) setForm({ tags: [...f.tags, v] }); setTagDraft(""); };
   const onFiles = (e) => { const add = Array.from(e.target.files).map((x) => ({ name: x.name, size: x.size })); setForm({ attachments: [...f.attachments, ...add] }); e.target.value = ""; };
   const field = { border: "1px solid var(--border)", background: "var(--card)" };
@@ -331,10 +355,10 @@ function TaskModal({ modal, setForm, onClose, onSave, onDelete }) {
 
           <Labeled label="Assignees">
             <div className="flex flex-wrap gap-1.5">
-              {TEAM.map((t) => {
-                const on = f.assignees.includes(t.i);
+              {members.map((t) => {
+                const on = f.assignees.includes(t.id);
                 return (
-                  <button key={t.i} onClick={() => toggleAssignee(t.i)} className="h-8 w-8 rounded-full flex items-center justify-center text-white font-semibold"
+                  <button key={t.id} onClick={() => toggleAssignee(t.id)} title={t.name} className="h-8 w-8 rounded-full flex items-center justify-center text-white font-semibold"
                     style={{ background: t.c, fontSize: 11, opacity: on ? 1 : 0.35, outline: on ? `2px solid ${t.c}` : "none", outlineOffset: 1 }}>{t.i}</button>
                 );
               })}
