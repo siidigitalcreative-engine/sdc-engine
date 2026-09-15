@@ -1,120 +1,165 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-
-const STORAGE_KEY = "sdc-members-v1";
-const SESSION_KEY = "sdc-session-member-id";
-const DEFAULT_PIN = "1234";
-
-const DEFAULT_MEMBERS = [
-  { id: "cn", i: "CN", name: "Che Navarro", role: "Digital Creative Lead", c: "#7C6FF0", loc: "Manila", projects: 6, open: 4, done: 12, status: "Active", pin: DEFAULT_PIN },
-  { id: "rg", i: "RG", name: "Ravi Gurnamal", role: "Team Manager", c: "#3FA37A", loc: "Manila", projects: 9, open: 3, done: 20, status: "Online", featured: true, pin: DEFAULT_PIN },
-  { id: "ma", i: "MA", name: "Maya Alonzo", role: "Product Designer", c: "#F0784B", loc: "Cebu", projects: 4, open: 5, done: 9, status: "Active", pin: DEFAULT_PIN },
-  { id: "jl", i: "JL", name: "Jules Lim", role: "Motion Designer", c: "#E0A93C", loc: "Manila", projects: 3, open: 2, done: 7, status: "Away", pin: DEFAULT_PIN },
-  { id: "sp", i: "SP", name: "Sofia Perez", role: "Content Lead", c: "#E5536E", loc: "Davao", projects: 5, open: 6, done: 14, status: "Active", pin: DEFAULT_PIN },
-  { id: "dt", i: "DT", name: "Diego Tan", role: "Web Developer", c: "#3E8ED0", loc: "Manila", projects: 4, open: 3, done: 11, status: "Active", pin: DEFAULT_PIN },
-];
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 const AuthCtx = createContext(null);
+const POLL_MS = 3000;
 
-function makeId() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return `member-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function initialsFromName(name = "") {
-  return name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() || "")
-    .join("") || "TM";
-}
-
-function cleanMember(member) {
-  return {
-    id: member.id || makeId(),
-    i: String(member.i || initialsFromName(member.name)).trim().toUpperCase().slice(0, 3),
-    name: String(member.name || "Team Member").trim(),
-    role: String(member.role || "Creative Team").trim(),
-    c: member.c || "#7C6FF0",
-    loc: String(member.loc || "Manila").trim(),
-    projects: Number(member.projects) || 0,
-    open: Number(member.open) || 0,
-    done: Number(member.done) || 0,
-    status: member.status || "Active",
-    featured: Boolean(member.featured),
-    pin: String(member.pin || DEFAULT_PIN),
-  };
+async function getError(response, fallback) {
+  try {
+    const body = await response.json();
+    return body?.error || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export function AuthProvider({ children }) {
-  const [members, setMembers] = useState(DEFAULT_MEMBERS);
+  const [members, setMembers] = useState([]);
   const [sessionId, setSessionId] = useState(null);
   const [ready, setReady] = useState(false);
+  const etagRef = useRef(null);
+  const loadingMembersRef = useRef(false);
 
-  useEffect(() => {
+  const refreshMembers = useCallback(async ({ force = false } = {}) => {
+    if (loadingMembersRef.current) return;
+    loadingMembersRef.current = true;
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const parsed = stored ? JSON.parse(stored) : null;
-      const initialMembers = Array.isArray(parsed) && parsed.length ? parsed.map(cleanMember) : DEFAULT_MEMBERS;
-      setMembers(initialMembers);
-      if (!stored) localStorage.setItem(STORAGE_KEY, JSON.stringify(initialMembers));
+      const headers = {};
+      if (!force && etagRef.current) headers["If-None-Match"] = etagRef.current;
 
-      const savedSession = localStorage.getItem(SESSION_KEY);
-      if (savedSession && initialMembers.some((m) => m.id === savedSession)) setSessionId(savedSession);
-      else localStorage.removeItem(SESSION_KEY);
-    } catch {
-      setMembers(DEFAULT_MEMBERS);
+      const response = await fetch("/api/members", {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+
+      if (response.status === 304) return;
+      if (!response.ok) throw new Error(await getError(response, "Unable to load team members."));
+
+      const body = await response.json();
+      const etag = response.headers.get("etag");
+      if (etag) etagRef.current = etag;
+      setMembers(Array.isArray(body.members) ? body.members : []);
     } finally {
-      setReady(true);
+      loadingMembersRef.current = false;
     }
   }, []);
 
+  const refreshSession = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!response.ok) {
+        setSessionId(null);
+        return null;
+      }
+      const body = await response.json();
+      setSessionId(body.member?.id || null);
+      return body.member || null;
+    } catch {
+      setSessionId(null);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        await Promise.all([refreshMembers({ force: true }), refreshSession()]);
+      } finally {
+        if (active) setReady(true);
+      }
+    })();
+    return () => { active = false; };
+  }, [refreshMembers, refreshSession]);
+
+  useEffect(() => {
+    const poll = () => {
+      if (document.visibilityState === "visible") refreshMembers().catch(() => {});
+    };
+    const id = window.setInterval(poll, POLL_MS);
+    const onFocus = () => refreshMembers({ force: true }).catch(() => {});
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", poll);
+    };
+  }, [refreshMembers]);
+
   const currentMember = useMemo(
-    () => members.find((m) => m.id === sessionId) || null,
+    () => members.find((member) => member.id === sessionId) || null,
     [members, sessionId]
   );
 
-  const saveMembers = (nextMembers) => {
-    const cleaned = nextMembers.map(cleanMember);
-    setMembers(cleaned);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned)); } catch {}
-    return cleaned;
+  useEffect(() => {
+    if (ready && sessionId && members.length && !currentMember) {
+      refreshSession().catch(() => {});
+    }
+  }, [ready, sessionId, members, currentMember, refreshSession]);
+
+  const applyServerMembers = (response, body) => {
+    const etag = response.headers.get("etag");
+    if (etag) etagRef.current = etag;
+    if (Array.isArray(body.members)) setMembers(body.members);
   };
 
-  const login = (memberId, pin) => {
-    const member = members.find((m) => m.id === memberId);
-    if (!member) return { ok: false, message: "Select a team member." };
-    if (String(pin) !== String(member.pin)) return { ok: false, message: "Incorrect PIN. Please try again." };
-    setSessionId(member.id);
-    try { localStorage.setItem(SESSION_KEY, member.id); } catch {}
-    return { ok: true, member };
+  const login = async (memberId, pin) => {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberId, pin }),
+    });
+
+    if (!response.ok) return { ok: false, message: await getError(response, "Unable to sign in.") };
+
+    const body = await response.json();
+    setSessionId(body.member?.id || null);
+    await refreshMembers({ force: true });
+    return { ok: true, member: body.member };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
     setSessionId(null);
-    try { localStorage.removeItem(SESSION_KEY); } catch {}
   };
 
-  const addMember = (data) => {
-    const next = cleanMember({ ...data, id: makeId(), pin: data.pin || DEFAULT_PIN });
-    saveMembers([...members, next]);
-    return next;
+  const addMember = async (data) => {
+    const response = await fetch("/api/members", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error(await getError(response, "Unable to add member."));
+    const body = await response.json();
+    applyServerMembers(response, body);
+    return body.member;
   };
 
-  const updateMember = (id, data) => {
-    const existing = members.find((m) => m.id === id);
-    if (!existing) return null;
-    const merged = cleanMember({ ...existing, ...data, id, pin: data.pin ? data.pin : existing.pin });
-    saveMembers(members.map((m) => (m.id === id ? merged : m)));
-    return merged;
+  const updateMember = async (id, data) => {
+    const response = await fetch("/api/members", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, data }),
+    });
+    if (!response.ok) throw new Error(await getError(response, "Unable to update member."));
+    const body = await response.json();
+    applyServerMembers(response, body);
+    return body.member;
   };
 
-  const deleteMember = (id) => {
-    saveMembers(members.filter((m) => m.id !== id));
-    if (sessionId === id) logout();
+  const deleteMember = async (id) => {
+    const response = await fetch("/api/members", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!response.ok) throw new Error(await getError(response, "Unable to delete member."));
+    const body = await response.json();
+    applyServerMembers(response, body);
+    return true;
   };
 
   const value = {
@@ -126,7 +171,8 @@ export function AuthProvider({ children }) {
     addMember,
     updateMember,
     deleteMember,
-    defaultPin: DEFAULT_PIN,
+    refreshMembers,
+    defaultPin: "1234",
   };
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
