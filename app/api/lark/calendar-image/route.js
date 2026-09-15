@@ -6,6 +6,7 @@ function crc32(buffer) {
 
   for (const byte of buffer) {
     crc ^= byte;
+
     for (let i = 0; i < 8; i++) {
       crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
     }
@@ -22,13 +23,15 @@ function pngChunk(type, data) {
   typeBuffer.copy(output, 4);
   data.copy(output, 8);
 
-  const crc = crc32(Buffer.concat([typeBuffer, data]));
-  output.writeUInt32BE(crc, data.length + 8);
+  output.writeUInt32BE(
+    crc32(Buffer.concat([typeBuffer, data])),
+    data.length + 8
+  );
 
   return output;
 }
 
-function createPng(width, height) {
+function createPng(width, height, events = []) {
   const rows = [];
 
   for (let y = 0; y < height; y++) {
@@ -38,9 +41,19 @@ function createPng(width, height) {
     for (let x = 0; x < width; x++) {
       const index = 1 + x * 4;
 
-      row[index] = 255;
-      row[index + 1] = 255;
-      row[index + 2] = 255;
+      let r = 255;
+      let g = 255;
+      let b = 255;
+
+      if (y < 70) {
+        r = 245;
+        g = 247;
+        b = 255;
+      }
+
+      row[index] = r;
+      row[index + 1] = g;
+      row[index + 2] = b;
       row[index + 3] = 255;
     }
 
@@ -48,10 +61,11 @@ function createPng(width, height) {
   }
 
   const signature = Buffer.from([
-    137,80,78,71,13,10,26,10
+    137, 80, 78, 71, 13, 10, 26, 10
   ]);
 
   const ihdr = Buffer.alloc(13);
+
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8;
@@ -91,17 +105,32 @@ async function getToken() {
   return data.tenant_access_token;
 }
 
-export async function POST() {
+export async function POST(request) {
   try {
+    const body = await request.json();
+
+    const events = body.events || [];
+
     const token = await getToken();
 
-    const png = createPng(700, 500);
+    const png = createPng(
+      900,
+      650,
+      events
+    );
 
     const form = new FormData();
-    form.append("image_type", "message");
+
+    form.append(
+      "image_type",
+      "message"
+    );
+
     form.append(
       "image",
-      new Blob([png], { type: "image/png" }),
+      new Blob([png], {
+        type: "image/png",
+      }),
       "calendar.png"
     );
 
@@ -118,8 +147,15 @@ export async function POST() {
 
     const uploadData = await upload.json();
 
+    console.log(
+      "LARK IMAGE UPLOAD",
+      uploadData
+    );
+
     if (!uploadData.data?.image_key) {
-      throw new Error(JSON.stringify(uploadData));
+      throw new Error(
+        JSON.stringify(uploadData)
+      );
     }
 
     const send = await fetch(
@@ -142,15 +178,28 @@ export async function POST() {
 
     const sendData = await send.json();
 
+    console.log(
+      "LARK MESSAGE SEND",
+      sendData
+    );
+
     if (!send.ok) {
-      throw new Error(JSON.stringify(sendData));
+      throw new Error(
+        JSON.stringify(sendData)
+      );
     }
 
     return NextResponse.json({
       success: true,
       sendData,
     });
+
   } catch (error) {
+    console.error(
+      "LARK CALENDAR ERROR",
+      error
+    );
+
     return NextResponse.json(
       {
         error: error.message,
