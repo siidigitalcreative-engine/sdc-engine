@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [memberId, setMemberId] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!memberId && members[0]) setMemberId(members[0].id);
@@ -23,15 +24,20 @@ export default function LoginPage() {
 
   const selected = members.find((m) => m.id === memberId);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     setError("");
-    const result = login(memberId, pin);
-    if (!result.ok) {
-      setError(result.message);
-      return;
+    setSubmitting(true);
+    try {
+      const result = await login(memberId, pin);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      router.replace("/dashboard");
+    } finally {
+      setSubmitting(false);
     }
-    router.replace("/dashboard");
   };
 
   return (
@@ -90,8 +96,8 @@ export default function LoginPage() {
             </div>
             {error && <p className="text-xs mt-2" style={{ color: "#E5536E" }}>{error}</p>}
 
-            <button type="submit" className="mt-5 w-full rounded-2xl py-3 font-semibold flex items-center justify-center gap-2 shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
-              Sign in <ArrowRight size={17} />
+            <button disabled={submitting} type="submit" className="mt-5 w-full rounded-2xl py-3 font-semibold flex items-center justify-center gap-2 shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
+              {submitting ? "Signing in…" : "Sign in"} {!submitting && <ArrowRight size={17} />}
             </button>
 
             <p className="text-xs text-center mt-4" style={{ color: "var(--muted)" }}>
