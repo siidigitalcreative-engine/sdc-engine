@@ -17,7 +17,7 @@ const NAV = [
   { href: "/reports", name: "Reports", icon: BarChart },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ mobile = false, onNavigate }) {
   const pathname = usePathname();
   const router = useRouter();
   const { dark, toggle } = useTheme();
@@ -31,7 +31,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-64 shrink-0 hidden md:flex flex-col gap-5 p-4 overflow-y-auto overflow-x-hidden" style={{ background: "var(--sidebar)", borderRight: "1px solid var(--border)" }}>
+    <aside className={`w-64 shrink-0 ${mobile ? "flex h-full" : "hidden md:flex"} flex-col gap-5 p-4 overflow-y-auto overflow-x-hidden`} style={{ background: "var(--sidebar)", borderRight: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between px-1 pt-1">
         <div className="flex items-center gap-2.5">
           <span className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: ACCENT_GRAD }}><Sparkles size={18} style={{ color: ON_ACCENT }} /></span>
@@ -54,7 +54,7 @@ export default function Sidebar() {
           const on = pathname === n.href;
           const Icon = n.icon;
           return (
-            <Link key={n.href} href={n.href} className="sb-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium" style={on ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
+            <Link key={n.href} href={n.href} onClick={onNavigate} className="sb-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium" style={on ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
               <Icon size={18} /> {n.name}
             </Link>
           );
@@ -62,7 +62,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="mt-auto flex flex-col gap-1">
-        <Link href="/settings" className="sb-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium" style={{ color: "var(--text-2)" }}>
+        <Link href="/settings" onClick={onNavigate} className="sb-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium" style={{ color: "var(--text-2)" }}>
           <Settings size={18} /> Settings
         </Link>
         <button onClick={handleLogout} className="sb-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={{ color: "var(--text-2)" }}>
