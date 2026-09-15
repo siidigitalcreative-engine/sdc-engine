@@ -16,6 +16,7 @@ async function getTenantToken() {
   );
 
   const data = await response.json();
+  console.log("LARK TOKEN RESPONSE", data);
 
   if (!data.tenant_access_token) {
     throw new Error(JSON.stringify(data));
@@ -25,50 +26,47 @@ async function getTenantToken() {
 }
 
 function createSvg(events = []) {
-  const now = new Date();
-  const year = now.getFullYear();
-  const monthName = now.toLocaleString("en-US", { month: "long" });
-  const days = new Date(year, now.getMonth() + 1, 0).getDate();
-  const firstDay = new Date(year, now.getMonth(), 1).getDay();
+  const date = new Date();
+  const month = date.toLocaleString("en-US", { month: "long" });
+  const year = date.getFullYear();
+  const today = date.getDate();
 
-  let calendar = "";
-  let day = 1;
+  const totalDays = new Date(
+    year,
+    date.getMonth() + 1,
+    0
+  ).getDate();
 
-  for (let row = 0; row < 6; row++) {
-    for (let col = 0; col < 7; col++) {
-      if ((row === 0 && col < firstDay) || day > days) continue;
+  const firstDay = new Date(
+    year,
+    date.getMonth(),
+    1
+  ).getDay();
 
-      const x = 60 + col * 70;
-      const y = 190 + row * 55;
+  let days = "";
 
-      if (day === now.getDate()) {
-        calendar += `<circle cx="${x}" cy="${y - 8}" r="22" fill="#ff6b45"/>`;
-        calendar += `<text x="${x}" y="${y}" text-anchor="middle" font-size="18" fill="white">${day}</text>`;
-      } else {
-        calendar += `<text x="${x}" y="${y}" text-anchor="middle" font-size="18" fill="#222">${day}</text>`;
-      }
+  for (let i = 0; i < totalDays; i++) {
+    const index = firstDay + i;
+    const x = 70 + (index % 7) * 70;
+    const y = 190 + Math.floor(index / 7) * 55;
 
-      day++;
+    if (i + 1 === today) {
+      days += `<circle cx="${x}" cy="${y - 7}" r="20" fill="#ff6b45"/>`;
+      days += `<text x="${x}" y="${y}" text-anchor="middle" fill="white" font-size="18">${i + 1}</text>`;
+    } else {
+      days += `<text x="${x}" y="${y}" text-anchor="middle" fill="#222" font-size="18">${i + 1}</text>`;
     }
   }
 
-  const schedule =
-    events.length > 0
-      ? events.map((e) => e.title).join(", ")
-      : "No scheduled events";
-
   return `
-<svg xmlns="http://www.w3.org/2000/svg" width="700" height="600">
-<rect width="700" height="600" rx="24" fill="white"/>
-<text x="40" y="55" font-size="28" font-weight="700">📅 SDC Creative Calendar</text>
-<text x="40" y="105" font-size="22" font-weight="600">${monthName} ${year}</text>
-
-<text x="60" y="145" font-size="16">Sun   Mon   Tue   Wed   Thu   Fri   Sat</text>
-
-${calendar}
-
-<text x="40" y="500" font-size="22" font-weight="700">📌 Today's Schedule</text>
-<text x="40" y="545" font-size="16">${schedule}</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="500">
+<rect width="700" height="500" rx="20" fill="white"/>
+<text x="40" y="50" font-size="28" font-weight="700">📅 SDC Creative Calendar</text>
+<text x="40" y="95" font-size="22">${month} ${year}</text>
+<text x="50" y="140" font-size="16">Sun   Mon   Tue   Wed   Thu   Fri   Sat</text>
+${days}
+<text x="40" y="430" font-size="22" font-weight="700">📌 Today's Schedule</text>
+<text x="40" y="465" font-size="16">${events[0]?.title || "No scheduled events"}</text>
 </svg>`;
 }
 
@@ -88,7 +86,7 @@ export async function POST(request) {
       "calendar.svg"
     );
 
-    const upload = await fetch(
+    const uploadResponse = await fetch(
       "https://open.larksuite.com/open-apis/im/v1/images",
       {
         method: "POST",
@@ -99,13 +97,14 @@ export async function POST(request) {
       }
     );
 
-    const uploadData = await upload.json();
+    const uploadData = await uploadResponse.json();
+    console.log("LARK UPLOAD RESPONSE", uploadData);
 
     if (!uploadData.data?.image_key) {
       throw new Error(JSON.stringify(uploadData));
     }
 
-    const send = await fetch(
+    const sendResponse = await fetch(
       "https://open.larksuite.com/open-apis/im/v1/messages?receive_id_type=chat_id",
       {
         method: "POST",
@@ -123,22 +122,27 @@ export async function POST(request) {
       }
     );
 
-    const sendData = await send.json();
+    const sendData = await sendResponse.json();
+    console.log("LARK SEND RESPONSE", sendData);
 
-    if (!send.ok) {
+    if (!sendResponse.ok) {
       throw new Error(JSON.stringify(sendData));
     }
 
     return NextResponse.json({
-      ok: true,
+      success: true,
       sendData,
     });
   } catch (error) {
+    console.error("LARK CALENDAR ERROR", error);
+
     return NextResponse.json(
       {
-        error: error.message || "Lark calendar image failed",
+        error: error.message,
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
