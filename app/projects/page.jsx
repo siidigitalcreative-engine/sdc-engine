@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
-import { Plus, ChevronLeft, Search, Folder, CheckCircle, Clock, X, AlertCircle } from "lucide-react";
+import { Plus, ChevronLeft, Search, Folder, CheckCircle, X, AlertCircle, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 const ON_ACCENT = "var(--on-accent)";
@@ -52,8 +52,11 @@ export default function ProjectsPage() {
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
+  const [menuFor, setMenuFor] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [editing, setEditing] = useState(null);   // original name being renamed
+  const [nameInput, setNameInput] = useState("");
+  const [deleting, setDeleting] = useState(null);  // project stat object
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -63,30 +66,28 @@ export default function ProjectsPage() {
     return map;
   }, [members]);
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([
+  const load = useCallback(() => {
+    return Promise.all([
       fetch("/api/projects", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { projects: [] })).catch(() => ({ projects: [] })),
       fetch("/api/tasks", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { tasks: [] })).catch(() => ({ tasks: [] })),
     ]).then(([pj, tk]) => {
-      if (!active) return;
       setProjects(Array.isArray(pj.projects) ? pj.projects : []);
       setTasks((Array.isArray(tk.tasks) ? tk.tasks : []).map((t) => ({ ...t, start: t.start ? fromDateInput(t.start) : null, due: t.due ? fromDateInput(t.due) : null })));
     });
-    return () => { active = false; };
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const stats = useMemo(() => projects.map((name) => {
     const pt = tasks.filter((t) => t.project === name);
     const total = pt.length;
     const done = pt.filter((t) => t.status === "done").length;
-    const inprogress = pt.filter((t) => t.status === "inprogress" || t.status === "inreview").length;
     const overdue = pt.filter(isOverdue).length;
     const progress = total ? Math.round(pt.reduce((s, t) => s + progressFor(t), 0) / total) : 0;
     const refs = [...new Set(pt.flatMap((t) => t.assignees || []))];
     const assignees = refs.map((r) => memberByRef[r]).filter(Boolean);
     const status = total === 0 ? "empty" : done === total ? "completed" : "active";
-    return { name, total, done, inprogress, overdue, progress, assignees, status };
+    return { name, total, done, overdue, progress, assignees, status };
   }), [projects, tasks, memberByRef]);
 
   const counts = useMemo(() => ({
@@ -100,22 +101,40 @@ export default function ProjectsPage() {
     return stats.filter((p) => (tab === "all" || p.status === tab) && (!q || p.name.toLowerCase().includes(q)));
   }, [stats, tab, query]);
 
-  const createProject = async () => {
-    const name = newName.trim();
+  const saveName = async () => {
+    const name = nameInput.trim();
     if (!name) return;
     setBusy(true); setErr("");
     try {
-      const res = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+      const res = editing
+        ? await fetch("/api/projects", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: editing, to: name }) })
+        : await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Unable to create project.");
-      setProjects(Array.isArray(body.projects) ? body.projects : projects);
-      setNewName(""); setCreating(false);
-    } catch (e) { setErr(e.message || "Unable to create project."); }
+      if (!res.ok) throw new Error(body.error || "Unable to save project.");
+      if (selected && editing && selected === editing) setSelected(name);
+      await load();
+      setCreating(false); setEditing(null); setNameInput("");
+    } catch (e) { setErr(e.message || "Unable to save project."); }
     finally { setBusy(false); }
   };
 
+  const doDelete = async (taskAction) => {
+    if (!deleting) return;
+    setBusy(true); setErr("");
+    try {
+      const res = await fetch("/api/projects", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: deleting.name, taskAction }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Unable to delete project.");
+      if (selected === deleting.name) setSelected(null);
+      await load();
+      setDeleting(null);
+    } catch (e) { setErr(e.message || "Unable to delete project."); }
+    finally { setBusy(false); }
+  };
+
+  // ---------------- detail view ----------------
   if (selected) {
-    const p = stats.find((x) => x.name === selected) || { name: selected, total: 0, done: 0, inprogress: 0, overdue: 0, progress: 0, assignees: [] };
+    const p = stats.find((x) => x.name === selected) || { name: selected, total: 0, done: 0, overdue: 0, progress: 0, assignees: [] };
     const pt = tasks.filter((t) => t.project === selected);
     return (
       <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
@@ -164,9 +183,7 @@ export default function ProjectsPage() {
                             <p className="font-medium" style={{ color: "var(--text)" }}>{t.title}</p>
                             {t.desc && <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>{t.desc}</p>}
                           </div>
-                          <div className="text-right shrink-0">
-                            <div className="text-xs" style={{ color: od ? "#E5536E" : "var(--muted)" }}>{fmtDate(t.due)}</div>
-                          </div>
+                          <div className="text-xs shrink-0" style={{ color: od ? "#E5536E" : "var(--muted)" }}>{fmtDate(t.due)}</div>
                         </div>
                         <div className="flex items-center justify-between mt-3">
                           <Avatars list={who} size={20} />
@@ -187,6 +204,7 @@ export default function ProjectsPage() {
     );
   }
 
+  // ---------------- overview ----------------
   return (
     <>
       <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
@@ -200,7 +218,7 @@ export default function ProjectsPage() {
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search projects"
               className="pl-8 pr-3 py-2 text-sm rounded-full outline-none shadow-sm w-44" style={{ background: "var(--card)", border: "1px solid var(--border)" }} />
           </div>
-          <button onClick={() => setCreating(true)} className="tp-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
+          <button onClick={() => { setEditing(null); setNameInput(""); setErr(""); setCreating(true); }} className="tp-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
             <Plus size={17} /> Create Project
           </button>
         </header>
@@ -222,12 +240,15 @@ export default function ProjectsPage() {
               {filtered.map((p) => {
                 const pc = projColor(p.name);
                 return (
-                  <button key={p.name} onClick={() => setSelected(p.name)} className="tp-card text-left rounded-2xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <div key={p.name} onClick={() => setSelected(p.name)} role="button" tabIndex={0} className="tp-card relative rounded-2xl p-5 cursor-pointer" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                     <div className="flex items-center justify-between mb-4">
                       <span className="h-11 w-11 rounded-xl flex items-center justify-center" style={{ background: pc.c }}><Folder size={19} className="text-white" /></span>
-                      <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: p.status === "completed" ? STATUS_META.done.soft : p.status === "empty" ? "var(--col)" : STATUS_META.inprogress.soft, color: p.status === "completed" ? STATUS_META.done.color : p.status === "empty" ? "var(--muted)" : STATUS_META.inprogress.color }}>
-                        {p.status === "completed" ? "Completed" : p.status === "empty" ? "No tasks" : "Active"}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: p.status === "completed" ? STATUS_META.done.soft : p.status === "empty" ? "var(--col)" : STATUS_META.inprogress.soft, color: p.status === "completed" ? STATUS_META.done.color : p.status === "empty" ? "var(--muted)" : STATUS_META.inprogress.color }}>
+                          {p.status === "completed" ? "Completed" : p.status === "empty" ? "No tasks" : "Active"}
+                        </span>
+                        <button onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === p.name ? null : p.name); }} aria-label="Project options" className="db-ib h-7 w-7 flex items-center justify-center rounded-full" style={{ color: "var(--muted)" }}><MoreHorizontal size={16} /></button>
+                      </div>
                     </div>
                     <p className="font-semibold truncate" style={{ color: "var(--text)", fontSize: 16 }}>{p.name}</p>
                     <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>{p.total} task{p.total === 1 ? "" : "s"} · {p.done} done</p>
@@ -245,7 +266,14 @@ export default function ProjectsPage() {
                         <span className="flex items-center gap-1 text-xs" style={{ color: "var(--muted)" }}><CheckCircle size={13} />{p.done}/{p.total}</span>
                       )}
                     </div>
-                  </button>
+
+                    {menuFor === p.name && (
+                      <div className="absolute right-4 z-20 rounded-xl shadow-2xl py-1 overflow-hidden" style={{ top: 52, minWidth: 150, background: "var(--card)", border: "1px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => { setMenuFor(null); setEditing(p.name); setNameInput(p.name); setErr(""); }} className="db-row w-full flex items-center gap-2 px-3 py-2 text-sm text-left" style={{ color: "var(--text)" }}><Pencil size={14} /> Rename</button>
+                        <button onClick={() => { setMenuFor(null); setErr(""); setDeleting(p); }} className="db-row w-full flex items-center gap-2 px-3 py-2 text-sm text-left" style={{ color: "#E5536E" }}><Trash2 size={14} /> Delete</button>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -253,21 +281,58 @@ export default function ProjectsPage() {
         </div>
       </main>
 
-      {creating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(20,18,26,0.4)" }} onClick={() => !busy && setCreating(false)}>
+      {menuFor && <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />}
+
+      {(creating || editing) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(20,18,26,0.4)" }} onClick={() => !busy && (setCreating(false), setEditing(null))}>
           <div className="rounded-2xl shadow-2xl w-full max-w-sm" style={{ background: "var(--card)" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-3.5" style={{ borderBottom: "1px solid var(--border)" }}>
-              <h3 className="font-semibold" style={{ color: "var(--text)" }}>New project</h3>
-              <button onClick={() => setCreating(false)} className="db-ib h-8 w-8 flex items-center justify-center rounded-full" style={{ color: "var(--text-2)" }}><X size={18} /></button>
+              <h3 className="font-semibold" style={{ color: "var(--text)" }}>{editing ? "Rename project" : "New project"}</h3>
+              <button onClick={() => { setCreating(false); setEditing(null); }} className="db-ib h-8 w-8 flex items-center justify-center rounded-full" style={{ color: "var(--text-2)" }}><X size={18} /></button>
             </div>
             <div className="p-5">
-              <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createProject(); }}
+              <input autoFocus value={nameInput} onChange={(e) => setNameInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") saveName(); }}
                 placeholder="Project name" className="w-full rounded-lg px-3 py-2.5 text-sm outline-none" style={{ border: "1px solid var(--border)", background: "transparent", color: "var(--text)" }} />
+              {editing && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Tasks in this project will be updated to the new name.</p>}
               {err && <p className="text-xs mt-2" style={{ color: "#E5536E" }}>{err}</p>}
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-3.5" style={{ borderTop: "1px solid var(--border)" }}>
-              <button onClick={() => setCreating(false)} className="db-ib text-sm px-4 py-2 rounded-full" style={{ color: "var(--text-2)" }}>Cancel</button>
-              <button onClick={createProject} disabled={!newName.trim() || busy} className="tp-pill text-sm px-5 py-2 rounded-full font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT, opacity: (!newName.trim() || busy) ? 0.6 : 1 }}>Create</button>
+              <button onClick={() => { setCreating(false); setEditing(null); }} className="db-ib text-sm px-4 py-2 rounded-full" style={{ color: "var(--text-2)" }}>Cancel</button>
+              <button onClick={saveName} disabled={!nameInput.trim() || busy} className="tp-pill text-sm px-5 py-2 rounded-full font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT, opacity: (!nameInput.trim() || busy) ? 0.6 : 1 }}>{editing ? "Save" : "Create"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(20,18,26,0.4)" }} onClick={() => !busy && setDeleting(null)}>
+          <div className="rounded-2xl shadow-2xl w-full max-w-sm" style={{ background: "var(--card)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
+              <h3 className="font-semibold" style={{ color: "var(--text)" }}>Delete “{deleting.name}”?</h3>
+            </div>
+            <div className="p-5">
+              {deleting.total > 0 ? (
+                <>
+                  <p className="text-sm mb-3" style={{ color: "var(--text-2)" }}>This project has {deleting.total} task{deleting.total === 1 ? "" : "s"}. What should happen to {deleting.total === 1 ? "it" : "them"}?</p>
+                  <div className="flex flex-col gap-2">
+                    <button onClick={() => doDelete("unlabel")} disabled={busy} className="db-row w-full text-left rounded-lg px-3 py-2.5 text-sm" style={{ border: "1px solid var(--border)", color: "var(--text)" }}>
+                      <span className="font-medium">Keep the tasks</span> — just remove the project label
+                    </button>
+                    <button onClick={() => doDelete("delete")} disabled={busy} className="db-row w-full text-left rounded-lg px-3 py-2.5 text-sm" style={{ border: "1px solid #E5536E33", color: "#E5536E" }}>
+                      <span className="font-medium">Delete the {deleting.total} task{deleting.total === 1 ? "" : "s"} too</span> — this can’t be undone
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm" style={{ color: "var(--text-2)" }}>This project has no tasks. Delete it?</p>
+              )}
+              {err && <p className="text-xs mt-3" style={{ color: "#E5536E" }}>{err}</p>}
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3.5" style={{ borderTop: "1px solid var(--border)" }}>
+              <button onClick={() => setDeleting(null)} className="db-ib text-sm px-4 py-2 rounded-full" style={{ color: "var(--text-2)" }}>Cancel</button>
+              {deleting.total === 0 && (
+                <button onClick={() => doDelete("keep")} disabled={busy} className="text-sm px-5 py-2 rounded-full font-medium shadow-md text-white" style={{ background: "#E5536E", opacity: busy ? 0.6 : 1 }}>Delete</button>
+              )}
             </div>
           </div>
         </div>
