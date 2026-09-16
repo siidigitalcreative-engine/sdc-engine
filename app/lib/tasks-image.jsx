@@ -16,15 +16,17 @@ const W = 1240, PAD = 24, GAP = 16;
 const colW = (W - PAD * 2 - GAP * 3) / 4;   // 286
 const HEAD = 112, COL_HEADER = 40, CARD_GAP = 10;
 
-// slice caps chosen so text never exceeds the estimated line counts (no clipping)
-const TITLE_CAP = 90, DESC_CAP = 112;
+// caps chosen so text never exceeds the estimated line counts (no clipping)
+const TITLE_CAP = 90, DESC_CAP = 112, PROJ_CAP = 60;
 const titleLinesOf = (t) => Math.max(1, Math.min(3, Math.ceil(Math.min((t.title || "").length, TITLE_CAP) / 33)));
 const descLinesOf = (t) => { const n = Math.min((t.desc || "").length, DESC_CAP); return n ? Math.min(3, Math.ceil(n / 38)) : 0; };
+const projLinesOf = (t) => Math.max(1, Math.min(2, Math.ceil(Math.min((t.project || "").length, PROJ_CAP) / 44)));
 function estimateCardHeight(t) {
   let h = 20 + 22 + 8 + titleLinesOf(t) * 19;      // padding + priority row + gap + title
   const dl = descLinesOf(t);
   if (dl) h += 6 + dl * 16;                          // description
-  h += 10 + 20;                                      // footer gap + footer row
+  h += 8 + projLinesOf(t) * 15;                      // project row(s)
+  h += 6 + 22;                                       // assignee row (own line)
   return h;
 }
 
@@ -92,18 +94,19 @@ export function buildTasksImage(tasks = []) {
                     <div style={{ fontSize: 11.5, color: "#8A8F99", lineHeight: 1.3, marginTop: 4 }}>{String(t.desc).slice(0, DESC_CAP)}</div>
                   ) : null}
 
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-                    <div style={{ fontSize: 11, color: "#9A9CA6" }}>{String(t.project || "").slice(0, 22)}</div>
+                  <div style={{ fontSize: 11, color: "#9A9CA6", lineHeight: 1.3, marginTop: 8 }}>{String(t.project || "").slice(0, PROJ_CAP)}</div>
+
+                  <div style={{ display: "flex", alignItems: "center", marginTop: 7 }}>
                     {one ? (
-                      <div style={{ display: "flex", alignItems: "center" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 9, backgroundColor: one.c || "#9A9CA6", marginRight: 5 }}>
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 9, backgroundColor: one.c || "#9A9CA6", marginRight: 6 }}>
                           <div style={{ display: "flex", fontSize: 9, fontWeight: 700, color: "#ffffff" }}>{one.i}</div>
                         </div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "#4A4753" }}>{String(one.name || one.i || "").slice(0, 14)}</div>
-                      </div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "#4A4753" }}>{String(one.name || one.i || "").slice(0, 26)}</div>
+                      </>
                     ) : (
                       <div style={{ display: "flex" }}>
-                        {(t.assignees || []).slice(0, 3).map((a, ai) => (
+                        {(t.assignees || []).slice(0, 4).map((a, ai) => (
                           <div key={ai} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: 9, backgroundColor: a.c || "#9A9CA6", marginLeft: ai ? -5 : 0, border: "1.5px solid #ffffff" }}>
                             <div style={{ display: "flex", fontSize: 9, fontWeight: 700, color: "#ffffff" }}>{a.i}</div>
                           </div>
