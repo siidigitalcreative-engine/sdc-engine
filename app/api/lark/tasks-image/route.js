@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ImageResponse } from "next/og";
-import { buildTasksImage } from "../../../lib/tasks-image";
+import { buildTaskImage } from "../../../lib/task-image";
 
 export const runtime = "edge";
 const LARK = "https://open.larksuite.com";
@@ -27,16 +27,16 @@ export async function POST(request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const tasks = Array.isArray(body.tasks) ? body.tasks : [];
+    const task = body.task && typeof body.task === "object" ? body.task : {};
 
-    const { element, width, height } = buildTasksImage(tasks);
+    const { element, width, height } = buildTaskImage(task);
     const image = new ImageResponse(element, { width, height });
     const png = new Uint8Array(await image.arrayBuffer());
 
     const token = await getToken();
     const form = new FormData();
     form.append("image_type", "message");
-    form.append("image", new Blob([png], { type: "image/png" }), "tasks.png");
+    form.append("image", new Blob([png], { type: "image/png" }), "task.png");
     const uploadRes = await fetch(`${LARK}/open-apis/im/v1/images`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
     const uploadData = await uploadRes.json().catch(() => ({}));
     if (uploadData.code !== 0 || !uploadData.data?.image_key) {
@@ -56,6 +56,6 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: error.message || "Unable to send tasks image to Lark." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to send task image to Lark." }, { status: 500 });
   }
 }
