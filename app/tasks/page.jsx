@@ -369,7 +369,7 @@ export default function TasksPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.download = "sdc-tasks.png";
+      link.download = "sdc-task-board.png";
       link.href = url; link.click(); URL.revokeObjectURL(url);
     } catch (e) { setTaskError(e.message || "Unable to export tasks image."); }
   };
