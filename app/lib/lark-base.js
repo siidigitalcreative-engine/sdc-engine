@@ -14,6 +14,7 @@ const F_DESC = clean(process.env.LARK_BASE_FIELD_DESC) || "Tasks Details";
 const F_STATUS = clean(process.env.LARK_BASE_FIELD_STATUS) || "Task Status";
 const F_DATE = clean(process.env.LARK_BASE_FIELD_DATE) || "Date";
 const F_ASSIGNEES = clean(process.env.LARK_BASE_FIELD_ASSIGNEES) || "Assignee"; // Multiple Options (multi-select) column
+const F_FILELINK = clean(process.env.LARK_BASE_FIELD_FILELINK) || ""; // opt-in: name of a TEXT column to receive attachment URLs
 
 const APP_ID = clean(process.env.LARK_APP_ID);
 const APP_SECRET = clean(process.env.LARK_APP_SECRET);
@@ -99,6 +100,10 @@ async function buildFields(task) {
   if (F_ASSIGNEES) {
     // Multiple Options field expects an array of option names; Lark auto-adds new ones.
     fields[F_ASSIGNEES] = await assigneeNamesFor(task.assignees);
+  }
+  if (F_FILELINK) {
+    const urls = (Array.isArray(task.attachments) ? task.attachments : []).map((a) => a && a.url).filter(Boolean);
+    if (urls.length) fields[F_FILELINK] = urls.join("\n");
   }
   return fields;
 }
