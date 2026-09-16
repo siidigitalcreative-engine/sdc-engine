@@ -59,6 +59,7 @@ export default function ProjectsPage() {
   const [deleting, setDeleting] = useState(null);  // project stat object
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [actionErr, setActionErr] = useState("");
 
   const memberByRef = useMemo(() => {
     const map = {};
@@ -130,6 +131,36 @@ export default function ProjectsPage() {
       setDeleting(null);
     } catch (e) { setErr(e.message || "Unable to delete project."); }
     finally { setBusy(false); }
+  };
+
+  const buildProjectsPayload = () => ({
+    projects: filtered.map((p) => ({
+      name: p.name, total: p.total, done: p.done, progress: p.progress, overdue: p.overdue, status: p.status,
+      color: projColor(p.name).c,
+      assignees: (p.assignees || []).map((m) => ({ i: m.i, c: m.c })),
+    })),
+  });
+
+  const exportProjectsPng = async () => {
+    try {
+      setActionErr("");
+      const res = await fetch("/api/projects-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildProjectsPayload()) });
+      if (!res.ok) throw new Error("Unable to render projects image.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = "sdc-projects.png";
+      link.href = url; link.click(); URL.revokeObjectURL(url);
+    } catch (e) { setActionErr(e.message || "Unable to export projects image."); }
+  };
+
+  const sendProjectsToLark = async () => {
+    try {
+      setActionErr("");
+      const res = await fetch("/api/lark/projects-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildProjectsPayload()) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Unable to send projects to Lark.");
+    } catch (e) { setActionErr(e.message || "Unable to send to Lark"); }
   };
 
   // ---------------- detail view ----------------
@@ -212,11 +243,16 @@ export default function ProjectsPage() {
           <div className="mr-auto">
             <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Projects</h1>
             <p className="text-sm" style={{ color: "var(--muted)" }}>{stats.length} projects across the team</p>
+            {actionErr && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{actionErr}</p>}
           </div>
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search projects"
               className="pl-8 pr-3 py-2 text-sm rounded-full outline-none shadow-sm w-44" style={{ background: "var(--card)", border: "1px solid var(--border)" }} />
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={exportProjectsPng} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
+            <button onClick={sendProjectsToLark} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
           </div>
           <button onClick={() => { setEditing(null); setNameInput(""); setErr(""); setCreating(true); }} className="tp-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
             <Plus size={17} /> Create Project
