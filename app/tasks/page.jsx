@@ -319,6 +319,7 @@ export default function TasksPage() {
       priority: t.priority,
       due: t.due instanceof Date ? t.due.toISOString() : (t.due || null),
       overdue: isOverdue(t),
+      desc: t.desc || "",
       assignees: (t.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean).map((m) => ({ i: m.i, c: m.c, name: m.name })),
     })),
   });
