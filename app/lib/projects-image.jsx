@@ -1,6 +1,6 @@
 const W = 1240, PAD = 24, GAP = 16, COLS = 3;
 const colW = (W - PAD * 2 - GAP * (COLS - 1)) / COLS;
-const HEAD = 112, CARD_H = 180, ROW_GAP = 16;
+const HEAD = 112, CARD_H = 190, ROW_GAP = 16;
 
 const statusLabel = (s) => (s === "completed" ? "Completed" : s === "empty" ? "No tasks" : "Active");
 const statusStyle = (s) => (s === "completed" ? { bg: "#DEF1E7", fg: "#3FA37A" } : s === "empty" ? { bg: "#EEEFF2", fg: "#9A9CA6" } : { bg: "#E3EEF9", fg: "#3E8ED0" });
@@ -30,8 +30,8 @@ export function buildProjectsImage(projects = []) {
           </div>
         </div>
 
-        <div style={{ fontSize: 15.5, fontWeight: 700, color: "#1F2430", marginTop: 12, lineHeight: 1.2 }}>{String(p.name || "").slice(0, 30)}</div>
-        <div style={{ display: "flex", fontSize: 11.5, color: "#9A9CA6", marginTop: 3 }}>{p.total} task{p.total === 1 ? "" : "s"} · {p.done} done</div>
+        <div style={{ fontSize: 15.5, fontWeight: 700, color: "#1F2430", marginTop: 14, lineHeight: 1.25 }}>{String(p.name || "").slice(0, 38)}</div>
+        <div style={{ display: "flex", fontSize: 11.5, color: "#9A9CA6", marginTop: 8 }}>{p.total} task{p.total === 1 ? "" : "s"} · {p.done} done</div>
 
         <div style={{ display: "flex", flexDirection: "column", marginTop: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9A9CA6" }}>
