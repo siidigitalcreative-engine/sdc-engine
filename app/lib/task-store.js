@@ -33,10 +33,17 @@ const cleanDate = (value) => {
 
 const cleanAttachments = (items) => (
   Array.isArray(items)
-    ? items.map((item) => ({
-        name: String(item?.name || "Attachment").slice(0, 255),
-        size: Math.max(0, Number(item?.size) || 0),
-      }))
+    ? items
+        .filter((item) => !item?.uploading)
+        .map((item) => {
+          const out = {
+            name: String(item?.name || "Attachment").slice(0, 255),
+            size: Math.max(0, Number(item?.size) || 0),
+          };
+          if (item?.url) out.url = String(item.url);
+          if (item?.contentType) out.contentType = String(item.contentType);
+          return out;
+        })
     : []
 );
 
