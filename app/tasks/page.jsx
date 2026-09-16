@@ -489,9 +489,10 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging })
   return (
     <div draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onClick}
       className="tp-card rounded-2xl p-3 cursor-pointer" style={{ background: "var(--card)", border: "1px solid var(--border)", opacity: dragging ? 0.4 : 1 }}>
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="flex items-center gap-1.5 mb-1.5">
         <Pill label={p.name} color={p.color} soft={p.soft} />
-        <span style={{ color: "var(--faint)" }}><MoreHorizontal size={16} /></span>
+        {t.project && <span className="rounded-full px-2 py-0.5 text-xs truncate min-w-0" style={{ background: "var(--col)", color: "var(--text-2)" }}>{t.project}</span>}
+        <span className="ml-auto shrink-0" style={{ color: "var(--faint)" }}><MoreHorizontal size={16} /></span>
       </div>
       <div className="font-semibold leading-snug" style={{ color: "var(--text)", fontSize: 14 }}>{t.title}</div>
       {t.desc && <div className="text-xs mt-1" style={{ color: "var(--muted)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.desc}</div>}
