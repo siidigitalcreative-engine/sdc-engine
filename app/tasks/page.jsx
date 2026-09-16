@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { upload } from "@vercel/blob/client";
 import { useAuth } from "../auth";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
@@ -263,6 +264,7 @@ export default function TasksPage() {
   const openCreate = (status) => setModal({ mode: "create", form: blank(status) });
   const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), tags: [...t.tags], attachments: [...t.attachments] } });
   const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
+  const patchForm = (fn) => setModal((m) => (m ? { ...m, form: { ...m.form, ...fn(m.form) } } : m));
   const save = async () => {
     if (savingTask || !modal) return;
     const f = modal.form;
@@ -484,7 +486,7 @@ export default function TasksPage() {
           )}
         </main>
 
-      {modal && <TaskModal modal={modal} members={members} setForm={setForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
+      {modal && <TaskModal modal={modal} members={members} setForm={setForm} patchForm={patchForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
     </>
   );
 }
@@ -553,7 +555,7 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging })
 }
 
 /* ---------- modal ---------- */
-function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
+function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDelete, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
@@ -615,7 +617,7 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
       statusName: (statuses.find((s) => s.id === f.status) || {}).name || "",
       statusColor: (statuses.find((s) => s.id === f.status) || {}).color || "#8E8A96",
       assignees: (f.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean).map((m) => ({ i: m.i, c: m.c, name: m.name })),
-      attachments: (f.attachments || []).map((a) => a.name),
+      attachments: (f.attachments || []).map((a) => ({ name: a.name, url: a.url || "" })),
     },
   });
   const exportTaskPng = async () => {
@@ -644,7 +646,26 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
 
   const toggleAssignee = (id) => setForm({ assignees: f.assignees.includes(id) ? f.assignees.filter((a) => a !== id) : [...f.assignees, id] });
   const addTag = () => { const v = tagDraft.trim().replace(/^#/, ""); if (v && !f.tags.includes(v)) setForm({ tags: [...f.tags, v] }); setTagDraft(""); };
-  const onFiles = (e) => { const add = Array.from(e.target.files).map((x) => ({ name: x.name, size: x.size })); setForm({ attachments: [...f.attachments, ...add] }); e.target.value = ""; };
+  const onFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    for (const file of files) {
+      const key = `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      patchForm((form) => ({ attachments: [...(form.attachments || []), { key, name: file.name, size: file.size, uploading: true, progress: 0 }] }));
+      try {
+        const blob = await upload(file.name, file, {
+          access: "public",
+          handleUploadUrl: "/api/upload",
+          contentType: file.type || undefined,
+          onUploadProgress: (p) => patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, progress: Math.round(p.percentage) } : a)) })),
+        });
+        patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { name: a.name, size: a.size, url: blob.url, contentType: file.type || "" } : a)) }));
+      } catch (err) {
+        patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, uploading: false, error: true } : a)) }));
+      }
+    }
+  };
+  const uploadingCount = (f.attachments || []).filter((a) => a.uploading).length;
   const field = { border: "1px solid var(--border)", background: "var(--card)" };
 
   return (
@@ -754,10 +775,22 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
           <Labeled label="Attachments">
             <div className="space-y-1.5">
               {f.attachments.map((a, i) => (
-                <div key={i} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm" style={{ background: "var(--col)" }}>
-                  <Paperclip size={14} style={{ color: "var(--muted)" }} />
-                  <span className="truncate flex-1" style={{ color: "var(--text)" }}>{a.name}</span>
-                  <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>{formatBytes(a.size)}</span>
+                <div key={a.key || i} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm" style={{ background: "var(--col)" }}>
+                  <Paperclip size={14} style={{ color: a.error ? "#E5536E" : "var(--muted)" }} />
+                  {a.url ? (
+                    <a href={a.url} target="_blank" rel="noopener noreferrer" className="truncate flex-1 hover:underline" style={{ color: "var(--text)" }}>{a.name}</a>
+                  ) : (
+                    <span className="truncate flex-1" style={{ color: "var(--text)" }}>{a.name}</span>
+                  )}
+                  {a.uploading ? (
+                    <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>{a.progress ? `${a.progress}%` : "Uploading…"}</span>
+                  ) : a.error ? (
+                    <span className="text-xs shrink-0" style={{ color: "#E5536E" }}>Failed</span>
+                  ) : a.url ? (
+                    <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>{formatBytes(a.size)}</span>
+                  ) : (
+                    <span className="text-xs shrink-0" title="Uploaded before file storage was enabled — re-attach to get a link" style={{ color: "var(--faint)" }}>no link</span>
+                  )}
                   <button onClick={() => setForm({ attachments: f.attachments.filter((_, x) => x !== i) })} style={{ color: "var(--faint)" }}><X size={14} /></button>
                 </div>
               ))}
@@ -770,11 +803,11 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
         </div>
 
         <div className="px-5 pb-3 flex flex-wrap items-center gap-2">
-          <button type="button" disabled={!f.title || !!taskImgBusy} onClick={exportTaskPng}
+          <button type="button" disabled={!f.title || !!taskImgBusy || uploadingCount > 0} onClick={exportTaskPng}
             className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium disabled:opacity-50" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
             🖼️ {taskImgBusy === "png" ? "Rendering…" : "Export PNG"}
           </button>
-          <button type="button" disabled={!f.title || !!taskImgBusy} onClick={sendTaskToLark}
+          <button type="button" disabled={!f.title || !!taskImgBusy || uploadingCount > 0} onClick={sendTaskToLark}
             className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium disabled:opacity-50" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
             📤 {taskImgBusy === "lark" ? "Sending…" : "Send to Lark"}
           </button>
@@ -787,7 +820,7 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
           ) : <span />}
           <div className="flex gap-2">
             <button disabled={saving} onClick={onClose} className="tp-ib text-sm px-4 py-2 rounded-full disabled:opacity-50" style={{ color: "var(--text-2)" }}>Cancel</button>
-            <button disabled={saving} onClick={onSave} className="tp-pill text-sm px-5 py-2 rounded-full font-medium shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>{saving ? "Saving…" : "Save task"}</button>
+            <button disabled={saving || uploadingCount > 0} onClick={onSave} className="tp-pill text-sm px-5 py-2 rounded-full font-medium shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>{saving ? "Saving…" : uploadingCount > 0 ? "Uploading…" : "Save task"}</button>
           </div>
         </div>
       </div>
