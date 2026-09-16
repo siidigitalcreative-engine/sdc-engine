@@ -54,6 +54,20 @@ export async function POST(request) {
       return NextResponse.json({ step: "send", error: `Custom-bot webhook rejected the image (${sendData.msg || sendData.StatusMessage || JSON.stringify(sendData)})` }, { status: 500 });
     }
 
+    // Follow-up message with clickable attachment links (if any have a stored URL).
+    const links = (Array.isArray(task.attachments) ? task.attachments : []).filter((a) => a && a.url);
+    if (links.length) {
+      const content = links.map((a) => [{ tag: "a", text: `📎 ${String(a.name || "Attachment").slice(0, 120)}`, href: a.url }]);
+      await fetch(webhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          msg_type: "post",
+          content: { post: { en_us: { title: `Attachments — ${String(task.title || "Task").slice(0, 80)}`, content } } },
+        }),
+      }).catch(() => {});
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message || "Unable to send task image to Lark." }, { status: 500 });
