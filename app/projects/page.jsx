@@ -49,6 +49,7 @@ export default function ProjectsPage() {
   const { members } = useAuth();
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [statuses, setStatuses] = useState(null);
   const [tab, setTab] = useState("all");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
@@ -71,9 +72,11 @@ export default function ProjectsPage() {
     return Promise.all([
       fetch("/api/projects", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { projects: [] })).catch(() => ({ projects: [] })),
       fetch("/api/tasks", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { tasks: [] })).catch(() => ({ tasks: [] })),
-    ]).then(([pj, tk]) => {
+      fetch("/api/statuses", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { statuses: null })).catch(() => ({ statuses: null })),
+    ]).then(([pj, tk, st]) => {
       setProjects(Array.isArray(pj.projects) ? pj.projects : []);
       setTasks((Array.isArray(tk.tasks) ? tk.tasks : []).map((t) => ({ ...t, start: t.start ? fromDateInput(t.start) : null, due: t.due ? fromDateInput(t.due) : null })));
+      setStatuses(Array.isArray(st.statuses) && st.statuses.length ? st.statuses : null);
     });
   }, []);
 
@@ -188,10 +191,14 @@ export default function ProjectsPage() {
 
         <div className="px-4 sm:px-7 pb-8 flex flex-col gap-5">
           {pt.length === 0 && <p className="text-sm py-8 text-center" style={{ color: "var(--muted)" }}>No tasks in this project yet.</p>}
-          {ORDER.map((sid) => {
+          {(statuses && statuses.length
+            ? statuses
+            : ORDER.map((id) => ({ id, ...(STATUS_META[id] || { name: id, color: "#8E8A96" }) }))
+          ).map((sdef) => {
+            const sid = sdef.id;
             const items = pt.filter((t) => t.status === sid);
             if (!items.length) return null;
-            const s = STATUS_META[sid];
+            const s = { name: sdef.name, color: sdef.color };
             return (
               <div key={sid}>
                 <div className="flex items-center gap-2 mb-2">
