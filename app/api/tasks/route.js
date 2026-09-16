@@ -6,6 +6,7 @@ import {
   readTasksState,
   updateTask,
 } from "../../lib/task-store";
+import { isBaseConfigured, syncCreate, syncUpdate, syncDelete } from "../../lib/lark-base";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,10 @@ export async function POST(request) {
 
     const body = await request.json();
     const task = createTask(body.data || body);
+    if (isBaseConfigured()) {
+      try { const recordId = await syncCreate(task); if (recordId) task.larkRecordId = recordId; }
+      catch (e) { console.error("Lark Base create sync failed", e); }
+    }
     const result = await mutateTasks((tasks) => [...tasks, task]);
     return json({ tasks: result.state.tasks, task }, 201, result.etag);
   } catch (error) {
@@ -80,6 +85,20 @@ export async function PATCH(request) {
       return next;
     });
 
+    if (isBaseConfigured() && updated) {
+      try {
+        if (updated.larkRecordId) {
+          await syncUpdate(updated);
+        } else {
+          const recordId = await syncCreate(updated);
+          if (recordId) {
+            updated = { ...updated, larkRecordId: recordId };
+            await mutateTasks((tasks) => tasks.map((t) => (String(t.id) === id ? { ...t, larkRecordId: recordId } : t)));
+          }
+        }
+      } catch (e) { console.error("Lark Base update sync failed", e); }
+    }
+
     return json({ tasks: result.state.tasks, task: updated }, 200, result.etag);
   } catch (error) {
     console.error("PATCH /api/tasks", error);
@@ -95,6 +114,14 @@ export async function DELETE(request) {
     const body = await request.json();
     const id = String(body.id || "");
     if (!id) return json({ error: "Task ID is required." }, 400);
+
+    if (isBaseConfigured()) {
+      try {
+        const { state } = await readTasksState();
+        const target = state.tasks.find((task) => String(task.id) === id);
+        if (target?.larkRecordId) await syncDelete(target.larkRecordId);
+      } catch (e) { console.error("Lark Base delete sync failed", e); }
+    }
 
     const result = await mutateTasks((tasks) => {
       if (!tasks.some((task) => String(task.id) === id)) throw new Error("Task not found.");
