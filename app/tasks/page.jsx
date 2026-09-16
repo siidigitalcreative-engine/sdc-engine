@@ -347,7 +347,7 @@ export default function TasksPage() {
 
   return (
     <>
-      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+      <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
           {/* toolbar */}
           <header className="flex items-center gap-3 px-4 sm:px-7 pt-6 pb-4 shrink-0 flex-wrap">
             <div className="mr-auto">
@@ -366,8 +366,10 @@ export default function TasksPage() {
                   style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}><Icon size={15} />{v}</button>
               ))}
             </div>
-            <button onClick={exportTasksPng} className="rounded-full px-3.5 py-2 text-sm font-medium shadow-sm shrink-0" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
-            <button onClick={sendTasksToLark} className="rounded-full px-3.5 py-2 text-sm font-medium shadow-sm shrink-0" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={exportTasksPng} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
+              <button onClick={sendTasksToLark} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
+            </div>
             <button onClick={() => openCreate("todo")} className="tp-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
               <Plus size={17} /> New task
             </button>
@@ -383,20 +385,20 @@ export default function TasksPage() {
 
           {/* body */}
           {view === "board" ? (
-            <div className="flex-1 min-h-0 overflow-y-auto md:overflow-x-auto md:overflow-y-hidden px-4 sm:px-7 pb-6">
-              <div className="flex flex-col md:flex-row gap-4 md:h-full">
+            <div className="px-4 sm:px-7 pb-6">
+              <div className="flex flex-col md:flex-row gap-4 items-start">
                 {STATUSES.map((s) => {
                   const items = filtered.filter((t) => t.status === s.id);
                   const isOver = overCol === s.id;
                   return (
-                    <div key={s.id} className="flex flex-col rounded-2xl w-full md:w-72 md:shrink-0" style={{ background: isOver ? "var(--grid)" : "var(--col)", outline: isOver ? `2px dashed ${ACCENT}` : "none" }}
+                    <div key={s.id} className="flex flex-col rounded-2xl w-full md:flex-1 md:min-w-0" style={{ background: isOver ? "var(--grid)" : "var(--col)", outline: isOver ? `2px dashed ${ACCENT}` : "none" }}
                       onDragOver={(e) => { e.preventDefault(); setOverCol(s.id); }} onDragLeave={() => setOverCol((c) => (c === s.id ? null : c))} onDrop={(e) => { e.preventDefault(); drop(s.id); }}>
                       <div className="flex items-center gap-2 px-3 py-3 shrink-0">
                         <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
                         <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>{s.name}</span>
                         <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--card)", color: "var(--text-2)" }}>{items.length}</span>
                       </div>
-                      <div className="px-2.5 pb-1 space-y-2.5 md:flex-1 md:min-h-0 md:overflow-y-auto">
+                      <div className="px-2.5 pb-2 space-y-2.5">
                         {items.map((t) => (
                           <TaskCard key={t.id} t={t} memberByRef={memberByRef} onClick={() => openEdit(t)}
                             onDragStart={() => setDragId(t.id)} onDragEnd={() => { setDragId(null); setOverCol(null); }} dragging={dragId === t.id} />
@@ -411,7 +413,7 @@ export default function TasksPage() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-7 pb-6">
+            <div className="overflow-x-auto px-4 sm:px-7 pb-6">
               <div className="rounded-2xl overflow-hidden shadow-sm" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
                   <thead>
