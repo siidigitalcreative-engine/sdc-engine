@@ -347,22 +347,6 @@ export default function TeamCalendar() {
             </div>
 
             <div className="ml-auto flex flex-wrap items-center gap-2 sm:gap-3">
-              <button onClick={() => { const d = new Date(cursor); d.setHours(9, 0, 0, 0); openCreateAt(d); }} className="md:hidden tc-pill flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}><Plus size={16} /> New</button>
-              <button
-                onClick={exportCalendarPng}
-                className="tc-pill rounded-full px-4 py-1.5 text-sm font-medium shadow-sm"
-                style={{ background: "var(--card)", color: "var(--text)" }}
-              >
-                🖼️ Export PNG
-              </button>
-
-              <button
-                onClick={sendToLark}
-                className="tc-pill rounded-full px-4 py-1.5 text-sm font-medium shadow-sm"
-                style={{ background: "var(--card)", color: "var(--text)" }}
-              >
-                📤 Send to Lark
-              </button>
               <div className="relative hidden lg:block">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search"
@@ -376,6 +360,11 @@ export default function TeamCalendar() {
                     style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>{v}</button>
                 ))}
               </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={exportCalendarPng} className="tc-pill rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
+                <button onClick={sendToLark} className="tc-pill rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
+              </div>
+              <button onClick={() => { const d = new Date(cursor); d.setHours(9, 0, 0, 0); openCreateAt(d); }} className="md:hidden tc-pill flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}><Plus size={16} /> New</button>
             </div>
           </header>
 
