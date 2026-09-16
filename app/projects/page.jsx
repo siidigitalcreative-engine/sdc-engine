@@ -276,7 +276,7 @@ export default function ProjectsPage() {
               {filtered.map((p) => {
                 const pc = projColor(p.name);
                 return (
-                  <div key={p.name} onClick={() => setSelected(p.name)} role="button" tabIndex={0} className="tp-card relative rounded-2xl p-5 cursor-pointer" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <div key={p.name} onClick={() => setSelected(p.name)} role="button" tabIndex={0} className="tp-card relative rounded-2xl p-5 cursor-pointer" style={{ background: "var(--card)", border: "1px solid var(--border)", zIndex: menuFor === p.name ? 30 : undefined }}>
                     <div className="flex items-center justify-between mb-4">
                       <span className="h-11 w-11 rounded-xl flex items-center justify-center" style={{ background: pc.c }}><Folder size={19} className="text-white" /></span>
                       <div className="flex items-center gap-1.5">
@@ -287,7 +287,7 @@ export default function ProjectsPage() {
                       </div>
                     </div>
                     <p className="font-semibold truncate" style={{ color: "var(--text)", fontSize: 16 }}>{p.name}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>{p.total} task{p.total === 1 ? "" : "s"} · {p.done} done</p>
+                    <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>{p.total} task{p.total === 1 ? "" : "s"} · {p.done} done</p>
 
                     <div className="mt-4">
                       <div className="flex items-center justify-between text-xs mb-1" style={{ color: "var(--muted)" }}><span>Progress</span><span>{p.progress}%</span></div>
