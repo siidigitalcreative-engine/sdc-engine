@@ -5,7 +5,7 @@ import { useAuth } from "../auth";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, X, Search, Paperclip, Clock, Flag, Trash2, Tag, Sparkles, List, MoreHorizontal,
-  Moon, Sun,
+  Moon, Sun, ChevronDown,
 } from "lucide-react";
 
 /* ---------- theme ---------- */
@@ -17,19 +17,24 @@ const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 const PAGE_BG = "var(--page)";
 const ME = { i: "CN", name: "Che Navarro", role: "Digital Creative", c: "#7C6FF0" };
 
-const STATUSES = [
-  { id: "todo",       name: "To Do",       color: "#8E8A96", soft: "#ECEBEE" },
-  { id: "inprogress", name: "In Progress", color: "#3E8ED0", soft: "#E3EEF9" },
-  { id: "inreview",   name: "In Review",   color: "#E0A93C", soft: "#FAEFD6" },
-  { id: "done",       name: "Done",        color: "#3FA37A", soft: "#DEF1E7" },
+const DEFAULT_STATUSES = [
+  { id: "todo",       name: "To Do",       color: "#8E8A96", soft: "#ECEBEE", isDefault: true },
+  { id: "inprogress", name: "In Progress", color: "#3E8ED0", soft: "#E3EEF9", isDefault: true },
+  { id: "inreview",   name: "In Review",   color: "#E0A93C", soft: "#FAEFD6", isDefault: true },
+  { id: "done",       name: "Done",        color: "#3FA37A", soft: "#DEF1E7", isDefault: true },
 ];
+// Runtime list of statuses (defaults + any custom ones loaded from the API).
+// Kept in a module-level ref so the module-level statusOf() — used by TaskCard
+// and the list view — always resolves the latest custom statuses.
+let STATUS_RUNTIME = DEFAULT_STATUSES.slice();
+const setStatusRuntime = (list) => { STATUS_RUNTIME = (Array.isArray(list) && list.length) ? list : DEFAULT_STATUSES.slice(); };
 const PRIORITIES = [
   { id: "low",    name: "Low",    color: "#3FA37A", soft: "#DEF1E7" },
   { id: "medium", name: "Medium", color: "#E0A93C", soft: "#FAEFD6" },
   { id: "high",   name: "High",   color: "#E5536E", soft: "#FBE1E7" },
 ];
 const PROJECTS = ["Quencha", "CRYSALIS", "Website Revamp", "FITSPIRE", "SCRUBZ", "Sunbeams Lifestyle", "PRIMEO", "Nest Design Lab", "Daily Tasks"];
-const statusOf = (id) => STATUSES.find((s) => s.id === id) || STATUSES[0];
+const statusOf = (id) => STATUS_RUNTIME.find((s) => s.id === id) || STATUS_RUNTIME[0];
 const priorityOf = (id) => PRIORITIES.find((p) => p.id === id) || PRIORITIES[0];
 
 /* ---------- helpers ---------- */
@@ -92,6 +97,13 @@ export default function TasksPage() {
   const [active, setActive] = useState("tasks");
   const [tasks, setTasks] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [statuses, setStatuses] = useState(DEFAULT_STATUSES);
+
+  const applyStatuses = useCallback((list) => {
+    const next = (Array.isArray(list) && list.length) ? list : DEFAULT_STATUSES;
+    setStatusRuntime(next);   // keep module-level statusOf in sync before re-render
+    setStatuses(next);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -99,8 +111,31 @@ export default function TasksPage() {
       .then((r) => (r.ok ? r.json() : { projects: [] }))
       .then((b) => { if (active) setProjects(Array.isArray(b.projects) ? b.projects : []); })
       .catch(() => {});
+    fetch("/api/statuses", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { statuses: DEFAULT_STATUSES }))
+      .then((b) => { if (active) applyStatuses(Array.isArray(b.statuses) ? b.statuses : DEFAULT_STATUSES); })
+      .catch(() => {});
     return () => { active = false; };
-  }, []);
+  }, [applyStatuses]);
+
+  const addStatus = async (name) => {
+    const res = await fetch("/api/statuses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Unable to add status.");
+    const list = Array.isArray(body.statuses) ? body.statuses : [];
+    applyStatuses(list);
+    return list;
+  };
+  const deleteStatus = async (id) => {
+    const res = await fetch("/api/statuses", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Unable to delete status.");
+    const list = Array.isArray(body.statuses) ? body.statuses : [];
+    applyStatuses(list);
+    // a deleted status sends its tasks back to "todo" server-side — refresh tasks
+    loadTasks({ force: true });
+    return list;
+  };
 
   const addProject = async (name) => {
     const res = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
@@ -312,6 +347,7 @@ export default function TasksPage() {
   };
 
   const buildTasksPayload = () => ({
+    statuses: (statuses || []).map((s) => ({ id: s.id, name: s.name, color: s.color })),
     tasks: (tasks || []).map((t) => ({
       title: t.title,
       project: t.project,
@@ -388,7 +424,7 @@ export default function TasksPage() {
           {view === "board" ? (
             <div className="px-4 sm:px-7 pb-6">
               <div className="flex flex-col md:flex-row gap-4 items-start">
-                {STATUSES.map((s) => {
+                {statuses.map((s) => {
                   const items = filtered.filter((t) => t.status === s.id);
                   const isOver = overCol === s.id;
                   return (
@@ -448,7 +484,7 @@ export default function TasksPage() {
           )}
         </main>
 
-      {modal && <TaskModal modal={modal} members={members} setForm={setForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} />}
+      {modal && <TaskModal modal={modal} members={members} setForm={setForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
     </>
   );
 }
@@ -517,7 +553,7 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging })
 }
 
 /* ---------- modal ---------- */
-function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving = false, projects = [], onAddProject, onDeleteProject }) {
+function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
@@ -540,6 +576,72 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
     catch (e) { setProjError(e.message || "Unable to delete project."); }
     finally { setProjBusy(false); }
   };
+
+  const [statusDraft, setStatusDraft] = useState("");
+  const [statusError, setStatusError] = useState("");
+  const [statusBusy, setStatusBusy] = useState(false);
+  const currentStatus = statuses.find((s) => s.id === f.status);
+  const canDeleteStatus = currentStatus && !currentStatus.isDefault;
+  const handleAddStatus = async () => {
+    const name = statusDraft.trim();
+    if (!name) return;
+    setStatusBusy(true); setStatusError("");
+    try {
+      const list = await onAddStatus(name);
+      const added = Array.isArray(list) ? list.find((s) => s.name.toLowerCase() === name.toLowerCase()) : null;
+      if (added) setForm({ status: added.id });
+      setStatusDraft("");
+    } catch (e) { setStatusError(e.message || "Unable to add status."); }
+    finally { setStatusBusy(false); }
+  };
+  const handleDeleteStatus = async () => {
+    if (!canDeleteStatus) return;
+    setStatusBusy(true); setStatusError("");
+    try { await onDeleteStatus(f.status); setForm({ status: "todo" }); }
+    catch (e) { setStatusError(e.message || "Unable to delete status."); }
+    finally { setStatusBusy(false); }
+  };
+
+  // Per-task Export PNG / Send to Lark
+  const [taskImgBusy, setTaskImgBusy] = useState("");   // "" | "png" | "lark"
+  const [taskImgMsg, setTaskImgMsg] = useState("");
+  const singleTaskPayload = () => ({
+    task: {
+      title: f.title, project: f.project, status: f.status, priority: f.priority,
+      due: f.due instanceof Date ? f.due.toISOString() : (f.due || null),
+      start: f.start instanceof Date ? f.start.toISOString() : (f.start || null),
+      time: f.time || "", desc: f.desc || "", tags: f.tags || [],
+      progress: typeof f.progress === "number" ? f.progress : null,
+      statusName: (statuses.find((s) => s.id === f.status) || {}).name || "",
+      statusColor: (statuses.find((s) => s.id === f.status) || {}).color || "#8E8A96",
+      assignees: (f.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean).map((m) => ({ i: m.i, c: m.c, name: m.name })),
+      attachments: (f.attachments || []).map((a) => a.name),
+    },
+  });
+  const exportTaskPng = async () => {
+    setTaskImgBusy("png"); setTaskImgMsg("");
+    try {
+      const res = await fetch("/api/task-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(singleTaskPayload()) });
+      if (!res.ok) throw new Error("Unable to render task image.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = `sdc-task-${(f.title || "task").replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40)}.png`;
+      link.href = url; link.click(); URL.revokeObjectURL(url);
+    } catch (e) { setTaskImgMsg(e.message || "Unable to export."); }
+    finally { setTaskImgBusy(""); }
+  };
+  const sendTaskToLark = async () => {
+    setTaskImgBusy("lark"); setTaskImgMsg("");
+    try {
+      const res = await fetch("/api/lark/task-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(singleTaskPayload()) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Unable to send to Lark.");
+      setTaskImgMsg("Sent to Lark ✓");
+    } catch (e) { setTaskImgMsg(e.message || "Unable to send to Lark."); }
+    finally { setTaskImgBusy(""); }
+  };
+
   const toggleAssignee = (id) => setForm({ assignees: f.assignees.includes(id) ? f.assignees.filter((a) => a !== id) : [...f.assignees, id] });
   const addTag = () => { const v = tagDraft.trim().replace(/^#/, ""); if (v && !f.tags.includes(v)) setForm({ tags: [...f.tags, v] }); setTagDraft(""); };
   const onFiles = (e) => { const add = Array.from(e.target.files).map((x) => ({ name: x.name, size: x.size })); setForm({ attachments: [...f.attachments, ...add] }); e.target.value = ""; };
@@ -563,10 +665,13 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
           <div className="grid grid-cols-2 gap-3">
             <Labeled label="Project">
               <div className="flex gap-1.5">
-                <select value={f.project} onChange={(e) => setForm({ project: e.target.value })} className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm outline-none" style={field}>
-                  {projects.length === 0 && <option value="">No projects yet</option>}
-                  {projects.map((p) => <option key={p}>{p}</option>)}
-                </select>
+                <div className="relative flex-1 min-w-0">
+                  <select value={f.project} onChange={(e) => setForm({ project: e.target.value })} className="appearance-none w-full rounded-lg pl-2.5 pr-9 py-2 text-sm outline-none" style={{ ...field, color: "var(--text)" }}>
+                    {projects.length === 0 && <option value="">No projects yet</option>}
+                    {projects.map((p) => <option key={p}>{p}</option>)}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+                </div>
                 <button type="button" title="Delete this project" onClick={handleDeleteProject} disabled={!f.project || projBusy}
                   className="tp-ib rounded-lg flex items-center justify-center shrink-0" style={{ width: 34, border: "1px solid var(--border)", color: "#E5536E" }}>
                   <Trash2 size={14} />
@@ -583,9 +688,27 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
               {projError && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{projError}</p>}
             </Labeled>
             <Labeled label="Status">
-              <select value={f.status} onChange={(e) => setForm({ status: e.target.value })} className="w-full rounded-lg px-2.5 py-2 text-sm outline-none" style={field}>
-                {STATUSES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <div className="flex gap-1.5">
+                <div className="relative flex-1 min-w-0">
+                  <select value={f.status} onChange={(e) => setForm({ status: e.target.value })} className="appearance-none w-full rounded-lg pl-2.5 pr-9 py-2 text-sm outline-none" style={{ ...field, color: "var(--text)" }}>
+                    {statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+                </div>
+                <button type="button" title={canDeleteStatus ? "Delete this status" : "Default statuses can't be deleted"} onClick={handleDeleteStatus} disabled={!canDeleteStatus || statusBusy}
+                  className="tp-ib rounded-lg flex items-center justify-center shrink-0 disabled:opacity-40" style={{ width: 34, border: "1px solid var(--border)", color: "#E5536E" }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <div className="flex gap-1.5 mt-1.5">
+                <input value={statusDraft} onChange={(e) => setStatusDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddStatus(); } }}
+                  placeholder="New status…" className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm outline-none" style={field} />
+                <button type="button" title="Add status" onClick={handleAddStatus} disabled={!statusDraft.trim() || statusBusy}
+                  className="tp-ib rounded-lg flex items-center justify-center shrink-0" style={{ width: 34, border: "1px solid var(--border)", color: "var(--text-2)" }}>
+                  <Plus size={16} />
+                </button>
+              </div>
+              {statusError && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{statusError}</p>}
             </Labeled>
           </div>
 
@@ -644,6 +767,18 @@ function TaskModal({ modal, members, setForm, onClose, onSave, onDelete, saving 
               </button>
             </div>
           </Labeled>
+        </div>
+
+        <div className="px-5 pb-3 flex flex-wrap items-center gap-2">
+          <button type="button" disabled={!f.title || !!taskImgBusy} onClick={exportTaskPng}
+            className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium disabled:opacity-50" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
+            🖼️ {taskImgBusy === "png" ? "Rendering…" : "Export PNG"}
+          </button>
+          <button type="button" disabled={!f.title || !!taskImgBusy} onClick={sendTaskToLark}
+            className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium disabled:opacity-50" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
+            📤 {taskImgBusy === "lark" ? "Sending…" : "Send to Lark"}
+          </button>
+          {taskImgMsg && <span className="text-xs" style={{ color: taskImgMsg.includes("✓") ? "#3FA37A" : "#E5536E" }}>{taskImgMsg}</span>}
         </div>
 
         <div className="flex items-center justify-between px-5 py-3.5 sticky bottom-0" style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}>
