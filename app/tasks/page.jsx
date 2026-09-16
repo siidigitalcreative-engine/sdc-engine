@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { upload } from "@vercel/blob/client";
 import { useAuth } from "../auth";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
@@ -669,12 +670,29 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDele
   const onFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
+    const SMALL_MAX = 4 * 1024 * 1024;    // route through the server up to here
+    const HARD_MAX = 50 * 1024 * 1024;    // absolute limit
     for (const file of files) {
       const key = `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      if (file.size > HARD_MAX) {
+        patchForm((form) => ({ attachments: [...(form.attachments || []), { key, name: file.name, size: file.size, uploading: false, error: true }] }));
+        continue;
+      }
       patchForm((form) => ({ attachments: [...(form.attachments || []), { key, name: file.name, size: file.size, uploading: true, progress: 0 }] }));
       try {
-        const d = await uploadOne(file, key);
-        patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { name: a.name, size: a.size, url: d.url, contentType: d.contentType || "" } : a)) }));
+        let result;
+        if (file.size <= SMALL_MAX) {
+          result = await uploadOne(file, key);   // same-origin server upload (XHR)
+        } else {
+          const blob = await upload(file.name, file, {
+            access: "public",
+            handleUploadUrl: "/api/upload-token",
+            contentType: file.type || undefined,
+            onUploadProgress: (p) => patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, progress: Math.round(p.percentage) } : a)) })),
+          });
+          result = { url: blob.url, contentType: file.type || "" };
+        }
+        patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { name: a.name, size: a.size, url: result.url, contentType: result.contentType || "" } : a)) }));
       } catch (err) {
         patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, uploading: false, error: true } : a)) }));
       }
