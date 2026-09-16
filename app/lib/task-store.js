@@ -45,12 +45,15 @@ function normalizeTask(task = {}) {
     ? undefined
     : Math.min(100, Math.max(0, Number(task.progress) || 0));
 
+  const statusRaw = String(task.status || "").trim();
+  const status = /^[a-z0-9][a-z0-9_-]*$/i.test(statusRaw) ? statusRaw : "todo";
+
   return {
     id: String(task.id || `task-${randomUUID()}`),
     title: String(task.title || "Untitled task").trim() || "Untitled task",
     project: String(task.project || "Daily Tasks"),
     desc: String(task.desc || ""),
-    status: ["todo", "inprogress", "inreview", "done"].includes(task.status) ? task.status : "todo",
+    status,
     priority: ["low", "medium", "high"].includes(task.priority) ? task.priority : "medium",
     assignees: [...new Set(Array.isArray(task.assignees) ? task.assignees.map(String).filter(Boolean) : [])],
     start: cleanDate(task.start),
@@ -59,6 +62,7 @@ function normalizeTask(task = {}) {
     tags: [...new Set(Array.isArray(task.tags) ? task.tags.map((tag) => String(tag).trim()).filter(Boolean) : [])],
     attachments: cleanAttachments(task.attachments),
     ...(progress == null ? {} : { progress }),
+    ...(task.larkRecordId ? { larkRecordId: String(task.larkRecordId) } : {}),
   };
 }
 
