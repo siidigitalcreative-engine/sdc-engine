@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
-import { upload } from "@vercel/blob/client";
 import { useAuth } from "../auth";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
@@ -646,32 +645,46 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDele
 
   const toggleAssignee = (id) => setForm({ assignees: f.assignees.includes(id) ? f.assignees.filter((a) => a !== id) : [...f.assignees, id] });
   const addTag = () => { const v = tagDraft.trim().replace(/^#/, ""); if (v && !f.tags.includes(v)) setForm({ tags: [...f.tags, v] }); setTagDraft(""); };
-  const uploadOne = (file, key) => new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload");
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) {
-        const pct = Math.round((ev.loaded / ev.total) * 100);
-        patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, progress: pct } : a)) }));
-      }
-    };
-    xhr.onload = () => {
-      let d = {};
-      try { d = JSON.parse(xhr.responseText || "{}"); } catch { /* ignore */ }
-      if (xhr.status >= 200 && xhr.status < 300 && d.url) resolve(d);
-      else reject(new Error(d.error || `Upload failed (${xhr.status})`));
-    };
-    xhr.onerror = () => reject(new Error("Network error during upload."));
-    const fd = new FormData();
-    fd.append("file", file);
-    xhr.send(fd);
-  });
+  // Chunked upload through our own server (no direct browser→Blob call).
+  const uploadChunked = async (file, key) => {
+    const CHUNK = 3 * 1024 * 1024; // 3 MB parts (under the serverless body limit)
+    const startRes = await fetch("/api/upload?action=start", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: file.name, contentType: file.type || "" }),
+    });
+    const start = await startRes.json().catch(() => ({}));
+    if (!startRes.ok) throw new Error(start.error || "Could not start upload.");
+    const { pathname, key: mkey, uploadId } = start;
+
+    const total = Math.max(1, Math.ceil(file.size / CHUNK));
+    const parts = [];
+    let uploaded = 0;
+    for (let i = 0; i < total; i += 1) {
+      const chunk = file.slice(i * CHUNK, Math.min(file.size, (i + 1) * CHUNK));
+      const partNumber = i + 1;
+      const q = new URLSearchParams({ action: "part", pathname, key: mkey, uploadId, partNumber: String(partNumber) });
+      const res = await fetch(`/api/upload?${q.toString()}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: chunk });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || `Part ${partNumber} failed.`);
+      parts.push({ etag: d.etag, partNumber });
+      uploaded += chunk.size;
+      const pct = Math.round((uploaded / file.size) * 100);
+      patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, progress: pct } : a)) }));
+    }
+
+    const compRes = await fetch("/api/upload?action=complete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pathname, key: mkey, uploadId, parts }),
+    });
+    const comp = await compRes.json().catch(() => ({}));
+    if (!compRes.ok) throw new Error(comp.error || "Could not finalize upload.");
+    return { url: comp.url, contentType: file.type || "" };
+  };
 
   const onFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
-    const SMALL_MAX = 4 * 1024 * 1024;    // route through the server up to here
-    const HARD_MAX = 50 * 1024 * 1024;    // absolute limit
+    const HARD_MAX = 50 * 1024 * 1024; // 50 MB
     for (const file of files) {
       const key = `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       if (file.size > HARD_MAX) {
@@ -680,18 +693,7 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDele
       }
       patchForm((form) => ({ attachments: [...(form.attachments || []), { key, name: file.name, size: file.size, uploading: true, progress: 0 }] }));
       try {
-        let result;
-        if (file.size <= SMALL_MAX) {
-          result = await uploadOne(file, key);   // same-origin server upload (XHR)
-        } else {
-          const blob = await upload(file.name, file, {
-            access: "public",
-            handleUploadUrl: "/api/upload-token",
-            contentType: file.type || undefined,
-            onUploadProgress: (p) => patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, progress: Math.round(p.percentage) } : a)) })),
-          });
-          result = { url: blob.url, contentType: file.type || "" };
-        }
+        const result = await uploadChunked(file, key);
         patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { name: a.name, size: a.size, url: result.url, contentType: result.contentType || "" } : a)) }));
       } catch (err) {
         patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, uploading: false, error: true } : a)) }));
