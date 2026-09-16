@@ -1,11 +1,11 @@
 import { ImageResponse } from "next/og";
-import { buildTasksImage } from "../../lib/tasks-image";
+import { buildTaskImage } from "../../lib/task-image";
 
 export const runtime = "edge";
 
 export async function POST(request) {
   const body = await request.json().catch(() => ({}));
-  const tasks = Array.isArray(body.tasks) ? body.tasks : [];
-  const { element, width, height } = buildTasksImage(tasks);
+  const task = body.task && typeof body.task === "object" ? body.task : {};
+  const { element, width, height } = buildTaskImage(task);
   return new ImageResponse(element, { width, height });
 }
