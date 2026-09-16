@@ -1,37 +1,61 @@
-import { put } from "@vercel/blob";
+import { createMultipartUpload, uploadPart, completeMultipartUpload } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { getAuthenticatedMember } from "../../lib/auth-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Server-proxied upload: the browser posts the file here (same-origin, no CORS),
-// and we store it in Blob using the read-write token that already works for reads.
-// Vercel caps a function's request body at ~4.5 MB, so this handles images/docs;
-// very large files (e.g. long videos) need the direct-to-Blob client flow.
-const MAX = 4 * 1024 * 1024; // 4 MB safety margin under Vercel's body limit
-
+// Chunked multipart upload, proxied entirely through the server so the browser
+// never talks to Vercel's Blob host directly (which was CORS-blocked here).
+// The client slices the file into small parts; each request stays under the
+// serverless body limit, and parts are assembled into one Blob.
 export async function POST(request) {
+  const actor = await getAuthenticatedMember(request);
+  if (!actor) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
+  const { searchParams } = new URL(request.url);
+  const action = searchParams.get("action");
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+
   try {
-    const actor = await getAuthenticatedMember(request);
-    if (!actor) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    if (action === "start") {
+      const { name, contentType } = await request.json();
+      const safe = String(name || "file").replace(/[^\w.\-]+/g, "_").slice(0, 120);
+      const pathname = `sdc/attachments/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
+      const mp = await createMultipartUpload(pathname, {
+        access: "public",
+        addRandomSuffix: false,
+        contentType: contentType || undefined,
+        token,
+      });
+      return NextResponse.json({ pathname, key: mp.key, uploadId: mp.uploadId });
+    }
 
-    const form = await request.formData();
-    const file = form.get("file");
-    if (!file || typeof file === "string") return NextResponse.json({ error: "No file provided." }, { status: 400 });
-    if (file.size > MAX) return NextResponse.json({ error: "File is larger than the 4 MB upload limit." }, { status: 413 });
+    if (action === "part") {
+      const pathname = searchParams.get("pathname");
+      const key = searchParams.get("key");
+      const uploadId = searchParams.get("uploadId");
+      const partNumber = Number(searchParams.get("partNumber"));
+      if (!pathname || !key || !uploadId || !partNumber) {
+        return NextResponse.json({ error: "Missing part parameters." }, { status: 400 });
+      }
+      const buf = Buffer.from(await request.arrayBuffer());
+      const part = await uploadPart(pathname, buf, { access: "public", key, uploadId, partNumber, token });
+      return NextResponse.json({ etag: part.etag, partNumber: part.partNumber ?? partNumber });
+    }
 
-    const safe = String(file.name || "file").replace(/[^\w.\-]+/g, "_").slice(0, 120);
-    const key = `sdc/attachments/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
-    const blob = await put(key, file, {
-      access: "public",
-      addRandomSuffix: false,
-      contentType: file.type || undefined,
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    });
-    return NextResponse.json({ name: file.name, size: file.size, url: blob.url, contentType: file.type || "" });
+    if (action === "complete") {
+      const { pathname, key, uploadId, parts } = await request.json();
+      if (!pathname || !key || !uploadId || !Array.isArray(parts)) {
+        return NextResponse.json({ error: "Missing complete parameters." }, { status: 400 });
+      }
+      const result = await completeMultipartUpload(pathname, parts, { access: "public", key, uploadId, token });
+      return NextResponse.json({ url: result.url });
+    }
+
+    return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   } catch (error) {
-    console.error("POST /api/upload", error);
+    console.error("POST /api/upload", action, error);
     return NextResponse.json({ error: error.message || "Upload failed." }, { status: 500 });
   }
 }
