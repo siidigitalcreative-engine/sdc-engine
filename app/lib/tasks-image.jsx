@@ -10,7 +10,14 @@ const PRI = {
   medium: { name: "Medium", color: "#E0A93C", soft: "#FAEFD6" },
   high: { name: "High", color: "#E5536E", soft: "#FBE1E7" },
 };
-const fmtDue = (iso) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtDue = (v) => {
+  const s = String(v || "");
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}`;
+  const d = new Date(s);
+  return isNaN(d) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+};
 
 const PAD = 24, GAP = 16, COL_W = 286;   // fixed column width; the image widens with more columns
 const HEAD = 112, COL_HEADER = 40, CARD_GAP = 10;
@@ -46,7 +53,7 @@ export function buildTasksImage(tasks = [], statuses = null) {
   const done = (byStatus.done || []).length;
   const overdue = list.filter((t) => t.overdue).length;
 
-  const CAP = 12;
+  const CAP = 100000; // effectively no cap — show every card
   const cols = stdefs.map((s) => {
     const arr = byStatus[s.id] || [];
     return { id: s.id, meta: { name: s.name, color: s.color }, total: arr.length, shown: arr.slice(0, CAP), extra: Math.max(0, arr.length - CAP) };
