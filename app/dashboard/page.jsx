@@ -174,7 +174,10 @@ export default function DashboardPage() {
     if (statuses) { const found = statuses.find((s) => s.id === id); if (found) return { name: found.name, color: found.color || "#8E8A96" }; }
     const d = STATUSES[id]; return d ? { name: d.name, color: d.color } : { name: id || "—", color: "#8E8A96" };
   };
-  const myActive = mine.filter((t) => t.status !== "done");
+  const startToday = startOfDay(now).getTime();
+  const endToday = startToday + 24 * 60 * 60 * 1000;
+  const doneToday = (t) => t.status === "done" && t.doneAt && t.doneAt >= startToday && t.doneAt < endToday;
+  const myActive = mine.filter((t) => t.status !== "done" || doneToday(t));
   const dailyPayload = () => ({
     member: { memberName: m.name, memberInitials: m.i, memberColor: m.c, heading: "Task Update" },
     tasks: myActive.map((t) => {
