@@ -41,7 +41,7 @@ const STATUSES = {
   todo: { name: "To Do", color: "#8E8A96", soft: "#ECEBEE" },
   inprogress: { name: "In Progress", color: "#3E8ED0", soft: "#E3EEF9" },
   inreview: { name: "In Review", color: "#E0A93C", soft: "#FAEFD6" },
-  done: { name: "Completed", color: "#3FA37A", soft: "#DEF1E7" },
+  done: { name: "Done", color: "#3FA37A", soft: "#DEF1E7" },
 };
 
 const PROJECTS = ["Sunbeams Lifestyle", "Quencha", "CRYSALIS", "SCRUBZ", "PRIMEO", "Website Revamp", "FITSPIRE", "Nest Design Lab", "Daily Tasks"];
