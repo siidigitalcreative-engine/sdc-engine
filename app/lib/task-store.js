@@ -72,6 +72,7 @@ function normalizeTask(task = {}) {
     ...(progress == null ? {} : { progress }),
     ...(task.larkRecordId ? { larkRecordId: String(task.larkRecordId) } : {}),
     ...(task.doneAt ? { doneAt: Number(task.doneAt) } : {}),
+    ...(task.archived ? { archived: true } : {}),
   };
 }
 
