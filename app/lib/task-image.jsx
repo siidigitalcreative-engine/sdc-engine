@@ -95,7 +95,7 @@ export function buildTaskImage(task = {}) {
         {/* description */}
         {descLinesArr.length ? (
           <div style={{ display: "flex", flexDirection: "column", marginBottom: 20 }}>
-            <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0", marginBottom: 6 }}>NOTES</div>
+            <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0", marginBottom: 6 }}>DESCRIPTION</div>
             <div style={{ display: "flex", flexDirection: "column" }}>
               {descLinesArr.map((ln, i) => (
                 <div key={i} style={{ display: "flex", fontSize: 15, color: "#4A4753", lineHeight: 1.45 }}>{ln === "" ? "\u00A0" : ln}</div>
