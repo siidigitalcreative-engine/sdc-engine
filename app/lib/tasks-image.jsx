@@ -64,12 +64,12 @@ export function buildTasksImage(tasks = [], statuses = null) {
 
   const colHeight = (c) => {
     let h = COL_HEADER;
-    for (const t of c.shown) h += estimateCardHeight(t) + CARD_GAP;
-    if (c.extra > 0) h += 30;
+    for (const t of c.shown) h += estimateCardHeight(t);
+    h += CARD_GAP * Math.max(0, c.shown.length - 1);   // gaps only between cards
     return h;
   };
   const maxCol = Math.max(1, ...cols.map(colHeight));
-  const H = HEAD + 22 + maxCol + 28;
+  const H = HEAD + 22 + maxCol + PAD;   // bottom padding == side padding
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
 
   const element = (
@@ -80,7 +80,7 @@ export function buildTasksImage(tasks = [], statuses = null) {
         <div style={{ display: "flex", fontSize: 13, color: "rgba(255,255,255,0.9)", marginTop: 3 }}>{dateStr} · {total} tasks · {done} done · {overdue} overdue</div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "flex-start", flexGrow: 1, paddingLeft: PAD, paddingRight: PAD, paddingTop: 22, paddingBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", flexGrow: 1, paddingLeft: PAD, paddingRight: PAD, paddingTop: 22, paddingBottom: PAD }}>
         {cols.map((c, ci) => (
           <div key={c.id} style={{ display: "flex", flexDirection: "column", width: COL_W, marginLeft: ci ? GAP : 0 }}>
             <div style={{ display: "flex", alignItems: "center", height: COL_HEADER }}>
@@ -95,7 +95,7 @@ export function buildTasksImage(tasks = [], statuses = null) {
               const pri = PRI[t.priority] || PRI.medium;
               const one = (t.assignees || []).length === 1 ? t.assignees[0] : null;
               return (
-                <div key={ti} style={{ display: "flex", flexDirection: "column", width: COL_W, padding: 10, borderRadius: 12, backgroundColor: "#ffffff", border: "1px solid #EAEBEE", marginBottom: CARD_GAP }}>
+                <div key={ti} style={{ display: "flex", flexDirection: "column", width: COL_W, height: estimateCardHeight(t), padding: 10, borderRadius: 12, backgroundColor: "#ffffff", border: "1px solid #EAEBEE", marginBottom: ti < c.shown.length - 1 ? CARD_GAP : 0 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                     <div style={{ display: "flex", alignItems: "center", height: 20, paddingLeft: 8, paddingRight: 8, borderRadius: 10, backgroundColor: pri.soft }}>
                       <div style={{ display: "flex", fontSize: 11, fontWeight: 700, color: pri.color }}>{pri.name}</div>
