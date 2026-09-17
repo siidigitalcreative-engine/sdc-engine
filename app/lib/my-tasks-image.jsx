@@ -19,6 +19,7 @@ export function buildMyTasksImage(tasks = [], opts = {}) {
   const memberName = opts.memberName || "My";
   const memberInitials = opts.memberInitials || "";
   const memberColor = opts.memberColor || "#3E8ED0";
+  const heading = opts.heading || "Task Update";
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   let bodyH = 24; // top gap under the header
@@ -36,7 +37,7 @@ export function buildMyTasksImage(tasks = [], opts = {}) {
         </div>
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", fontSize: 14, letterSpacing: 2, color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>SDC · DAILY UPDATE</div>
-          <div style={{ display: "flex", fontSize: 28, color: "#ffffff", fontWeight: 700, marginTop: 2 }}>{memberName} — In Progress</div>
+          <div style={{ display: "flex", fontSize: 28, color: "#ffffff", fontWeight: 700, marginTop: 2 }}>{memberName} — {heading}</div>
           <div style={{ display: "flex", fontSize: 13, color: "rgba(255,255,255,0.92)", marginTop: 2 }}>{dateStr} · {list.length} {list.length === 1 ? "task" : "tasks"}</div>
         </div>
       </div>
@@ -46,14 +47,14 @@ export function buildMyTasksImage(tasks = [], opts = {}) {
         {list.length === 0 ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 56, fontSize: 16, color: "#9A9CA6" }}>No tasks in progress. 🎉</div>
         ) : list.map((t, i) => {
-          const pri = PRI[t.priority] || PRI.medium;
+          const st = { name: t.statusName || "—", color: t.statusColor || "#8E8A96" };
           const progress = typeof t.progress === "number" ? Math.max(0, Math.min(100, t.progress)) : null;
           return (
             <div key={i} style={{ display: "flex", flexDirection: "column", height: rowHeight(t), padding: 14, borderRadius: 14, backgroundColor: "#ffffff", border: "1px solid #EAEBEE", marginBottom: i < list.length - 1 ? ROW_GAP : 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <div style={{ display: "flex", fontSize: 17, fontWeight: 700, color: "#1F2430", lineHeight: 1.25, maxWidth: 560 }}>{String(t.title || "Untitled").slice(0, TITLE_CAP)}</div>
-                <div style={{ display: "flex", alignItems: "center", height: 24, paddingLeft: 10, paddingRight: 10, borderRadius: 12, backgroundColor: pri.soft }}>
-                  <div style={{ display: "flex", fontSize: 12, fontWeight: 700, color: pri.color }}>{pri.name}</div>
+                <div style={{ display: "flex", fontSize: 17, fontWeight: 700, color: "#1F2430", lineHeight: 1.25, maxWidth: 540 }}>{String(t.title || "Untitled").slice(0, TITLE_CAP)}</div>
+                <div style={{ display: "flex", alignItems: "center", height: 24, paddingLeft: 10, paddingRight: 10, borderRadius: 12, backgroundColor: st.color }}>
+                  <div style={{ display: "flex", fontSize: 12, fontWeight: 700, color: "#ffffff" }}>{st.name}</div>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
