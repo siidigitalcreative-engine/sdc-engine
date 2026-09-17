@@ -135,6 +135,7 @@ export default function DashboardPage() {
   const mine = useMemo(() => {
     if (!m) return [];
     return tasks.filter((task) => {
+      if (task.archived) return false;
       const assignees = Array.isArray(task.assignees) ? task.assignees : [];
       // Supports both current member IDs and any older task records that still contain initials.
       return assignees.includes(m.id) || assignees.includes(m.i);
