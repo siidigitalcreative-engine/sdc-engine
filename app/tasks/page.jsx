@@ -5,7 +5,7 @@ import { useAuth } from "../auth";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, X, Search, Paperclip, Clock, Flag, Trash2, Tag, Sparkles, List, MoreHorizontal,
-  Moon, Sun, ChevronDown,
+  Moon, Sun, ChevronDown, Archive,
 } from "lucide-react";
 
 /* ---------- theme ---------- */
@@ -242,19 +242,23 @@ export default function TasksPage() {
   // so can make an unsaved local transformation look like persisted data.
 
 
+  const [showArchived, setShowArchived] = useState(false);
+  const visibleTasks = useMemo(() => (showArchived ? tasks : tasks.filter((t) => !t.archived)), [tasks, showArchived]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tasks;
-    return tasks.filter((t) =>
+    if (!q) return visibleTasks;
+    return visibleTasks.filter((t) =>
       t.title.toLowerCase().includes(q) || t.project.toLowerCase().includes(q) || t.tags.some((g) => g.toLowerCase().includes(q)));
-  }, [tasks, query]);
+  }, [visibleTasks, query]);
 
+  const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
   const stats = useMemo(() => ({
-    total: tasks.length,
-    inprogress: tasks.filter((t) => t.status === "inprogress").length,
-    done: tasks.filter((t) => t.status === "done").length,
-    overdue: tasks.filter(isOverdue).length,
-  }), [tasks]);
+    total: activeTasks.length,
+    inprogress: activeTasks.filter((t) => t.status === "inprogress").length,
+    done: activeTasks.filter((t) => t.status === "done").length,
+    overdue: activeTasks.filter(isOverdue).length,
+  }), [activeTasks]);
 
   const blank = (status = "todo") => ({
     id: null, title: "", project: projects[0] || "", desc: "", notes: "", status, priority: "medium",
@@ -324,6 +328,26 @@ export default function TasksPage() {
     }
   };
 
+  const archive = async (archived) => {
+    if (savingTask || !modal?.form?.id) return;
+    setSavingTask(true);
+    setTaskError("");
+    mutationGenerationRef.current += 1;
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: modal.form.id, data: { archived } }),
+      });
+      await applyTaskResponse(response, "Unable to archive task.");
+      setModal(null);
+    } catch (error) {
+      setTaskError(error.message || "Unable to archive task.");
+    } finally {
+      setSavingTask(false);
+    }
+  };
+
   const drop = async (statusId) => {
     const id = dragId;
     setDragId(null);
@@ -350,12 +374,12 @@ export default function TasksPage() {
 
   const buildTasksPayload = () => ({
     statuses: (statuses || []).map((s) => ({ id: s.id, name: s.name, color: s.color })),
-    tasks: (tasks || []).map((t) => ({
+    tasks: (filtered || []).map((t) => ({
       title: t.title,
       project: t.project,
       status: t.status,
       priority: t.priority,
-      due: t.due instanceof Date ? t.due.toISOString() : (t.due || null),
+      due: t.due instanceof Date ? toDateInput(t.due) : (t.due || null),
       overdue: isOverdue(t),
       desc: t.desc || "",
       assignees: (t.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean).map((m) => ({ i: m.i, c: m.c, name: m.name })),
@@ -405,6 +429,11 @@ export default function TasksPage() {
                   style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}><Icon size={15} />{v}</button>
               ))}
             </div>
+            <button onClick={() => setShowArchived((v) => !v)} title="Toggle archived tasks"
+              className="tp-ib rounded-full px-3 py-2 text-sm font-medium shadow-sm inline-flex items-center gap-1.5"
+              style={showArchived ? { background: ACCENT_GRAD, color: ON_ACCENT } : { background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+              <Archive size={15} /> {showArchived ? "Hide archived" : "Archived"}
+            </button>
             <div className="flex items-center gap-2 shrink-0">
               <button onClick={exportTasksPng} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
               <button onClick={sendTasksToLark} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
@@ -486,7 +515,7 @@ export default function TasksPage() {
           )}
         </main>
 
-      {modal && <TaskModal modal={modal} members={members} setForm={setForm} patchForm={patchForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
+      {modal && <TaskModal modal={modal} members={members} setForm={setForm} patchForm={patchForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} onArchive={archive} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
     </>
   );
 }
@@ -555,7 +584,7 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging })
 }
 
 /* ---------- modal ---------- */
-function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDelete, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
+function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDelete, onArchive, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
@@ -610,8 +639,8 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDele
   const singleTaskPayload = () => ({
     task: {
       title: f.title, project: f.project, status: f.status, priority: f.priority,
-      due: f.due instanceof Date ? f.due.toISOString() : (f.due || null),
-      start: f.start instanceof Date ? f.start.toISOString() : (f.start || null),
+      due: f.due instanceof Date ? toDateInput(f.due) : (f.due || null),
+      start: f.start instanceof Date ? toDateInput(f.start) : (f.start || null),
       time: f.time || "", desc: f.desc || "", tags: f.tags || [],
       progress: typeof f.progress === "number" ? f.progress : null,
       statusName: (statuses.find((s) => s.id === f.status) || {}).name || "",
@@ -857,7 +886,10 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDele
 
         <div className="flex items-center justify-between px-5 py-3.5 sticky bottom-0" style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}>
           {modal.mode === "edit" ? (
-            <button disabled={saving} onClick={onDelete} className="tp-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "#E5536E" }}><Trash2 size={16} /> Delete</button>
+            <div className="flex items-center gap-1">
+              <button disabled={saving} onClick={onDelete} className="tp-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "#E5536E" }}><Trash2 size={16} /> Delete</button>
+              <button disabled={saving} onClick={() => onArchive(!f.archived)} className="tp-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "var(--text-2)" }}><Archive size={16} /> {f.archived ? "Unarchive" : "Archive"}</button>
+            </div>
           ) : <span />}
           <div className="flex gap-2">
             <button disabled={saving} onClick={onClose} className="tp-ib text-sm px-4 py-2 rounded-full disabled:opacity-50" style={{ color: "var(--text-2)" }}>Cancel</button>
