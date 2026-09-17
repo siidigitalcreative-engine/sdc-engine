@@ -69,6 +69,8 @@ export default function DashboardPage() {
   const [monthCursor, setMonthCursor] = useState(startOfMonth(new Date()));
   const [tasks, setTasks] = useState([]);
   const [taskError, setTaskError] = useState("");
+  const [dailyBusy, setDailyBusy] = useState("");
+  const [dailyMsg, setDailyMsg] = useState("");
   const taskEtagRef = useRef(null);
   const loadingTasksRef = useRef(false);
   const now = new Date();
@@ -158,6 +160,40 @@ export default function DashboardPage() {
 
   if (!m) return null;
 
+  const myInProgress = mine.filter((t) => t.status === "inprogress");
+  const dailyPayload = () => ({
+    member: { memberName: m.name, memberInitials: m.i, memberColor: m.c },
+    tasks: myInProgress.map((t) => ({
+      title: t.title, project: t.project, priority: t.priority,
+      due: t.due || null,
+      overdue: !!t.due && t.status !== "done" && new Date(t.due) < startOfDay(now),
+      progress: typeof t.progress === "number" ? t.progress : null,
+    })),
+  });
+  const exportDailyPng = async () => {
+    setDailyBusy("png"); setDailyMsg("");
+    try {
+      const res = await fetch("/api/my-tasks-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dailyPayload()) });
+      if (!res.ok) throw new Error("Unable to render the image.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = `sdc-${m.name.split(" ")[0].toLowerCase()}-inprogress.png`;
+      link.href = url; link.click(); URL.revokeObjectURL(url);
+    } catch (e) { setDailyMsg(e.message || "Export failed."); }
+    finally { setDailyBusy(""); }
+  };
+  const sendDailyToLark = async () => {
+    setDailyBusy("lark"); setDailyMsg("");
+    try {
+      const res = await fetch("/api/lark/my-tasks-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dailyPayload()) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Unable to send to Lark.");
+      setDailyMsg("Sent to Lark ✓");
+    } catch (e) { setDailyMsg(e.message || "Send to Lark failed."); }
+    finally { setDailyBusy(""); }
+  };
+
   const greeting = (() => { const h = now.getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; })();
   const dayLabel = selectedIsToday ? "Today" : day.toLocaleDateString("default", { weekday: "long", month: "short", day: "numeric" });
 
@@ -190,9 +226,19 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="rounded-2xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                     <h2 className="font-semibold" style={{ color: "var(--text)", fontSize: 17 }}>{dayLabel === "Today" ? "Today's tasks" : `Tasks · ${dayLabel}`}</h2>
-                    <span className="flex items-center gap-1 text-sm" style={{ color: "var(--muted)" }}>Show all <ArrowUpRight size={15} /></span>
+                    <div className="flex items-center gap-2">
+                      {dailyMsg && <span className="text-xs" style={{ color: dailyMsg.includes("✓") ? "#3FA37A" : "#E5536E" }}>{dailyMsg}</span>}
+                      <button type="button" onClick={exportDailyPng} disabled={!!dailyBusy} title="Export your in-progress tasks as PNG"
+                        className="db-pill rounded-full px-3 py-1.5 text-xs font-medium disabled:opacity-50" style={{ background: "var(--col)", color: "var(--text)", border: "1px solid var(--border)" }}>
+                        🖼️ {dailyBusy === "png" ? "…" : "Export"}
+                      </button>
+                      <button type="button" onClick={sendDailyToLark} disabled={!!dailyBusy} title="Send your in-progress tasks to Lark"
+                        className="db-pill rounded-full px-3 py-1.5 text-xs font-medium disabled:opacity-50" style={{ background: "var(--col)", color: "var(--text)", border: "1px solid var(--border)" }}>
+                        📤 {dailyBusy === "lark" ? "…" : "Send to Lark"}
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-2.5">
                     {dayTasks.length === 0 && <p className="text-sm py-6 text-center" style={{ color: "var(--muted)" }}>{selectedIsToday ? "No tasks scheduled today or currently in progress." : "Nothing scheduled for this day."}</p>}
