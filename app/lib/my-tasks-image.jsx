@@ -9,7 +9,8 @@ const W = 820, PAD = 40;
 const HEAD = 128, ROW_GAP = 12, TITLE_CAP = 92;
 
 const titleLinesOf = (t) => Math.max(1, Math.min(2, Math.ceil(Math.min((t.title || "").length, TITLE_CAP) / 58)));
-const rowHeight = (t) => 18 + titleLinesOf(t) * 22 + 16 + 14; // pad + title + project/meta + progress
+// container padding (28) + title lines (22 each) + title margin (4) + project row (26) + progress row (8) + buffer (8)
+const rowHeight = (t) => 28 + titleLinesOf(t) * 22 + 4 + 26 + 8 + 8;
 
 export function buildMyTasksImage(tasks = [], opts = {}) {
   const list = (Array.isArray(tasks) ? tasks : []).slice(0, 20);
