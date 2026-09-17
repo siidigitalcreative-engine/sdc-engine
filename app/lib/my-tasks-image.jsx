@@ -9,8 +9,10 @@ const W = 820, PAD = 40;
 const HEAD = 128, ROW_GAP = 12, TITLE_CAP = 92;
 
 const titleLinesOf = (t) => Math.max(1, Math.min(2, Math.ceil(Math.min((t.title || "").length, TITLE_CAP) / 58)));
-// container padding (28) + title lines (22 each) + title margin (4) + project row (26) + progress row (8) + buffer (8)
-const rowHeight = (t) => 28 + titleLinesOf(t) * 22 + 4 + 26 + 8 + 8;
+const hasProg = (t) => typeof t.progress === "number";
+// EXACT fixed card height (card is rendered at exactly this height), so the
+// image height is precise and the bottom padding equals the side padding.
+const rowHeight = (t) => 28 + (titleLinesOf(t) === 2 ? 50 : 30) + 26 + (hasProg(t) ? 8 : 0);
 
 export function buildMyTasksImage(tasks = [], opts = {}) {
   const list = (Array.isArray(tasks) ? tasks : []).slice(0, 20);
@@ -19,10 +21,10 @@ export function buildMyTasksImage(tasks = [], opts = {}) {
   const memberColor = opts.memberColor || "#3E8ED0";
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  let bodyH = 24;
+  let bodyH = 24; // top gap under the header
   if (list.length === 0) bodyH += 60;
-  else for (const t of list) bodyH += rowHeight(t) + ROW_GAP;
-  bodyH += 20;
+  else { for (const t of list) bodyH += rowHeight(t); bodyH += ROW_GAP * (list.length - 1); }
+  bodyH += PAD; // bottom padding == left/right
   const H = HEAD + bodyH;
 
   const element = (
@@ -40,14 +42,14 @@ export function buildMyTasksImage(tasks = [], opts = {}) {
       </div>
 
       {/* body */}
-      <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, paddingLeft: PAD, paddingRight: PAD, paddingTop: 24 }}>
+      <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, paddingLeft: PAD, paddingRight: PAD, paddingTop: 24, paddingBottom: PAD }}>
         {list.length === 0 ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 56, fontSize: 16, color: "#9A9CA6" }}>No tasks in progress. 🎉</div>
         ) : list.map((t, i) => {
           const pri = PRI[t.priority] || PRI.medium;
           const progress = typeof t.progress === "number" ? Math.max(0, Math.min(100, t.progress)) : null;
           return (
-            <div key={i} style={{ display: "flex", flexDirection: "column", padding: 14, borderRadius: 14, backgroundColor: "#ffffff", border: "1px solid #EAEBEE", marginBottom: ROW_GAP }}>
+            <div key={i} style={{ display: "flex", flexDirection: "column", height: rowHeight(t), padding: 14, borderRadius: 14, backgroundColor: "#ffffff", border: "1px solid #EAEBEE", marginBottom: i < list.length - 1 ? ROW_GAP : 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                 <div style={{ display: "flex", fontSize: 17, fontWeight: 700, color: "#1F2430", lineHeight: 1.25, maxWidth: 560 }}>{String(t.title || "Untitled").slice(0, TITLE_CAP)}</div>
                 <div style={{ display: "flex", alignItems: "center", height: 24, paddingLeft: 10, paddingRight: 10, borderRadius: 12, backgroundColor: pri.soft }}>
