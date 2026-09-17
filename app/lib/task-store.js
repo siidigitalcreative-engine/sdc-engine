@@ -60,6 +60,7 @@ function normalizeTask(task = {}) {
     title: String(task.title || "Untitled task").trim() || "Untitled task",
     project: String(task.project || "Daily Tasks"),
     desc: String(task.desc || ""),
+    notes: String(task.notes || ""),
     status,
     priority: ["low", "medium", "high"].includes(task.priority) ? task.priority : "medium",
     assignees: [...new Set(Array.isArray(task.assignees) ? task.assignees.map(String).filter(Boolean) : [])],
