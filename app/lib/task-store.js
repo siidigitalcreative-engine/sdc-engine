@@ -71,6 +71,7 @@ function normalizeTask(task = {}) {
     attachments: cleanAttachments(task.attachments),
     ...(progress == null ? {} : { progress }),
     ...(task.larkRecordId ? { larkRecordId: String(task.larkRecordId) } : {}),
+    ...(task.doneAt ? { doneAt: Number(task.doneAt) } : {}),
   };
 }
 
@@ -190,10 +191,18 @@ export async function mutateTasks(mutator, maxAttempts = 12) {
 }
 
 export function createTask(data = {}) {
-  return normalizeTask({ ...data, id: `task-${randomUUID()}` });
+  const task = { ...data, id: `task-${randomUUID()}` };
+  if (task.status === "done" && !task.doneAt) task.doneAt = Date.now();
+  return normalizeTask(task);
 }
 
 export function updateTask(existing, data = {}) {
   if (!existing) throw new Error("Task not found.");
-  return normalizeTask({ ...existing, ...data, id: existing.id });
+  const merged = { ...existing, ...data, id: existing.id };
+  const wasDone = existing.status === "done";
+  const isDone = merged.status === "done";
+  if (isDone && !wasDone) merged.doneAt = Date.now();   // just completed → stamp now
+  else if (!isDone) delete merged.doneAt;               // reopened → clear
+  // if it was and still is done, keep the original doneAt
+  return normalizeTask(merged);
 }
