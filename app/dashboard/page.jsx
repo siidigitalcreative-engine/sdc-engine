@@ -68,6 +68,7 @@ export default function DashboardPage() {
   const [day, setDay] = useState(startOfDay(new Date()));
   const [monthCursor, setMonthCursor] = useState(startOfMonth(new Date()));
   const [tasks, setTasks] = useState([]);
+  const [statuses, setStatuses] = useState(null);
   const [taskError, setTaskError] = useState("");
   const [dailyBusy, setDailyBusy] = useState("");
   const [dailyMsg, setDailyMsg] = useState("");
@@ -97,6 +98,15 @@ export default function DashboardPage() {
     } finally {
       loadingTasksRef.current = false;
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/statuses", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { statuses: null }))
+      .then((b) => { if (active) setStatuses(Array.isArray(b.statuses) && b.statuses.length ? b.statuses : null); })
+      .catch(() => {});
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -160,15 +170,23 @@ export default function DashboardPage() {
 
   if (!m) return null;
 
-  const myInProgress = mine.filter((t) => t.status === "inprogress");
+  const statusMeta = (id) => {
+    if (statuses) { const found = statuses.find((s) => s.id === id); if (found) return { name: found.name, color: found.color || "#8E8A96" }; }
+    const d = STATUSES[id]; return d ? { name: d.name, color: d.color } : { name: id || "—", color: "#8E8A96" };
+  };
+  const myActive = mine.filter((t) => t.status !== "done");
   const dailyPayload = () => ({
-    member: { memberName: m.name, memberInitials: m.i, memberColor: m.c },
-    tasks: myInProgress.map((t) => ({
-      title: t.title, project: t.project, priority: t.priority,
-      due: t.due || null,
-      overdue: !!t.due && t.status !== "done" && new Date(t.due) < startOfDay(now),
-      progress: typeof t.progress === "number" ? t.progress : null,
-    })),
+    member: { memberName: m.name, memberInitials: m.i, memberColor: m.c, heading: "Task Update" },
+    tasks: myActive.map((t) => {
+      const sm = statusMeta(t.status);
+      return {
+        title: t.title, project: t.project,
+        statusName: sm.name, statusColor: sm.color,
+        due: t.due || null,
+        overdue: !!t.due && t.status !== "done" && new Date(t.due) < startOfDay(now),
+        progress: typeof t.progress === "number" ? t.progress : null,
+      };
+    }),
   });
   const exportDailyPng = async () => {
     setDailyBusy("png"); setDailyMsg("");
@@ -178,7 +196,7 @@ export default function DashboardPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.download = `sdc-${m.name.split(" ")[0].toLowerCase()}-inprogress.png`;
+      link.download = `sdc-${m.name.split(" ")[0].toLowerCase()}-tasks.png`;
       link.href = url; link.click(); URL.revokeObjectURL(url);
     } catch (e) { setDailyMsg(e.message || "Export failed."); }
     finally { setDailyBusy(""); }
@@ -230,11 +248,11 @@ export default function DashboardPage() {
                     <h2 className="font-semibold" style={{ color: "var(--text)", fontSize: 17 }}>{dayLabel === "Today" ? "Today's tasks" : `Tasks · ${dayLabel}`}</h2>
                     <div className="flex items-center gap-2">
                       {dailyMsg && <span className="text-xs" style={{ color: dailyMsg.includes("✓") ? "#3FA37A" : "#E5536E" }}>{dailyMsg}</span>}
-                      <button type="button" onClick={exportDailyPng} disabled={!!dailyBusy} title="Export your in-progress tasks as PNG"
+                      <button type="button" onClick={exportDailyPng} disabled={!!dailyBusy} title="Export your active tasks as PNG"
                         className="db-pill rounded-full px-3 py-1.5 text-xs font-medium disabled:opacity-50" style={{ background: "var(--col)", color: "var(--text)", border: "1px solid var(--border)" }}>
                         🖼️ {dailyBusy === "png" ? "…" : "Export"}
                       </button>
-                      <button type="button" onClick={sendDailyToLark} disabled={!!dailyBusy} title="Send your in-progress tasks to Lark"
+                      <button type="button" onClick={sendDailyToLark} disabled={!!dailyBusy} title="Send your active tasks to Lark"
                         className="db-pill rounded-full px-3 py-1.5 text-xs font-medium disabled:opacity-50" style={{ background: "var(--col)", color: "var(--text)", border: "1px solid var(--border)" }}>
                         📤 {dailyBusy === "lark" ? "…" : "Send to Lark"}
                       </button>
