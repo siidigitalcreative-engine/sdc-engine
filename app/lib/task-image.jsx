@@ -3,7 +3,14 @@ const PRI = {
   medium: { name: "Medium", color: "#E0A93C", soft: "#FAEFD6" },
   high: { name: "High", color: "#E5536E", soft: "#FBE1E7" },
 };
-const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); } catch { return "—"; } };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtDate = (v) => {
+  const s = String(v || "");
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}`;
+  const d = new Date(s);
+  return isNaN(d) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+};
 
 const W = 760, PAD = 40;
 const TITLE_CAP = 120, DESC_CAP = 800;
