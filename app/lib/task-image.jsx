@@ -6,7 +6,7 @@ const PRI = {
 const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); } catch { return "—"; } };
 
 const W = 760, PAD = 40;
-const TITLE_CAP = 120, DESC_CAP = 380;
+const TITLE_CAP = 120, DESC_CAP = 800;
 
 export function buildTaskImage(task = {}) {
   const t = task || {};
@@ -14,14 +14,18 @@ export function buildTaskImage(task = {}) {
   const statusName = t.statusName || "To Do";
   const statusColor = t.statusColor || "#8E8A96";
   const title = String(t.title || "Untitled task").slice(0, TITLE_CAP);
-  const desc = String(t.desc || "").slice(0, DESC_CAP);
+  const desc = String(t.desc || "").replace(/\r\n/g, "\n").slice(0, DESC_CAP);
+  const descLinesArr = desc ? desc.split("\n") : [];
+  const CHARS_PER_LINE = 78; // approx chars that fit on one line at this width/size
+  let descVisualLines = 0;
+  for (const ln of descLinesArr) descVisualLines += Math.max(1, Math.ceil((ln.length || 1) / CHARS_PER_LINE));
+  descVisualLines = Math.min(descVisualLines, 20);
   const tags = Array.isArray(t.tags) ? t.tags.slice(0, 8) : [];
   const assignees = Array.isArray(t.assignees) ? t.assignees.slice(0, 8) : [];
   const progress = typeof t.progress === "number" ? Math.max(0, Math.min(100, t.progress)) : null;
   const overdue = !!t.due && t.status !== "done" && new Date(t.due) < new Date(new Date().toDateString());
 
   const titleLines = Math.max(1, Math.min(3, Math.ceil(title.length / 30)));
-  const descLines = desc ? Math.min(7, Math.ceil(desc.length / 60)) : 0;
 
   const HEAD = 96 + titleLines * 40;
   let bodyH = 24;                       // top pad
@@ -29,7 +33,7 @@ export function buildTaskImage(task = {}) {
   bodyH += 52;                          // project + meta grid label rows
   bodyH += 58;                          // start / due / time blocks
   if (progress !== null) bodyH += 50;   // progress bar
-  if (descLines) bodyH += 26 + descLines * 22;
+  if (descLinesArr.length) bodyH += 26 + descVisualLines * 22 + 8;
   if (tags.length) bodyH += 30 + 32;
   if (assignees.length) bodyH += 30 + 46;
   bodyH += 28;                          // bottom pad
@@ -89,10 +93,14 @@ export function buildTaskImage(task = {}) {
         ) : null}
 
         {/* description */}
-        {descLines ? (
+        {descLinesArr.length ? (
           <div style={{ display: "flex", flexDirection: "column", marginBottom: 20 }}>
             <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0", marginBottom: 6 }}>NOTES</div>
-            <div style={{ display: "flex", fontSize: 15, color: "#4A4753", lineHeight: 1.45 }}>{desc}</div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {descLinesArr.map((ln, i) => (
+                <div key={i} style={{ display: "flex", fontSize: 15, color: "#4A4753", lineHeight: 1.45 }}>{ln === "" ? "\u00A0" : ln}</div>
+              ))}
+            </div>
           </div>
         ) : null}
 
