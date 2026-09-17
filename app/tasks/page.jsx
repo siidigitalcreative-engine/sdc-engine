@@ -257,7 +257,7 @@ export default function TasksPage() {
   }), [tasks]);
 
   const blank = (status = "todo") => ({
-    id: null, title: "", project: projects[0] || "", desc: "", status, priority: "medium",
+    id: null, title: "", project: projects[0] || "", desc: "", notes: "", status, priority: "medium",
     assignees: [], start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [],
   });
   const openCreate = (status) => setModal({ mode: "create", form: blank(status) });
@@ -271,6 +271,7 @@ export default function TasksPage() {
       title: f.title.trim() || "Untitled task",
       project: f.project,
       desc: f.desc,
+      notes: f.notes || "",
       status: f.status,
       priority: f.priority,
       // The modal stores stable member IDs. Save those exact IDs instead of
@@ -805,6 +806,11 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDele
               <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
                 placeholder="Add tag…" className="flex-1 text-sm outline-none py-0.5" style={{ minWidth: 80 }} />
             </div>
+          </Labeled>
+
+          <Labeled label="Notes (long details — not shown on cards)">
+            <textarea value={f.notes || ""} onChange={(e) => setForm({ notes: e.target.value })} rows={5} placeholder="Full details, checklists, specs… kept on the task only."
+              className="w-full rounded-lg px-2.5 py-2 text-sm outline-none resize-y" style={field} />
           </Labeled>
 
           <Labeled label="Attachments">
