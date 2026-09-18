@@ -92,7 +92,7 @@ export function buildCalendarImage(events = [], opts = {}) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, paddingLeft: 28, paddingRight: 28, paddingTop: 16, paddingBottom: 18, backgroundColor: "#FBFBFC" }}>
-        <div style={{ display: "flex", fontSize: 16, fontWeight: 700, color: "#2A2833", marginBottom: 10 }}>Events this month</div>
+        <div style={{ display: "flex", fontSize: 16, fontWeight: 700, color: "#2A2833", marginBottom: 10 }}>Schedule this month</div>
         {monthEvents.length === 0 ? (
           <div style={{ display: "flex", fontSize: 13, color: "#9A9CA6" }}>No events scheduled.</div>
         ) : (
@@ -107,6 +107,11 @@ export function buildCalendarImage(events = [], opts = {}) {
                   <div style={{ display: "flex", width: 172, fontSize: 13, fontWeight: 600, color: "#4A4753" }}>{dateStr}</div>
                   <div style={{ display: "flex", width: 86, fontSize: 13, color: "#9A9CA6" }}>{timeStr}</div>
                   <div style={{ display: "flex", fontSize: 13, color: "#2A2833", flexGrow: 1, textDecoration: e.done ? "line-through" : "none" }}>{String(e.title || "").slice(0, 62)}</div>
+                  {e.done ? (
+                    <div style={{ display: "flex", alignItems: "center", height: 20, paddingLeft: 9, paddingRight: 9, borderRadius: 10, backgroundColor: "#DEF1E7", marginLeft: 8 }}>
+                      <div style={{ display: "flex", fontSize: 11, fontWeight: 700, color: "#2F8F63" }}>Done</div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
