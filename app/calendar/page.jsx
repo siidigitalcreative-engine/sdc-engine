@@ -125,6 +125,7 @@ export default function TeamCalendar() {
       color: catOf(e.calId)?.color || "#E5536E",
       allDay: !!e.allDay,
       done: !!e.done,
+      desc: e.desc || "",
     })),
   });
 
