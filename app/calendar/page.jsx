@@ -117,11 +117,16 @@ export default function TeamCalendar() {
   const [savingEvent, setSavingEvent] = useState(false);
 
 
+  const toLocalISO = (d) => {
+    if (!(d instanceof Date) || Number.isNaN(d.getTime())) return d;
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
+  };
   const buildCalendarPayload = () => ({
-    month: (cursor instanceof Date ? cursor : new Date()).toISOString(),
+    month: toLocalISO(cursor instanceof Date ? cursor : new Date()),
     events: (events || []).map((e) => ({
       title: e.title,
-      start: e.start instanceof Date ? e.start.toISOString() : e.start,
+      start: e.start instanceof Date ? toLocalISO(e.start) : e.start,
       color: catOf(e.calId)?.color || "#E5536E",
       allDay: !!e.allDay,
       done: !!e.done,
