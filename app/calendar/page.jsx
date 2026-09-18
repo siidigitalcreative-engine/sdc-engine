@@ -248,7 +248,7 @@ export default function TeamCalendar() {
     const end = new Date(start); if (!allDay) end.setHours(start.getHours() + 1);
     setModal({ mode: "create", form: { id: null, title: "", calId: calendars[0].id, date: toDateInput(start), start: toTimeInput(start), end: toTimeInput(end), allDay, desc: "", attendees: [] } });
   };
-  const openEdit = (ev) => setModal({ mode: "edit", form: { id: ev.id, title: ev.title, calId: ev.calId, date: toDateInput(ev.start), start: toTimeInput(ev.start), end: toTimeInput(ev.end), allDay: ev.allDay, desc: ev.desc || "", attendees: normalizeMemberRefs(ev.attendees || []) } });
+  const openEdit = (ev) => setModal({ mode: "edit", form: { id: ev.id, title: ev.title, calId: ev.calId, date: toDateInput(ev.start), start: toTimeInput(ev.start), end: toTimeInput(ev.end), allDay: ev.allDay, done: !!ev.done, desc: ev.desc || "", attendees: normalizeMemberRefs(ev.attendees || []) } });
   const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
   const saveModal = async () => {
     if (savingEvent) return;
@@ -263,6 +263,7 @@ export default function TeamCalendar() {
       start: start.toISOString(),
       end: end.toISOString(),
       allDay: f.allDay,
+      done: !!f.done,
       desc: f.desc,
       attendees: normalizeMemberRefs(f.attendees),
     };
@@ -463,7 +464,7 @@ function MonthView({ cells, cursor, today, eventsForDay, catOf, onDayCreate, onE
                   return (
                     <div key={ev.id} onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
                       className="tc-evt truncate rounded-lg px-2 py-1 cursor-pointer font-semibold"
-                      style={{ background: c.fill, color: TITLE_INK, fontSize: 11 }}>
+                      style={{ background: c.fill, color: TITLE_INK, fontSize: 11, textDecoration: ev.done ? "line-through" : "none", opacity: ev.done ? 0.6 : 1 }}>
                       {!ev.allDay && <span className="mr-1" style={{ color: TIME_INK }}>{fmtTime(ev.start)}</span>}
                       {ev.title}
                     </div>
@@ -525,7 +526,7 @@ function TimeGrid({ days, now, scrollRef, catOf, events, memberByRef, onEventCli
               return (
                 <div key={ev.id} onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
                   className="tc-evt truncate rounded-lg px-2 py-1 cursor-pointer font-semibold"
-                  style={{ background: c.fill, color: TITLE_INK, fontSize: 11 }}>{ev.title}</div>
+                  style={{ background: c.fill, color: TITLE_INK, fontSize: 11, textDecoration: ev.done ? "line-through" : "none", opacity: ev.done ? 0.6 : 1 }}>{ev.title}</div>
               );
             })}
           </div>
@@ -558,8 +559,8 @@ function TimeGrid({ days, now, scrollRef, catOf, events, memberByRef, onEventCli
                     <div key={ev.id} onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
                       className="tc-evt absolute rounded-xl overflow-hidden cursor-pointer flex flex-col"
                       style={{ top: top + 1, height: height - 2, left: `calc(${ev._col * w}% + 3px)`, width: `calc(${w}% - 6px)`,
-                        background: c.fill, color: TITLE_INK, padding: "5px 8px", lineHeight: 1.25 }}>
-                      <div className="font-semibold truncate" style={{ fontSize: 11.5 }}>{ev.title}</div>
+                        background: c.fill, color: TITLE_INK, padding: "5px 8px", lineHeight: 1.25, opacity: ev.done ? 0.6 : 1 }}>
+                      <div className="font-semibold truncate" style={{ fontSize: 11.5, textDecoration: ev.done ? "line-through" : "none" }}>{ev.title}</div>
                       {height > 36 && <div className="truncate" style={{ fontSize: 10.5, color: TIME_INK }}>{fmtTime(ev.start)} – {fmtTime(ev.end)}</div>}
                       {height > 62 && ev.attendees?.length > 0 && (
                         <div className="mt-auto pt-1"><AttendeeStack list={ev.attendees} memberByRef={memberByRef} ring={c.fill} size={19} /></div>
@@ -670,6 +671,9 @@ function EventModal({ modal, calendars, members, setForm, onClose, onSave, onDel
               )}
               <label className="flex items-center gap-2 text-sm" style={{ color: "var(--text-2)" }}>
                 <input type="checkbox" checked={f.allDay} onChange={(e) => setForm({ allDay: e.target.checked })} /> All day
+              </label>
+              <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none" style={{ color: f.done ? "#3FA37A" : "var(--text-2)" }}>
+                <input type="checkbox" checked={!!f.done} onChange={(e) => setForm({ done: e.target.checked })} /> Done
               </label>
             </div>
           </div>
