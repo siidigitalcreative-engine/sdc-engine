@@ -28,6 +28,7 @@ function normalizeEvent(event = {}) {
     start: start.toISOString(),
     end: end.toISOString(),
     allDay: Boolean(event.allDay),
+    done: Boolean(event.done),
     desc: String(event.desc || ""),
     attendees: [...new Set(Array.isArray(event.attendees) ? event.attendees.map(String).filter(Boolean) : [])],
   };
