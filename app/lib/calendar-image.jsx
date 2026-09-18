@@ -42,7 +42,7 @@ export function buildCalendarImage(events = [], opts = {}) {
   const fmtTime = (iso) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
   const W = 1000;
-  const HEAD = 96, WEEK = 34, CELL = 100;
+  const HEAD = 96, WEEK = 34, CELL = 132;
   const GRID_H = HEAD + WEEK + CELL * 6;
   const AG_ROW = 30;
   const rows = Math.max(monthEvents.length, 1);
@@ -77,9 +77,9 @@ export function buildCalendarImage(events = [], opts = {}) {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", marginTop: 3 }}>
                     {evs.slice(0, 3).map((e, ei) => (
-                      <div key={ei} style={{ display: "flex", alignItems: "center", height: 20, borderRadius: 6, paddingLeft: 5, paddingRight: 5, marginBottom: 3, backgroundColor: "#F3F0EC" }}>
+                      <div key={ei} style={{ display: "flex", alignItems: "center", height: 20, borderRadius: 6, paddingLeft: 5, paddingRight: 5, marginBottom: 3, backgroundColor: "#F3F0EC", opacity: e.done ? 0.55 : 1 }}>
                         <div style={{ display: "flex", width: 7, height: 7, borderRadius: 4, backgroundColor: e.color || "#E5536E", marginRight: 5 }} />
-                        <div style={{ display: "flex", fontSize: 11, color: "#2A2833" }}>{String(e.title || "").slice(0, 16)}</div>
+                        <div style={{ display: "flex", fontSize: 11, color: "#2A2833", textDecoration: e.done ? "line-through" : "none" }}>{String(e.title || "").slice(0, 16)}</div>
                       </div>
                     ))}
                     {evs.length > 3 ? (<div style={{ display: "flex", fontSize: 10, color: "#9A9CA6", paddingLeft: 3 }}>+{evs.length - 3} more</div>) : null}
@@ -102,11 +102,11 @@ export function buildCalendarImage(events = [], opts = {}) {
               const dateStr = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
               const timeStr = e.allDay ? "All day" : fmtTime(e.start);
               return (
-                <div key={i} style={{ display: "flex", alignItems: "center", height: AG_ROW, borderTop: i === 0 ? "none" : "1px solid #EEEFF2" }}>
+                <div key={i} style={{ display: "flex", alignItems: "center", height: AG_ROW, borderTop: i === 0 ? "none" : "1px solid #EEEFF2", opacity: e.done ? 0.55 : 1 }}>
                   <div style={{ display: "flex", width: 9, height: 9, borderRadius: 5, backgroundColor: e.color || "#E5536E", marginRight: 12 }} />
                   <div style={{ display: "flex", width: 172, fontSize: 13, fontWeight: 600, color: "#4A4753" }}>{dateStr}</div>
                   <div style={{ display: "flex", width: 86, fontSize: 13, color: "#9A9CA6" }}>{timeStr}</div>
-                  <div style={{ display: "flex", fontSize: 13, color: "#2A2833", flexGrow: 1 }}>{String(e.title || "").slice(0, 62)}</div>
+                  <div style={{ display: "flex", fontSize: 13, color: "#2A2833", flexGrow: 1, textDecoration: e.done ? "line-through" : "none" }}>{String(e.title || "").slice(0, 62)}</div>
                 </div>
               );
             })}
