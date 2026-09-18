@@ -44,9 +44,11 @@ export function buildCalendarImage(events = [], opts = {}) {
   const W = 1000;
   const HEAD = 96, WEEK = 34, CELL = 132;
   const GRID_H = HEAD + WEEK + CELL * 6;
-  const AG_ROW = 30;
-  const rows = Math.max(monthEvents.length, 1);
-  const AG_H = 16 + 32 + rows * AG_ROW + 18;
+  const AG_ROW = 32;
+  const hasDesc = (e) => Boolean(e && e.desc && String(e.desc).trim());
+  const rowH = (e) => (hasDesc(e) ? 48 : AG_ROW);
+  const agendaBody = monthEvents.length ? monthEvents.reduce((s, e) => s + rowH(e), 0) : AG_ROW;
+  const AG_H = 16 + 32 + agendaBody + 18;
   const H = GRID_H + AG_H;
   const colW = W / 7;
 
@@ -102,11 +104,16 @@ export function buildCalendarImage(events = [], opts = {}) {
               const dateStr = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
               const timeStr = e.allDay ? "All day" : fmtTime(e.start);
               return (
-                <div key={i} style={{ display: "flex", alignItems: "center", height: AG_ROW, borderTop: i === 0 ? "none" : "1px solid #EEEFF2", opacity: e.done ? 0.55 : 1 }}>
+                <div key={i} style={{ display: "flex", alignItems: "center", height: rowH(e), borderTop: i === 0 ? "none" : "1px solid #EEEFF2", opacity: e.done ? 0.55 : 1 }}>
                   <div style={{ display: "flex", width: 9, height: 9, borderRadius: 5, backgroundColor: e.color || "#E5536E", marginRight: 12 }} />
                   <div style={{ display: "flex", width: 172, fontSize: 13, fontWeight: 600, color: "#4A4753" }}>{dateStr}</div>
                   <div style={{ display: "flex", width: 86, fontSize: 13, color: "#9A9CA6" }}>{timeStr}</div>
-                  <div style={{ display: "flex", fontSize: 13, color: "#2A2833", flexGrow: 1 }}>{String(e.title || "").slice(0, 62)}</div>
+                  <div style={{ display: "flex", flexDirection: "column", flexGrow: 1 }}>
+                    <div style={{ display: "flex", fontSize: 13, color: "#2A2833" }}>{String(e.title || "").slice(0, 62)}</div>
+                    {hasDesc(e) ? (
+                      <div style={{ display: "flex", fontSize: 11, color: "#9A9CA6", marginTop: 2 }}>{String(e.desc).replace(/\s+/g, " ").slice(0, 90)}</div>
+                    ) : null}
+                  </div>
                   {e.done ? (
                     <div style={{ display: "flex", alignItems: "center", height: 20, paddingLeft: 9, paddingRight: 9, borderRadius: 10, backgroundColor: "#DEF1E7", marginLeft: 8 }}>
                       <div style={{ display: "flex", fontSize: 11, fontWeight: 700, color: "#2F8F63" }}>Done</div>
