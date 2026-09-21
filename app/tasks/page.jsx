@@ -21,6 +21,7 @@ const DEFAULT_STATUSES = [
   { id: "todo",       name: "To Do",       color: "#8E8A96", soft: "#ECEBEE", isDefault: true },
   { id: "inprogress", name: "In Progress", color: "#3E8ED0", soft: "#E3EEF9", isDefault: true },
   { id: "inreview",   name: "In Review",   color: "#E0A93C", soft: "#FAEFD6", isDefault: true },
+  { id: "revision",   name: "Revision",    color: "#7C5CD8", soft: "#EBE4FA", isDefault: true },
   { id: "done",       name: "Done",        color: "#3FA37A", soft: "#DEF1E7", isDefault: true },
 ];
 // Runtime list of statuses (defaults + any custom ones loaded from the API).
