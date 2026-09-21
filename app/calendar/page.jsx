@@ -6,7 +6,7 @@ import { useAuth } from "../auth";
 import {
   ChevronLeft, ChevronRight, Plus, X, Trash2, Search,
   Clock, AlignLeft, Sparkles, Users,
-  Moon, Sun,
+  Moon, Sun, Image as ImageIcon, Send,
   LayoutGrid, Calendar as CalIcon, CheckSquare, Folder, BarChart, Settings,
 } from "lucide-react";
 
@@ -644,6 +644,50 @@ function EventModal({ modal, calendars, members, setForm, onClose, onSave, onDel
   const f = modal.form;
   const cal = calendars.find((c) => c.id === f.calId) || calendars[0];
   const toggleAttendee = (id) => setForm({ attendees: f.attendees.includes(id) ? f.attendees.filter((a) => a !== id) : [...f.attendees, id] });
+
+  const [imgBusy, setImgBusy] = useState(false);
+  const [imgError, setImgError] = useState("");
+  const buildEventImagePayload = () => {
+    let start, end;
+    if (f.allDay) { start = fromInputs(f.date, "00:00"); end = new Date(start); }
+    else { start = fromInputs(f.date, f.start); end = fromInputs(f.date, f.end); }
+    return {
+      event: {
+        title: f.title || "Untitled event",
+        desc: f.desc || "",
+        calName: cal.name,
+        calColor: cal.color,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        allDay: f.allDay,
+        done: !!f.done,
+        attendees: f.attendees.map((id) => members.find((m) => m.id === id)).filter(Boolean).map((m) => ({ i: m.i, c: m.c, name: m.name })),
+      },
+    };
+  };
+  const exportEventPng = async () => {
+    setImgBusy(true); setImgError("");
+    try {
+      const res = await fetch("/api/event-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildEventImagePayload()) });
+      if (!res.ok) throw new Error("Unable to render event image.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = `${(f.title || "event").trim().replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "event"}.png`;
+      link.href = url; link.click(); URL.revokeObjectURL(url);
+    } catch (e) { setImgError(e.message || "Unable to export event image."); }
+    finally { setImgBusy(false); }
+  };
+  const sendEventToLark = async () => {
+    setImgBusy(true); setImgError("");
+    try {
+      const res = await fetch("/api/lark/event-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildEventImagePayload()) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Unable to send event to Lark.");
+    } catch (e) { setImgError(e.message || "Unable to send to Lark."); }
+    finally { setImgBusy(false); }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(20,18,26,0.4)" }} onClick={onClose}>
       <div className="rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" style={{ background: "var(--card)" }} onClick={(e) => e.stopPropagation()}>
@@ -718,15 +762,25 @@ function EventModal({ modal, calendars, members, setForm, onClose, onSave, onDel
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: "1px solid var(--border)" }}>
-          {modal.mode === "edit" ? (
-            <button disabled={saving} onClick={onDelete} className="tc-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "#E5536E" }}>
-              <Trash2 size={16} /> {saving ? "Saving…" : "Delete"}
-            </button>
-          ) : <span />}
-          <div className="flex gap-2">
-            <button disabled={saving} onClick={onClose} className="tc-ib text-sm px-4 py-2 rounded-full disabled:opacity-50" style={{ color: "var(--text-2)" }}>Cancel</button>
-            <button disabled={saving} onClick={onSave} className="tc-pill text-sm px-5 py-2 rounded-full font-medium shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>{saving ? "Saving…" : "Save"}</button>
+        <div className="px-5 py-3" style={{ borderTop: "1px solid var(--border)" }}>
+          {imgError && <p className="text-xs mb-2" style={{ color: "#E5536E" }}>{imgError}</p>}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              {modal.mode === "edit" ? (
+                <>
+                  <button disabled={saving} onClick={onDelete} className="tc-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "#E5536E" }}>
+                    <Trash2 size={16} /> {saving ? "Saving…" : "Delete"}
+                  </button>
+                  <span className="mx-1" style={{ width: 1, height: 20, background: "var(--border)" }} />
+                  <button disabled={imgBusy} onClick={exportEventPng} title="Export as PNG" className="tc-ib h-8 w-8 flex items-center justify-center rounded-lg disabled:opacity-50" style={{ color: "var(--text-2)" }}><ImageIcon size={16} /></button>
+                  <button disabled={imgBusy} onClick={sendEventToLark} title="Send to Lark" className="tc-ib h-8 w-8 flex items-center justify-center rounded-lg disabled:opacity-50" style={{ color: "var(--text-2)" }}><Send size={16} /></button>
+                </>
+              ) : <span />}
+            </div>
+            <div className="flex gap-2">
+              <button disabled={saving} onClick={onClose} className="tc-ib text-sm px-4 py-2 rounded-full disabled:opacity-50" style={{ color: "var(--text-2)" }}>Cancel</button>
+              <button disabled={saving} onClick={onSave} className="tc-pill text-sm px-5 py-2 rounded-full font-medium shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>{saving ? "Saving…" : "Save"}</button>
+            </div>
           </div>
         </div>
       </div>
