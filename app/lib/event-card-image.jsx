@@ -11,14 +11,13 @@ export function buildEventCardImage(event = {}) {
   const title = String(event.title || "Untitled event").slice(0, TITLE_CAP);
   const desc = String(event.desc || "").slice(0, DESC_CAP);
   const calName = String(event.calName || "");
-  const calColor = event.calColor || "#E5536E";
   const attendees = Array.isArray(event.attendees) ? event.attendees.slice(0, 8) : [];
   const timeStr = event.allDay ? "All day" : `${fmtTime(event.start)} – ${fmtTime(event.end)}`;
 
   const titleLines = Math.max(1, Math.ceil(title.length / 34));
   const descLines = desc ? Math.min(4, Math.ceil(desc.length / 62)) : 0;
 
-  let H = 96 + PAD * 2 + 26 + 16 + titleLines * 36;
+  let H = 96 + PAD * 2 + titleLines * 36;
   if (descLines) H += 10 + descLines * 22;
   H += 20 + 40; // date/time row
   if (attendees.length) H += 24 + 38;
@@ -38,14 +37,7 @@ export function buildEventCardImage(event = {}) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, padding: PAD }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", height: 26, paddingLeft: 10, paddingRight: 10, borderRadius: 13, backgroundColor: "#EAEBEE" }}>
-            <div style={{ display: "flex", width: 8, height: 8, borderRadius: 4, backgroundColor: calColor, marginRight: 7 }} />
-            <div style={{ display: "flex", fontSize: 12, fontWeight: 700, color: "#4A4753" }}>{calName || "Calendar"}</div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", fontSize: 28, fontWeight: 700, color: "#1F2430", lineHeight: 1.25, marginTop: 16 }}>{title}</div>
+        <div style={{ display: "flex", fontSize: 28, fontWeight: 700, color: "#1F2430", lineHeight: 1.25 }}>{title}</div>
 
         {desc ? (
           <div style={{ display: "flex", fontSize: 15, color: "#6E6A76", lineHeight: 1.4, marginTop: 10 }}>{desc}</div>
