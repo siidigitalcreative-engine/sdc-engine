@@ -1,5 +1,7 @@
-const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" }) : "—");
-const fmtTime = (iso) => (iso ? new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "");
+import { formatInAppTimeZone } from "./timezone";
+
+const fmtDate = (iso) => (iso ? formatInAppTimeZone(iso, { weekday: "long", month: "short", day: "numeric", year: "numeric" }, "—") : "—");
+const fmtTime = (iso) => (iso ? formatInAppTimeZone(iso, { hour: "numeric", minute: "2-digit" }, "") : "");
 
 const W = 760, PAD = 32;
 const TITLE_CAP = 90, DESC_CAP = 240;
