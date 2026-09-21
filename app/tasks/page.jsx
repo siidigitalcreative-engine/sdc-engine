@@ -262,6 +262,9 @@ export default function TasksPage() {
     overdue: activeTasks.filter(isOverdue).length,
   }), [activeTasks]);
 
+  const modalRef = useRef(null);
+  useEffect(() => { modalRef.current = modal; }, [modal]);
+
   const blank = (status = "todo") => ({
     id: null, title: "", project: projects[0] || "", desc: "", notes: "", status, priority: "medium",
     assignees: [], start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [],
@@ -270,9 +273,19 @@ export default function TasksPage() {
   const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), tags: [...t.tags], attachments: [...t.attachments] } });
   const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
   const patchForm = (fn) => setModal((m) => (m ? { ...m, form: { ...m.form, ...fn(m.form) } } : m));
-  const save = async () => {
-    if (savingTask || !modal) return;
-    const f = modal.form;
+
+  // Builds and sends the current modal form to the server. Reads from
+  // modalRef (not the closed-over `modal`) so it always saves the latest
+  // form even when called from a stale closure — e.g. an upload callback
+  // whose enclosing render happened several patchForm updates ago.
+  // `attachmentsOverride`, when given, is used verbatim instead of
+  // modalRef's attachments — needed because an auto-save fires immediately
+  // after the patchForm call that adds the finished upload, before that
+  // state update has necessarily flushed through to the ref.
+  const persistTask = useCallback(async ({ close, attachmentsOverride } = {}) => {
+    const m = modalRef.current;
+    if (!m) return;
+    const f = m.form;
     const base = {
       title: f.title.trim() || "Untitled task",
       project: f.project,
@@ -287,28 +300,39 @@ export default function TasksPage() {
       due: f.due || "",
       time: f.time || "",
       tags: [...f.tags],
-      attachments: [...f.attachments],
+      attachments: attachmentsOverride ? [...attachmentsOverride] : [...f.attachments],
       progress: f.progress,
     };
 
+    const isEdit = !!f.id;
     setSavingTask(true);
     setTaskError("");
     mutationGenerationRef.current += 1;
     try {
-      const isEdit = modal.mode === "edit";
       const response = await fetch("/api/tasks", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isEdit ? { id: f.id, data: base } : { data: base }),
       });
-      await applyTaskResponse(response, isEdit ? "Unable to update task." : "Unable to create task.");
-      setModal(null);
+      const body = await applyTaskResponse(response, isEdit ? "Unable to update task." : "Unable to create task.");
+      if (!isEdit && body?.task?.id != null) {
+        // Just created — switch the modal to edit mode targeting the new id
+        // so a later save (including an auto-save from another upload)
+        // patches this task instead of creating a duplicate.
+        setModal((mm) => (mm ? { mode: "edit", form: { ...mm.form, id: body.task.id } } : mm));
+      }
+      if (close) setModal(null);
     } catch (error) {
       setTaskError(error.message || "Unable to save task.");
     } finally {
       setSavingTask(false);
     }
-  };
+  }, [applyTaskResponse]);
+
+  const save = () => persistTask({ close: true });
+  // Fires once a file finishes uploading, so an attachment isn't lost if the
+  // person forgets to hit "Save task" (or closes the modal). Modal stays open.
+  const autoSaveAttachments = (attachments) => persistTask({ close: false, attachmentsOverride: attachments });
 
   const remove = async () => {
     if (savingTask || !modal?.form?.id) return;
@@ -517,7 +541,7 @@ export default function TasksPage() {
           )}
         </main>
 
-      {modal && <TaskModal modal={modal} members={members} setForm={setForm} patchForm={patchForm} onClose={() => !savingTask && setModal(null)} onSave={save} onDelete={remove} onArchive={archive} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
+      {modal && <TaskModal modal={modal} members={members} setForm={setForm} patchForm={patchForm} onClose={() => !savingTask && setModal(null)} onSave={save} onAutoSave={autoSaveAttachments} onDelete={remove} onArchive={archive} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
     </>
   );
 }
@@ -586,7 +610,7 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging })
 }
 
 /* ---------- modal ---------- */
-function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDelete, onArchive, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
+function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAutoSave, onDelete, onArchive, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
@@ -703,18 +727,24 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onDele
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     const HARD_MAX = 50 * 1024 * 1024; // 50 MB
+    // Tracked locally (not read back from React state) so the auto-save
+    // right after a file finishes always has the exact just-committed
+    // attachments, with no dependency on when that state update flushes.
+    let attachments = [...(f.attachments || [])];
+    const commit = (next) => { attachments = next; patchForm(() => ({ attachments: next })); };
     for (const file of files) {
       const key = `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       if (file.size > HARD_MAX) {
-        patchForm((form) => ({ attachments: [...(form.attachments || []), { key, name: file.name, size: file.size, uploading: false, error: true }] }));
+        commit([...attachments, { key, name: file.name, size: file.size, uploading: false, error: true }]);
         continue;
       }
-      patchForm((form) => ({ attachments: [...(form.attachments || []), { key, name: file.name, size: file.size, uploading: true, progress: 0 }] }));
+      commit([...attachments, { key, name: file.name, size: file.size, uploading: true, progress: 0 }]);
       try {
         const result = await uploadDirect(file, key);
-        patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { name: a.name, size: a.size, url: result.url, contentType: result.contentType || "" } : a)) }));
+        commit(attachments.map((a) => (a.key === key ? { name: a.name, size: a.size, url: result.url, contentType: result.contentType || "" } : a)));
+        onAutoSave?.(attachments);
       } catch (err) {
-        patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, uploading: false, error: true } : a)) }));
+        commit(attachments.map((a) => (a.key === key ? { ...a, uploading: false, error: true } : a)));
       }
     }
   };
