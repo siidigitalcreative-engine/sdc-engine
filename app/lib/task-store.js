@@ -31,6 +31,19 @@ const cleanDate = (value) => {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
 };
 
+const cleanSubtasks = (items) => (
+  Array.isArray(items)
+    ? items
+        .map((s) => ({
+          id: String(s?.id || `st-${randomUUID()}`),
+          title: String(s?.title || "").trim().slice(0, 200),
+          done: Boolean(s?.done),
+        }))
+        .filter((s) => s.title)
+        .slice(0, 100)
+    : []
+);
+
 const cleanAttachments = (items) => (
   Array.isArray(items)
     ? items
@@ -69,6 +82,7 @@ function normalizeTask(task = {}) {
     time: /^\d{2}:\d{2}$/.test(String(task.time || "")) ? String(task.time) : "",
     tags: [...new Set(Array.isArray(task.tags) ? task.tags.map((tag) => String(tag).trim()).filter(Boolean) : [])],
     attachments: cleanAttachments(task.attachments),
+    subtasks: cleanSubtasks(task.subtasks),
     ...(progress == null ? {} : { progress }),
     ...(task.larkRecordId ? { larkRecordId: String(task.larkRecordId) } : {}),
     ...(task.doneAt ? { doneAt: Number(task.doneAt) } : {}),
