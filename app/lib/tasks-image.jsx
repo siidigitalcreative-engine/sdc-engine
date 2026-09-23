@@ -119,7 +119,11 @@ export function buildTasksImage(tasks = [], statuses = null) {
                     <div style={{ display: "flex", flexDirection: "column", marginTop: 6 }}>
                       {t.subtasks.slice(0, 4).map((st, si) => (
                         <div key={si} style={{ display: "flex", alignItems: "center", marginTop: si ? 3 : 0 }}>
-                          <div style={{ display: "flex", width: 11, height: 11, borderRadius: 3, marginRight: 6, backgroundColor: st.done ? "#3FA37A" : "#ffffff", border: st.done ? "1px solid #3FA37A" : "1.5px solid #C9CBD2" }} />
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: 3, marginRight: 6, backgroundColor: st.done ? "#3FA37A" : "#ffffff", border: st.done ? "1px solid #3FA37A" : "1.5px solid #C9CBD2" }}>
+                            {st.done ? (
+                              <svg width="8" height="8" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" fill="none" stroke="#ffffff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            ) : null}
+                          </div>
                           <div style={{ display: "flex", fontSize: 10.5, color: st.done ? "#B6B9C2" : "#6E7280", textDecoration: st.done ? "line-through" : "none" }}>{String(st.title || "").slice(0, 34)}</div>
                         </div>
                       ))}
