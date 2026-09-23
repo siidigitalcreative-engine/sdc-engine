@@ -131,7 +131,11 @@ export function buildTaskImage(task = {}) {
             <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0", marginBottom: 8 }}>SUBTASKS · {subDone}/{subtasks.length}</div>
             {subtasks.map((s, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
-                <div style={{ display: "flex", width: 16, height: 16, borderRadius: 4, marginRight: 10, backgroundColor: s.done ? "#3FA37A" : "#ffffff", border: s.done ? "1px solid #3FA37A" : "1.5px solid #C9CBD2" }} />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: 4, marginRight: 10, backgroundColor: s.done ? "#3FA37A" : "#ffffff", border: s.done ? "1px solid #3FA37A" : "1.5px solid #C9CBD2" }}>
+                  {s.done ? (
+                    <svg width="11" height="11" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" fill="none" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  ) : null}
+                </div>
                 <div style={{ display: "flex", fontSize: 14, color: s.done ? "#AEB1BA" : "#3A3743", textDecoration: s.done ? "line-through" : "none" }}>{String(s.title || "").slice(0, 70)}</div>
               </div>
             ))}
