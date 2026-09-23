@@ -28,6 +28,8 @@ export function buildTaskImage(task = {}) {
   for (const ln of descLinesArr) descVisualLines += Math.max(1, Math.ceil((ln.length || 1) / CHARS_PER_LINE));
   descVisualLines = Math.min(descVisualLines, 20);
   const tags = Array.isArray(t.tags) ? t.tags.slice(0, 8) : [];
+  const subtasks = Array.isArray(t.subtasks) ? t.subtasks.slice(0, 20) : [];
+  const subDone = subtasks.filter((s) => s.done).length;
   const assignees = Array.isArray(t.assignees) ? t.assignees.slice(0, 8) : [];
   const progress = typeof t.progress === "number" ? Math.max(0, Math.min(100, t.progress)) : null;
   const overdue = !!t.due && t.status !== "done" && new Date(t.due) < new Date(new Date().toDateString());
@@ -42,6 +44,7 @@ export function buildTaskImage(task = {}) {
   if (progress !== null) bodyH += 50;   // progress bar
   if (descLinesArr.length) bodyH += 26 + descVisualLines * 22 + 8;
   if (tags.length) bodyH += 30 + 32;
+  if (subtasks.length) bodyH += 30 + subtasks.length * 26 + 6;
   if (assignees.length) bodyH += 30 + 46;
   bodyH += 28;                          // bottom pad
   const H = HEAD + bodyH;
@@ -117,6 +120,19 @@ export function buildTaskImage(task = {}) {
             {tags.map((g, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", height: 26, paddingLeft: 10, paddingRight: 10, borderRadius: 8, backgroundColor: "#F1F2F5", marginRight: 8, marginBottom: 8 }}>
                 <div style={{ display: "flex", fontSize: 12, fontWeight: 600, color: "#6E6A76" }}>#{String(g).slice(0, 20)}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* subtasks */}
+        {subtasks.length ? (
+          <div style={{ display: "flex", flexDirection: "column", marginBottom: 20 }}>
+            <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0", marginBottom: 8 }}>SUBTASKS · {subDone}/{subtasks.length}</div>
+            {subtasks.map((s, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+                <div style={{ display: "flex", width: 16, height: 16, borderRadius: 4, marginRight: 10, backgroundColor: s.done ? "#3FA37A" : "#ffffff", border: s.done ? "1px solid #3FA37A" : "1.5px solid #C9CBD2" }} />
+                <div style={{ display: "flex", fontSize: 14, color: s.done ? "#AEB1BA" : "#3A3743", textDecoration: s.done ? "line-through" : "none" }}>{String(s.title || "").slice(0, 70)}</div>
               </div>
             ))}
           </div>
