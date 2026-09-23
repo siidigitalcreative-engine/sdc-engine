@@ -32,6 +32,8 @@ function estimateCardHeight(t) {
   const dl = descLinesOf(t);
   if (dl) h += 6 + dl * 16;                          // description
   h += 8 + projLinesOf(t) * 15;                      // project row(s)
+  const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+  if (subs.length) h += 6 + Math.min(subs.length, 4) * 15 + (subs.length > 4 ? 13 : 0); // subtasks
   h += 6 + 22;                                       // assignee row (own line)
   return h;
 }
@@ -112,6 +114,20 @@ export function buildTasksImage(tasks = [], statuses = null) {
                   ) : null}
 
                   <div style={{ fontSize: 11, color: "#9A9CA6", lineHeight: 1.3, marginTop: 8 }}>{String(t.project || "").slice(0, PROJ_CAP)}</div>
+
+                  {(Array.isArray(t.subtasks) && t.subtasks.length) ? (
+                    <div style={{ display: "flex", flexDirection: "column", marginTop: 6 }}>
+                      {t.subtasks.slice(0, 4).map((st, si) => (
+                        <div key={si} style={{ display: "flex", alignItems: "center", marginTop: si ? 3 : 0 }}>
+                          <div style={{ display: "flex", width: 11, height: 11, borderRadius: 3, marginRight: 6, backgroundColor: st.done ? "#3FA37A" : "#ffffff", border: st.done ? "1px solid #3FA37A" : "1.5px solid #C9CBD2" }} />
+                          <div style={{ display: "flex", fontSize: 10.5, color: st.done ? "#B6B9C2" : "#6E7280", textDecoration: st.done ? "line-through" : "none" }}>{String(st.title || "").slice(0, 34)}</div>
+                        </div>
+                      ))}
+                      {t.subtasks.length > 4 ? (
+                        <div style={{ display: "flex", fontSize: 10, color: "#9A9CA6", marginTop: 3 }}>+{t.subtasks.length - 4} more</div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div style={{ display: "flex", alignItems: "center", marginTop: 7 }}>
                     {one ? (
