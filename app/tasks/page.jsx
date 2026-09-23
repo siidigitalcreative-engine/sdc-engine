@@ -6,7 +6,7 @@ import { useAuth } from "../auth";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, X, Search, Paperclip, Clock, Flag, Trash2, Tag, Sparkles, List, MoreHorizontal,
-  Moon, Sun, ChevronDown, Archive,
+  Moon, Sun, ChevronDown, Archive, Check, CheckCircle2,
 } from "lucide-react";
 
 /* ---------- theme ---------- */
@@ -267,10 +267,10 @@ export default function TasksPage() {
 
   const blank = (status = "todo") => ({
     id: null, title: "", project: projects[0] || "", desc: "", notes: "", status, priority: "medium",
-    assignees: [], start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [],
+    assignees: [], start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [], subtasks: [],
   });
   const openCreate = (status) => setModal({ mode: "create", form: blank(status) });
-  const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), tags: [...t.tags], attachments: [...t.attachments] } });
+  const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), tags: [...t.tags], attachments: [...t.attachments], subtasks: (t.subtasks || []).map((s) => ({ ...s })) } });
   const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
   const patchForm = (fn) => setModal((m) => (m ? { ...m, form: { ...m.form, ...fn(m.form) } } : m));
 
@@ -301,6 +301,7 @@ export default function TasksPage() {
       time: f.time || "",
       tags: [...f.tags],
       attachments: attachmentsOverride ? [...attachmentsOverride] : [...f.attachments],
+      subtasks: [...(f.subtasks || [])],
       progress: f.progress,
     };
 
@@ -371,6 +372,27 @@ export default function TasksPage() {
       setTaskError(error.message || "Unable to archive task.");
     } finally {
       setSavingTask(false);
+    }
+  };
+
+  const toggleSubtask = async (task, subId) => {
+    const current = Array.isArray(task.subtasks) ? task.subtasks : [];
+    const next = current.map((s) => (s.id === subId ? { ...s, done: !s.done } : s));
+    const previous = tasks;
+    mutationGenerationRef.current += 1;
+    setTasks((ts) => ts.map((t) => (t.id === task.id ? { ...t, subtasks: next } : t)));
+    setTaskError("");
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: task.id, data: { subtasks: next } }),
+      });
+      await applyTaskResponse(response, "Unable to update subtask.");
+    } catch (error) {
+      setTasks(previous);
+      setTaskError(error.message || "Unable to update subtask.");
+      loadTasks({ force: true });
     }
   };
 
@@ -494,7 +516,7 @@ export default function TasksPage() {
                       </div>
                       <div className="px-2.5 pb-2 space-y-2.5">
                         {items.map((t) => (
-                          <TaskCard key={t.id} t={t} memberByRef={memberByRef} onClick={() => openEdit(t)}
+                          <TaskCard key={t.id} t={t} memberByRef={memberByRef} onClick={() => openEdit(t)} onToggleSubtask={toggleSubtask}
                             onDragStart={() => setDragId(t.id)} onDragEnd={() => { setDragId(null); setOverCol(null); }} dragging={dragId === t.id} />
                         ))}
                       </div>
@@ -577,8 +599,10 @@ function AttendeeStack({ list, memberByRef, ring = "var(--card)", size = 22 }) {
   );
 }
 
-function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging }) {
+function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging, onToggleSubtask }) {
   const p = priorityOf(t.priority), s = statusOf(t.status), prog = progressFor(t), od = isOverdue(t);
+  const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+  const subDone = subs.filter((x) => x.done).length;
   return (
     <div draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onClick}
       className="tp-card rounded-2xl p-3 cursor-pointer" style={{ background: "var(--card)", border: "1px solid var(--border)", opacity: dragging ? 0.4 : 1 }}>
@@ -594,6 +618,20 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging })
           {t.tags.map((g) => <span key={g} className="rounded-md px-1.5 py-0.5 text-xs" style={{ background: "var(--col)", color: "var(--muted)" }}>#{g}</span>)}
         </div>
       )}
+      {subs.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {subs.slice(0, 5).map((st) => (
+            <div key={st.id} onClick={(e) => { e.stopPropagation(); onToggleSubtask?.(t, st.id); }}
+              className="flex items-center gap-1.5 text-xs" style={{ color: st.done ? "var(--faint)" : "var(--text-2)" }}>
+              <span className="shrink-0 flex items-center justify-center rounded" style={{ width: 14, height: 14, border: `1.5px solid ${st.done ? "#3FA37A" : "var(--border)"}`, background: st.done ? "#3FA37A" : "transparent", color: "#fff" }}>
+                {st.done ? <Check size={9} /> : null}
+              </span>
+              <span className="truncate" style={{ textDecoration: st.done ? "line-through" : "none" }}>{st.title}</span>
+            </div>
+          ))}
+          {subs.length > 5 && <div className="text-xs" style={{ color: "var(--faint)" }}>+{subs.length - 5} more</div>}
+        </div>
+      )}
       <div className="mt-2.5">
         <div className="flex items-center justify-between text-xs mb-1" style={{ color: "var(--muted)" }}><span>Progress</span><span>{prog}%</span></div>
         <div className="rounded-full overflow-hidden" style={{ height: 5, background: "var(--grid)" }}><div style={{ width: `${prog}%`, height: "100%", background: s.color }} /></div>
@@ -601,6 +639,7 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging })
       <div className="flex items-center justify-between mt-3 pt-2.5" style={{ borderTop: "1px solid var(--grid)" }}>
         <AttendeeStack list={t.assignees} memberByRef={memberByRef} size={20} />
         <div className="flex items-center gap-2.5 text-xs" style={{ color: od ? "#E5536E" : "var(--muted)", fontWeight: od ? 600 : 400 }}>
+          {subs.length > 0 && <span className="flex items-center gap-0.5" style={{ color: "var(--muted)" }}><CheckCircle2 size={12} />{subDone}/{subs.length}</span>}
           {t.attachments.length > 0 && <span className="flex items-center gap-0.5" style={{ color: "var(--muted)" }}><Paperclip size={12} />{t.attachments.length}</span>}
           <span className="flex items-center gap-1"><Clock size={12} />{fmtDate(t.due)}</span>
         </div>
@@ -614,6 +653,17 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
+  const [subDraft, setSubDraft] = useState("");
+  const subtasks = f.subtasks || [];
+  const addSubtask = () => {
+    const title = subDraft.trim();
+    if (!title) return;
+    setForm({ subtasks: [...subtasks, { id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title, done: false }] });
+    setSubDraft("");
+  };
+  const toggleSubtask = (id) => setForm({ subtasks: subtasks.map((s) => (s.id === id ? { ...s, done: !s.done } : s)) });
+  const deleteSubtask = (id) => setForm({ subtasks: subtasks.filter((s) => s.id !== id) });
+  const subDone = subtasks.filter((s) => s.done).length;
   const [projDraft, setProjDraft] = useState("");
   const [projError, setProjError] = useState("");
   const [projBusy, setProjBusy] = useState(false);
@@ -672,7 +722,7 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
       statusName: (statuses.find((s) => s.id === f.status) || {}).name || "",
       statusColor: (statuses.find((s) => s.id === f.status) || {}).color || "#8E8A96",
       assignees: (f.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean).map((m) => ({ i: m.i, c: m.c, name: m.name })),
-      attachments: (f.attachments || []).map((a) => ({ name: a.name, url: a.url || "" })),
+      attachments: (f.attachments || []).map((a) => ({ name: a.name, url: a.url || "", contentType: a.contentType || "" })),
     },
   });
   const exportTaskPng = async () => {
@@ -852,6 +902,30 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
               ))}
               <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
                 placeholder="Add tag…" className="flex-1 text-sm outline-none py-0.5" style={{ minWidth: 80 }} />
+            </div>
+          </Labeled>
+
+          <Labeled label={`Subtasks${subtasks.length ? ` · ${subDone}/${subtasks.length}` : ""}`}>
+            {subtasks.length > 0 && (
+              <div className="space-y-1 mb-1.5">
+                {subtasks.map((s) => (
+                  <div key={s.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--col)" }}>
+                    <button type="button" onClick={() => toggleSubtask(s.id)} className="shrink-0 flex items-center justify-center rounded" style={{ width: 16, height: 16, border: `1.5px solid ${s.done ? "#3FA37A" : "var(--border)"}`, background: s.done ? "#3FA37A" : "transparent", color: "#fff" }}>
+                      {s.done ? <Check size={11} /> : null}
+                    </button>
+                    <span className="flex-1 min-w-0 truncate" style={{ color: s.done ? "var(--faint)" : "var(--text)", textDecoration: s.done ? "line-through" : "none" }}>{s.title}</span>
+                    <button type="button" onClick={() => deleteSubtask(s.id)} style={{ color: "var(--faint)" }}><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <input value={subDraft} onChange={(e) => setSubDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSubtask(); } }}
+                placeholder="Add a subtask…" className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm outline-none" style={field} />
+              <button type="button" onClick={addSubtask} disabled={!subDraft.trim()}
+                className="tp-ib rounded-lg flex items-center justify-center shrink-0" style={{ width: 34, border: "1px solid var(--border)", color: "var(--text-2)" }}>
+                <Plus size={16} />
+              </button>
             </div>
           </Labeled>
 
