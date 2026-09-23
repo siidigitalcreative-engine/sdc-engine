@@ -430,6 +430,7 @@ export default function TasksPage() {
       due: t.due instanceof Date ? toDateInput(t.due) : (t.due || null),
       overdue: isOverdue(t),
       desc: t.desc || "",
+      subtasks: (t.subtasks || []).map((s) => ({ title: s.title, done: !!s.done })),
       assignees: (t.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean).map((m) => ({ i: m.i, c: m.c, name: m.name })),
     })),
   });
@@ -718,6 +719,7 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
       due: f.due instanceof Date ? toDateInput(f.due) : (f.due || null),
       start: f.start instanceof Date ? toDateInput(f.start) : (f.start || null),
       time: f.time || "", desc: f.desc || "", tags: f.tags || [],
+      subtasks: (f.subtasks || []).map((s) => ({ title: s.title, done: !!s.done })),
       progress: typeof f.progress === "number" ? f.progress : null,
       statusName: (statuses.find((s) => s.id === f.status) || {}).name || "",
       statusColor: (statuses.find((s) => s.id === f.status) || {}).color || "#8E8A96",
