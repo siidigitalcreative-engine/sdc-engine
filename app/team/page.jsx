@@ -45,6 +45,28 @@ export default function TeamPage() {
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [pageError, setPageError] = useState("");
+  const [tasks, setTasks] = useState([]);
+
+  useEffect(() => {
+    let on = true;
+    fetch("/api/tasks", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { tasks: [] }))
+      .then((b) => { if (on) setTasks(Array.isArray(b.tasks) ? b.tasks : []); })
+      .catch(() => {});
+    return () => { on = false; };
+  }, []);
+
+  // Live counts from actual tasks (replaces the stored static numbers).
+  const statsFor = (m) => {
+    const mine = tasks.filter((t) => {
+      if (t.archived) return false;
+      const a = Array.isArray(t.assignees) ? t.assignees : [];
+      return a.includes(m.id) || a.includes(m.i);
+    });
+    const done = mine.filter((t) => t.status === "done").length;
+    const projects = new Set(mine.map((t) => t.project).filter(Boolean)).size;
+    return { projects, open: mine.length - done, done };
+  };
 
   const list = members.filter((m) => {
     const q = query.trim().toLowerCase();
@@ -84,7 +106,7 @@ export default function TeamPage() {
               {list.map((m) => (
                 <MemberCard
                   key={m.id}
-                  m={m}
+                  m={{ ...m, ...statsFor(m) }}
                   dark={dark}
                   isCurrent={currentMember?.id === m.id}
                   onEdit={() => setEditing(m)}
