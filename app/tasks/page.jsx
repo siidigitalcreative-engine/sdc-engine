@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { upload as uploadToBlob } from "@vercel/blob/client";
 import { useAuth } from "../auth";
 import {
@@ -244,8 +245,8 @@ export default function TasksPage() {
   // so can make an unsaved local transformation look like persisted data.
 
 
-  const [showArchived, setShowArchived] = useState(false);
-  const visibleTasks = useMemo(() => (showArchived ? tasks : tasks.filter((t) => !t.archived)), [tasks, showArchived]);
+  // Archived tasks live on their own page (/archive) and never show on the board.
+  const visibleTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -478,11 +479,11 @@ export default function TasksPage() {
                   style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}><Icon size={15} />{v}</button>
               ))}
             </div>
-            <button onClick={() => setShowArchived((v) => !v)} title="Toggle archived tasks"
+            <Link href="/archive" title="Open the archive"
               className="tp-ib rounded-full px-3 py-2 text-sm font-medium shadow-sm inline-flex items-center gap-1.5"
-              style={showArchived ? { background: ACCENT_GRAD, color: ON_ACCENT } : { background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
-              <Archive size={15} /> {showArchived ? "Hide archived" : "Archived"}
-            </button>
+              style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+              <Archive size={15} /> Archive
+            </Link>
             <div className="flex items-center gap-2 shrink-0">
               <button onClick={exportTasksPng} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
               <button onClick={sendTasksToLark} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
