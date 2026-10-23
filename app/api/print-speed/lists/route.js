@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addOption, renameOption, removeOption } from "../../../lib/print-speed-store";
+import { addOption, updateOption, removeOption } from "../../../lib/print-speed-store";
 import { getAuthenticatedMember } from "../../../lib/auth-token";
 
 export const runtime = "nodejs";
@@ -20,7 +20,7 @@ export async function POST(request) {
     const actor = await getAuthenticatedMember(request);
     if (!actor) return json({ error: "Unauthorized." }, 401);
     const body = await request.json();
-    const result = await addOption(body.list, body.name, body.mode);
+    const result = await addOption(body.list, body.name, body.mode, body.note);
     return json(payload(result), 201, result.etag);
   } catch (error) {
     console.error("POST /api/print-speed/lists", error);
@@ -28,17 +28,21 @@ export async function POST(request) {
   }
 }
 
-// Rename an option; every record using it follows the new name.
+// Rename an option, or edit a print coverage description. Every record using
+// a renamed option follows the new name.
 export async function PATCH(request) {
   try {
     const actor = await getAuthenticatedMember(request);
     if (!actor) return json({ error: "Unauthorized." }, 401);
     const body = await request.json();
-    const result = await renameOption(body.list, body.name, body.newName);
+    const patch = {};
+    if (body.newName !== undefined) patch.newName = body.newName;
+    if (body.note !== undefined) patch.note = body.note;
+    const result = await updateOption(body.list, body.name, patch);
     return json(payload(result), 200, result.etag);
   } catch (error) {
     console.error("PATCH /api/print-speed/lists", error);
-    return json({ error: error.message || "Unable to rename that option." }, 400);
+    return json({ error: error.message || "Unable to save that option." }, 400);
   }
 }
 
