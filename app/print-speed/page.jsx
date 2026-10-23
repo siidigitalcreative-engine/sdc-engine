@@ -448,6 +448,7 @@ function EditSheet({ initial, lists, layoutsFor, saving, onClose, onSave, onDele
   const [busy, setBusy] = useState(false);
   const [openList, setOpenList] = useState(null);
   const [listError, setListError] = useState("");
+  const [imgError, setImgError] = useState("");
   const fileRef = useRef(null);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
@@ -479,13 +480,24 @@ function EditSheet({ initial, lists, layoutsFor, saving, onClose, onSave, onDele
       const canvas = document.createElement("canvas");
       canvas.width = 800; canvas.height = 800;
       canvas.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 800, 800);
-      const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
-      const uploaded = await uploadToBlob(`print-speed/${Date.now()}.jpg`, blob, {
-        access: "public", handleUploadUrl: "/api/upload-token", contentType: "image/jpeg",
+      const blob = await new Promise((res, rej) => {
+        canvas.toBlob((b) => (b ? res(b) : rej(new Error("Could not process that image."))), "image/jpeg", 0.85);
       });
-      set({ img: uploaded.url });
+
+      // Same route and access mode as task attachments, served back through
+      // the /api/attachments proxy that streams the private blob.
+      const pathname = `sdc/print-speed/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const uploaded = await uploadToBlob(pathname, new File([blob], "photo.jpg", { type: "image/jpeg" }), {
+        access: "private",
+        handleUploadUrl: "/api/upload-token",
+        contentType: "image/jpeg",
+      });
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      set({ img: `${origin}/api/attachments/${uploaded.pathname}` });
+      setImgError("");
     } catch (e) {
-      setListError(e.message || "Upload failed.");
+      console.error("print-speed image upload", e);
+      setImgError(e?.message || "Upload failed. Please try again.");
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -552,13 +564,18 @@ function EditSheet({ initial, lists, layoutsFor, saving, onClose, onSave, onDele
           <div className="f imgfield">
             <div className="prev">{form.img ? <img src={form.img} alt="" /> : "No image"}</div>
             <div className="side">
-              <button type="button" className="ps-btn" disabled={busy} onClick={() => fileRef.current?.click()}>
-                {busy ? "Uploading…" : "Choose image"}
-              </button>{" "}
-              <button type="button" className="ps-btn" onClick={() => set({ img: null })}>Remove</button>
+              <div className="btnrow">
+                <button type="button" className="ps-btn" disabled={busy} onClick={() => fileRef.current?.click()}>
+                  {busy ? "Uploading…" : form.img ? "Replace image" : "Choose image"}
+                </button>
+                <button type="button" className="ps-btn" disabled={busy || !form.img}
+                  onClick={() => { set({ img: null }); setImgError(""); }}>Remove</button>
+              </div>
               <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
                 onChange={(e) => pickImage(e.target.files?.[0])} />
-              <div className="hint">Cropped to a square from the centre and resized to 800 × 800.</div>
+              {imgError
+                ? <div className="hint" style={{ color: "#E5536E" }}>{imgError}</div>
+                : <div className="hint">Cropped to a square from the centre and resized to 800 × 800.</div>}
             </div>
           </div>
 
@@ -877,7 +894,7 @@ const PAGE_CSS = `
 #ps-root .f textarea{resize:vertical;min-height:62px;line-height:1.5}
 #ps-root .seph{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:600;
   line-height:1.2;margin:16px 0 9px;grid-column:span 2}
-#ps-root .sheet-foot{display:flex;gap:9px;margin-top:18px;align-items:center}
+#ps-root .sheet-foot{display:flex;gap:9px;margin-top:18px;align-items:center;flex-wrap:wrap}
 
 #ps-root .managed{position:relative}
 #ps-root .managed .row1{display:flex;gap:6px;align-items:center}
@@ -917,6 +934,7 @@ const PAGE_CSS = `
   color:var(--faint);font-size:11px}
 #ps-root .imgfield .prev img{width:100%;height:100%;object-fit:cover;display:block}
 #ps-root .imgfield .side{flex:1;min-width:0}
+#ps-root .imgfield .btnrow{display:flex;gap:8px;flex-wrap:wrap}
 #ps-root .imgfield .hint{font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.45}
 
 @media (max-width:980px){#ps-root .ps-grid > .ps-rec{flex:0 0 calc((100% - 14px) / 2)}}
