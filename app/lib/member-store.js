@@ -106,6 +106,8 @@ async function createInitialBlob() {
     access: "private",
     contentType: "application/json",
     allowOverwrite: true,
+    addRandomSuffix: false,
+    cacheControlMaxAge: 60,
   });
   return { state, etag: blob.etag };
 }
@@ -162,6 +164,8 @@ export async function mutateMembers(mutator, maxAttempts = 12) {
         access: "private",
         contentType: "application/json",
         allowOverwrite: true,
+        addRandomSuffix: false,
+        cacheControlMaxAge: 60,
         ifMatch: current.etag,
       });
       return { state: nextState, etag: blob.etag };
@@ -175,7 +179,29 @@ export async function mutateMembers(mutator, maxAttempts = 12) {
     }
   }
 
-  throw lastError || new Error("The member list changed while saving. Please try again.");
+
+  // Every guarded attempt clashed. Rebuild from the newest copy and write
+  // without the guard so the edit is not lost, and so the blob is rewritten
+  // with a short cache TTL if it was stored with a long one.
+  const latest = await readMembersState();
+  const finalMembers = await mutator(latest.state.members.map((m) => ({ ...m })));
+  const finalState = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    members: finalMembers.map(normalizeStoredMember),
+  };
+  try {
+    const blob = await put(PATHNAME, JSON.stringify(finalState), {
+      access: "private",
+      contentType: "application/json",
+      allowOverwrite: true,
+      addRandomSuffix: false,
+      cacheControlMaxAge: 60,
+    });
+    return { state: finalState, etag: blob.etag };
+  } catch (error) {
+    throw lastError || error;
+  }
 }
 
 export function createMemberInput(data = {}) {
