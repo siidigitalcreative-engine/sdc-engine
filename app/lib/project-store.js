@@ -54,7 +54,18 @@ export async function readProjectsState({ ifNoneMatch } = {}) {
   return { state, etag: result.blob.etag, notModified: false };
 }
 
-export async function mutateProjects(mutator, maxAttempts = 5) {
+
+// The SDK does not always throw an instance we can match, so check the name and
+// the message too. Same approach as the task store.
+function isEtagConflict(error) {
+  return error instanceof BlobPreconditionFailedError ||
+    error?.name === "BlobPreconditionFailedError" ||
+    /precondition failed|etag mismatch/i.test(String(error?.message || ""));
+}
+
+const waitBeforeRetry = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function mutateProjects(mutator, maxAttempts = 12) {
   let lastError;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const current = await readProjectsState();
@@ -64,7 +75,7 @@ export async function mutateProjects(mutator, maxAttempts = 5) {
       const blob = await put(PATHNAME, JSON.stringify(nextState), { access: "private", contentType: "application/json", allowOverwrite: true, ifMatch: current.etag });
       return { state: nextState, etag: blob.etag };
     } catch (error) {
-      if (error instanceof BlobPreconditionFailedError) { lastError = error; continue; }
+      if (isEtagConflict(error)) { lastError = error; await waitBeforeRetry(25 * (attempt + 1)); continue; }
       throw error;
     }
   }
