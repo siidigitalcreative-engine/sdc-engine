@@ -818,11 +818,11 @@ const PAGE_CSS = `
 #ps-root .design .nm{font-weight:600;font-size:13.5px;color:var(--text)}
 #ps-root .dot{height:5px;width:5px;border-radius:999px;background:var(--faint);flex:none}
 
-#ps-root .shot{position:relative;width:100%;aspect-ratio:1/1;border-radius:var(--r-block);overflow:hidden;
-  background:var(--col);border:1px solid var(--border)}
+#ps-root .shot{position:relative;width:150px;max-width:100%;aspect-ratio:1/1;border-radius:var(--r-block);
+  overflow:hidden;background:var(--col);border:1px solid var(--border);align-self:flex-start}
 #ps-root .shot img{width:100%;height:100%;object-fit:cover;display:block}
 #ps-root .shot.empty{border-style:dashed;color:var(--faint);cursor:pointer;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:7px;font-size:12.5px}
+  align-items:center;justify-content:center;gap:6px;font-size:11.5px}
 #ps-root .shot.empty:hover{background:var(--dim);color:var(--text-2)}
 
 #ps-root .speeds{display:flex;gap:7px}
