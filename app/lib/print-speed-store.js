@@ -133,7 +133,8 @@ async function parseResult(result) {
 async function createInitialBlob() {
   const state = makeInitialState();
   const blob = await put(PATHNAME, JSON.stringify(state), {
-    access: "private", contentType: "application/json", allowOverwrite: true,
+    access: "private", contentType: "application/json",
+    allowOverwrite: true, addRandomSuffix: false, cacheControlMaxAge: 60,
   });
   return { state, etag: blob.etag };
 }
@@ -147,27 +148,59 @@ export async function readPrintSpeedState({ ifNoneMatch } = {}) {
   return { state, etag: result.blob.etag, notModified: false };
 }
 
-async function mutateState(mutator, maxAttempts = 5) {
+// The SDK does not always throw an instance we can match, so check the name and
+// the message too. Same approach as the task store.
+function isEtagConflict(error) {
+  return error instanceof BlobPreconditionFailedError ||
+    error?.name === "BlobPreconditionFailedError" ||
+    /precondition failed|etag mismatch/i.test(String(error?.message || ""));
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const WRITE_OPTS = {
+  access: "private",
+  contentType: "application/json",
+  allowOverwrite: true,
+  addRandomSuffix: false,
+  cacheControlMaxAge: 60,
+};
+
+async function buildNext(mutator) {
+  const current = await readPrintSpeedState();
+  const draft = {
+    lists: JSON.parse(JSON.stringify(current.state.lists)),
+    records: JSON.parse(JSON.stringify(current.state.records)),
+  };
+  const produced = await mutator(draft);
+  const nextState = normalizeState({ ...(produced || draft), updatedAt: new Date().toISOString() });
+  return { nextState, etag: current.etag };
+}
+
+async function mutateState(mutator, maxAttempts = 12) {
   let lastError;
+
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const current = await readPrintSpeedState();
-    const draft = {
-      lists: JSON.parse(JSON.stringify(current.state.lists)),
-      records: JSON.parse(JSON.stringify(current.state.records)),
-    };
-    const produced = await mutator(draft);
-    const nextState = normalizeState({ ...(produced || draft), updatedAt: new Date().toISOString() });
+    const { nextState, etag } = await buildNext(mutator);
     try {
-      const blob = await put(PATHNAME, JSON.stringify(nextState), {
-        access: "private", contentType: "application/json", allowOverwrite: true, ifMatch: current.etag,
-      });
+      const blob = await put(PATHNAME, JSON.stringify(nextState), { ...WRITE_OPTS, ifMatch: etag });
       return { state: nextState, etag: blob.etag };
     } catch (error) {
-      if (error instanceof BlobPreconditionFailedError) { lastError = error; continue; }
-      throw error;
+      if (!isEtagConflict(error)) throw error;
+      lastError = error;
+      await wait(25 * (attempt + 1));
     }
   }
-  throw lastError || new Error("Print speed data changed while saving. Please try again.");
+
+  // Last resort: rebuild from the newest copy and write without the guard,
+  // rather than losing the edit entirely.
+  const { nextState } = await buildNext(mutator);
+  try {
+    const blob = await put(PATHNAME, JSON.stringify(nextState), WRITE_OPTS);
+    return { state: nextState, etag: blob.etag };
+  } catch (error) {
+    throw lastError || error;
+  }
 }
 
 const newId = () => `ps-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
