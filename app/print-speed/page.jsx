@@ -820,7 +820,7 @@ const PAGE_CSS = `
 #ps-root .ps-lane{margin-bottom:22px}
 #ps-root .ps-lane-head{display:flex;align-items:center;gap:9px;margin-bottom:9px;padding:0 2px}
 #ps-root .ps-lane-head h2{margin:0;font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--text)}
-#ps-root .ps-lane-head .n{border-radius:999px;padding:1px 10px 0;height:22px;font-size:11.5px;font-weight:600;
+#ps-root .ps-lane-head .n{border-radius:999px;padding:0 10px 1px;height:22px;font-size:11.5px;font-weight:600;
   background:var(--col);color:var(--text-2);display:inline-flex;align-items:center;justify-content:center;line-height:1}
 #ps-root .ps-lane-head .more{margin-left:auto;font-size:11.5px;color:var(--faint)}
 
@@ -841,10 +841,10 @@ const PAGE_CSS = `
 #ps-root .brandline{font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;line-height:1.2;margin-bottom:3px}
 #ps-root .sub{font-size:12px;color:var(--muted);margin-top:2px;display:flex;gap:7px;flex-wrap:wrap}
 #ps-root .sub code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--text-2)}
-#ps-root .mode{border-radius:999px;padding:1px 11px 0;height:24px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
+#ps-root .mode{border-radius:999px;padding:0 11px 1px;height:24px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
   text-transform:uppercase;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;
   width:fit-content;line-height:1;margin-bottom:8px}
-#ps-root .pill{border-radius:999px;padding:1px 11px 0;height:24px;font-size:11.5px;font-weight:600;white-space:nowrap;
+#ps-root .pill{border-radius:999px;padding:0 11px 1px;height:24px;font-size:11.5px;font-weight:600;white-space:nowrap;
   display:inline-flex;align-items:center;justify-content:center;line-height:1}
 #ps-root .iconbtn{height:30px;width:30px;flex:none;border-radius:999px;border:1px solid var(--border);
   background:var(--card);color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
@@ -907,7 +907,7 @@ const PAGE_CSS = `
   font-weight:600;line-height:1.2}
 
 #ps-root .inkrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px}
-#ps-root .layer{border-radius:999px;padding:1px 11px 0;height:24px;font-size:11.5px;font-weight:600;
+#ps-root .layer{border-radius:999px;padding:0 11px 1px;height:24px;font-size:11.5px;font-weight:600;
   white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 #ps-root .plus{color:var(--faint);font-size:12px;font-weight:600}
 #ps-root .cnt{font-size:11.5px;color:var(--muted);font-weight:500}
@@ -966,7 +966,7 @@ const PAGE_CSS = `
 #ps-root .inkbuild .seq{min-height:42px;background:var(--col);border:1px solid var(--border);
   border-radius:var(--r-field);padding:8px 10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 #ps-root .inkbuild .seq .ph{color:var(--faint);font-size:12.5px}
-#ps-root .inkbuild .seq .layer{gap:6px;cursor:pointer;padding:0 10px}
+#ps-root .inkbuild .seq .layer{gap:6px;cursor:pointer;padding:0 10px 1px}
 #ps-root .inkbuild .seq .layer .x{opacity:.6;font-weight:700}
 #ps-root .inkbuild .seq .layer:hover .x{opacity:1}
 
