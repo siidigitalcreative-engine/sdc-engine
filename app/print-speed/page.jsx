@@ -177,25 +177,39 @@ export default function PrintSpeedPage() {
   const openCreate = () => setModal({ mode: "create", form: blankRecord(lists) });
   const openEdit = (r) => setModal({ mode: "edit", form: { ...r, colors: [...(r.colors || [])], ink: [...(r.ink || [])] } });
 
+  // Returns an error string on failure so the sheet can show it in place;
+  // returns null when the save went through.
   const saveModal = async (form) => {
     setSaving(true);
     setError("");
+    const FIELDS = [
+      "brand", "mode", "img", "name", "sku", "variant", "h", "w", "base", "ml",
+      "design", "layout", "method", "paw", "pah", "colors", "ink",
+      "slow", "med", "fast", "rec", "status", "remarks",
+    ];
+    const data = {};
+    FIELDS.forEach((k) => { data[k] = form[k] ?? null; });
+    data.colors = Array.isArray(form.colors) ? form.colors : [];
+    data.ink = Array.isArray(form.ink) ? form.ink : [];
+
     try {
-      const data = { ...form };
-      delete data.id;
-      const response = form.id
-        ? await fetch("/api/print-speed", {
-            method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: form.id, data }),
-          })
-        : await fetch("/api/print-speed", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data }),
-          });
+      const response = await fetch("/api/print-speed", {
+        method: form.id ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form.id ? { id: form.id, data } : { data }),
+      });
+      if (response.status === 401) throw new Error("Your session expired. Reload the page and sign in again.");
       await apply(response, "Unable to save the record.");
       setModal(null);
+      // Belt and braces: pull a fresh copy so a stale ETag can never leave the
+      // board showing the pre-edit version.
+      load({ force: true });
+      return null;
     } catch (e) {
-      setError(e.message);
+      console.error("print-speed save", e);
+      const message = e?.message || "Unable to save the record.";
+      setError(message);
+      return message;
     } finally {
       setSaving(false);
     }
@@ -449,6 +463,7 @@ function EditSheet({ initial, lists, layoutsFor, saving, onClose, onSave, onDele
   const [openList, setOpenList] = useState(null);
   const [listError, setListError] = useState("");
   const [imgError, setImgError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const fileRef = useRef(null);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
@@ -658,7 +673,12 @@ function EditSheet({ initial, lists, layoutsFor, saving, onClose, onSave, onDele
         </div>
 
         <div className="sheet-foot">
-          <button type="button" className="ps-btn primary" disabled={saving || busy} onClick={() => onSave(form)}>
+          <button type="button" className="ps-btn primary" disabled={saving || busy}
+            onClick={async () => {
+              setSaveError("");
+              const failure = await onSave(form);
+              if (failure) setSaveError(failure);
+            }}>
             {saving ? "Saving…" : form.id ? "Save changes" : "Add record"}
           </button>
           <button type="button" className="ps-btn" onClick={onClose}>Cancel</button>
@@ -668,6 +688,7 @@ function EditSheet({ initial, lists, layoutsFor, saving, onClose, onSave, onDele
             </span>
           )}
         </div>
+        {saveError && <p className="savefail">{saveError}</p>}
       </div>
     </div>
   );
@@ -859,7 +880,8 @@ const PAGE_CSS = `
 #ps-root .specs .v.wrap{white-space:normal;overflow:visible}
 #ps-root .specs .v span{font-size:11.5px;font-weight:500;color:var(--muted);margin-left:3px}
 #ps-root .specs .v.none{color:var(--faint);font-weight:500}
-#ps-root .specs .lnote{display:block;font-size:11.5px;font-weight:500;color:var(--muted);margin:1px 0 0;line-height:1.25}
+#ps-root .specs .v span.lnote{display:block;font-size:11.5px;font-weight:500;color:var(--muted);
+  margin:1px 0 0 0;line-height:1.25}
 #ps-root .specs .cell.group{padding:0;display:flex;flex-direction:column}
 #ps-root .specs .group > .k{padding:9px 13px 7px;border-bottom:1px solid var(--border);text-align:center}
 #ps-root .specs .group .pair{display:grid;grid-template-columns:1fr 1fr;flex:1}
@@ -895,6 +917,7 @@ const PAGE_CSS = `
 #ps-root .seph{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:600;
   line-height:1.2;margin:16px 0 9px;grid-column:span 2}
 #ps-root .sheet-foot{display:flex;gap:9px;margin-top:18px;align-items:center;flex-wrap:wrap}
+#ps-root .savefail{margin:10px 0 0;font-size:12.5px;color:#E5536E;line-height:1.45}
 
 #ps-root .managed{position:relative}
 #ps-root .managed .row1{display:flex;gap:6px;align-items:center}
