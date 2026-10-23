@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings, Sparkles, Moon, Sun, LogOut } from "lucide-react";
+import { LayoutGrid, Calendar, CheckSquare, Folder, Users, Printer, BarChart, Settings, Sparkles, Moon, Sun, LogOut } from "lucide-react";
 import { useTheme } from "./theme";
 import { useAuth } from "./auth";
 
@@ -13,6 +13,7 @@ const NAV = [
   { href: "/calendar", name: "Calendar", icon: Calendar },
   { href: "/tasks", name: "Tasks", icon: CheckSquare },
   { href: "/projects", name: "Projects", icon: Folder },
+  { href: "/print-speed", name: "Print Speed", icon: Printer },
   { href: "/team", name: "Team Members", icon: Users },
   { href: "/reports", name: "Reports", icon: BarChart },
 ];
