@@ -13,7 +13,7 @@ const NAV = [
   { href: "/calendar", name: "Calendar", icon: Calendar },
   { href: "/tasks", name: "Tasks", icon: CheckSquare },
   { href: "/projects", name: "Projects", icon: Folder },
-  { href: "/print-speed", name: "Print Speed", icon: Printer },
+  { href: "/print", name: "Print Hub", icon: Printer },
   { href: "/team", name: "Team Members", icon: Users },
   { href: "/reports", name: "Reports", icon: BarChart },
 ];
