@@ -76,7 +76,10 @@ async function parseResult(result) {
 
 async function createInitialBlob() {
   const state = makeInitialState();
-  const blob = await put(PATHNAME, JSON.stringify(state), { access: "private", contentType: "application/json", allowOverwrite: true });
+  const blob = await put(PATHNAME, JSON.stringify(state), {
+    access: "private", contentType: "application/json", allowOverwrite: true,
+    addRandomSuffix: false, cacheControlMaxAge: 60,
+  });
   return { state, etag: blob.etag };
 }
 
@@ -107,14 +110,32 @@ async function mutateStatuses(mutator, maxAttempts = 12) {
     const nextStatuses = normalizeList(await mutator([...current.state.statuses]));
     const nextState = { version: 1, updatedAt: new Date().toISOString(), statuses: nextStatuses };
     try {
-      const blob = await put(PATHNAME, JSON.stringify(nextState), { access: "private", contentType: "application/json", allowOverwrite: true, ifMatch: current.etag });
+      const blob = await put(PATHNAME, JSON.stringify(nextState), {
+        access: "private", contentType: "application/json", allowOverwrite: true,
+        addRandomSuffix: false, cacheControlMaxAge: 60, ifMatch: current.etag,
+      });
       return { state: nextState, etag: blob.etag };
     } catch (error) {
       if (isEtagConflict(error)) { lastError = error; await waitBeforeRetry(25 * (attempt + 1)); continue; }
       throw error;
     }
   }
-  throw lastError || new Error("The status list changed while saving. Please try again.");
+
+  // Every guarded attempt clashed. Rebuild from the newest copy and write
+  // without the guard so the edit is not lost, and so the blob is rewritten
+  // with a short cache TTL if it was stored with a long one.
+  const latest = await readStatusesState();
+  const finalStatuses = normalizeList(await mutator([...latest.state.statuses]));
+  const finalState = { version: 1, updatedAt: new Date().toISOString(), statuses: finalStatuses };
+  try {
+    const blob = await put(PATHNAME, JSON.stringify(finalState), {
+      access: "private", contentType: "application/json", allowOverwrite: true,
+      addRandomSuffix: false, cacheControlMaxAge: 60,
+    });
+    return { state: finalState, etag: blob.etag };
+  } catch (error) {
+    throw lastError || error;
+  }
 }
 
 export async function addStatus(name) {
