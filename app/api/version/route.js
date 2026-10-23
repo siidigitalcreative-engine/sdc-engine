@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // confirm the running deployment is the build you expect.
 export async function GET() {
   return NextResponse.json(
-    { version: "2026-10-23-print-speed-etag-fix", ok: true },
+    { version: "2026-10-23-print-speed-optimistic", ok: true },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
