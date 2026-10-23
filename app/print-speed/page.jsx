@@ -544,8 +544,10 @@ function EditSheet({ initial, lists, layoutsFor, saving, onClose, onSave, onDele
           options={options}
           mode={form.mode}
           error={listError}
+          notes={listName === "layouts" ? Object.fromEntries(layoutsFor(form.mode).map((l) => [l.name, l.note || ""])) : null}
           onAdd={(name) => runList(() => onListAction("POST", { list: listName, name, mode: form.mode }, "Unable to add that option."))}
           onRename={(name, newName) => runList(() => onListAction("PATCH", { list: listName, name, newName }, "Unable to rename that option."))}
+          onNote={(name, note) => runList(() => onListAction("PATCH", { list: listName, name, note }, "Unable to save that description."))}
           onRemove={(name) => runList(() => onListAction("DELETE", { list: listName, name }, "Unable to remove that option."))}
         />
       )}
@@ -694,19 +696,31 @@ function EditSheet({ initial, lists, layoutsFor, saving, onClose, onSave, onDele
   );
 }
 
-function ListManager({ options, mode, list, error, onAdd, onRename, onRemove }) {
+function ListManager({ options, mode, list, error, notes, onAdd, onRename, onNote, onRemove }) {
   const [draft, setDraft] = useState("");
+  const commitOnEnter = (e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } };
+
   return (
     <div className="mgr open">
       {options.map((name) => (
-        <div className="opt" key={name}>
-          <input defaultValue={name}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
-            onBlur={(e) => {
-              const now = e.target.value.trim();
-              if (!now || now === name) { e.target.value = name; return; }
-              onRename(name, now);
-            }} />
+        <div className={`opt${notes ? " withnote" : ""}`} key={name}>
+          <div className="fields">
+            <input defaultValue={name} onKeyDown={commitOnEnter}
+              onBlur={(e) => {
+                const now = e.target.value.trim();
+                if (!now || now === name) { e.target.value = name; return; }
+                onRename(name, now);
+              }} />
+            {notes && (
+              <input className="note" defaultValue={notes[name] || ""} placeholder="Short description"
+                onKeyDown={commitOnEnter}
+                onBlur={(e) => {
+                  const now = e.target.value.trim();
+                  if (now === (notes[name] || "")) return;
+                  onNote(name, now);
+                }} />
+            )}
+          </div>
           <button type="button" onClick={() => onRemove(name)} title="Remove">×</button>
         </div>
       ))}
@@ -717,7 +731,9 @@ function ListManager({ options, mode, list, error, onAdd, onRename, onRemove }) 
         <button type="button" onClick={() => { if (draft.trim()) { onAdd(draft.trim()); setDraft(""); } }}>Add</button>
       </div>
       <div className="hintline">
-        {error || "Renaming updates every record using that option. An option in use cannot be removed."}
+        {error || (notes
+          ? "The second line is the description shown on the card. Renaming updates every record using that option."
+          : "Renaming updates every record using that option. An option in use cannot be removed.")}
       </div>
     </div>
   );
@@ -804,7 +820,7 @@ const PAGE_CSS = `
 #ps-root .ps-lane{margin-bottom:22px}
 #ps-root .ps-lane-head{display:flex;align-items:center;gap:9px;margin-bottom:9px;padding:0 2px}
 #ps-root .ps-lane-head h2{margin:0;font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--text)}
-#ps-root .ps-lane-head .n{border-radius:999px;padding:3px 10px 0;height:22px;font-size:11.5px;font-weight:600;
+#ps-root .ps-lane-head .n{border-radius:999px;padding:1px 10px 0;height:22px;font-size:11.5px;font-weight:600;
   background:var(--col);color:var(--text-2);display:inline-flex;align-items:center;justify-content:center;line-height:1}
 #ps-root .ps-lane-head .more{margin-left:auto;font-size:11.5px;color:var(--faint)}
 
@@ -825,10 +841,10 @@ const PAGE_CSS = `
 #ps-root .brandline{font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;line-height:1.2;margin-bottom:3px}
 #ps-root .sub{font-size:12px;color:var(--muted);margin-top:2px;display:flex;gap:7px;flex-wrap:wrap}
 #ps-root .sub code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--text-2)}
-#ps-root .mode{border-radius:999px;padding:3px 11px 0;height:24px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
+#ps-root .mode{border-radius:999px;padding:1px 11px 0;height:24px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
   text-transform:uppercase;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;
   width:fit-content;line-height:1;margin-bottom:8px}
-#ps-root .pill{border-radius:999px;padding:3px 11px 0;height:24px;font-size:11.5px;font-weight:600;white-space:nowrap;
+#ps-root .pill{border-radius:999px;padding:1px 11px 0;height:24px;font-size:11.5px;font-weight:600;white-space:nowrap;
   display:inline-flex;align-items:center;justify-content:center;line-height:1}
 #ps-root .iconbtn{height:30px;width:30px;flex:none;border-radius:999px;border:1px solid var(--border);
   background:var(--card);color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
@@ -891,7 +907,7 @@ const PAGE_CSS = `
   font-weight:600;line-height:1.2}
 
 #ps-root .inkrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px}
-#ps-root .layer{border-radius:999px;padding:3px 11px 0;height:24px;font-size:11.5px;font-weight:600;
+#ps-root .layer{border-radius:999px;padding:1px 11px 0;height:24px;font-size:11.5px;font-weight:600;
   white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 #ps-root .plus{color:var(--faint);font-size:12px;font-weight:600}
 #ps-root .cnt{font-size:11.5px;color:var(--muted);font-weight:500}
@@ -928,7 +944,10 @@ const PAGE_CSS = `
 #ps-root .gear.on{background:${ACCENT_GRAD};color:var(--on-accent);border-color:transparent}
 #ps-root .mgr{margin-top:7px;border:1px solid var(--border);border-radius:var(--r-field);background:var(--col);padding:8px}
 #ps-root .mgr .opt{display:flex;gap:6px;align-items:center;margin-bottom:6px}
-#ps-root .mgr .opt input{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);color:var(--text);
+#ps-root .mgr .opt.withnote{align-items:flex-start}
+#ps-root .mgr .opt .fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+#ps-root .mgr .opt .note{font-size:12px;color:var(--text-2)}
+#ps-root .mgr .opt input{width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);
   border-radius:9px;padding:6px 9px;font-size:12.5px;outline:none}
 #ps-root .mgr .opt button{height:28px;width:28px;flex:none;border-radius:9px;border:1px solid var(--border);
   background:var(--card);color:var(--muted);cursor:pointer;font-size:13px;line-height:1}
@@ -947,7 +966,7 @@ const PAGE_CSS = `
 #ps-root .inkbuild .seq{min-height:42px;background:var(--col);border:1px solid var(--border);
   border-radius:var(--r-field);padding:8px 10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
 #ps-root .inkbuild .seq .ph{color:var(--faint);font-size:12.5px}
-#ps-root .inkbuild .seq .layer{gap:6px;cursor:pointer;padding:1px 10px 0}
+#ps-root .inkbuild .seq .layer{gap:6px;cursor:pointer;padding:0 10px}
 #ps-root .inkbuild .seq .layer .x{opacity:.6;font-weight:700}
 #ps-root .inkbuild .seq .layer:hover .x{opacity:1}
 
