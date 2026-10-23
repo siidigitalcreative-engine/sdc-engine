@@ -205,15 +205,16 @@ function namesIn(draft, list) {
   return list === "layouts" ? draft.lists.layouts.map((l) => l.name) : draft.lists[list];
 }
 
-export async function addOption(list, name, mode) {
+export async function addOption(list, name, mode, note) {
   if (!LIST_FIELD[list]) throw new Error("Unknown option list.");
   const value = cleanOptionName(name);
+  const noteText = clean(note).slice(0, 120);
   return mutateState((draft) => {
     if (namesIn(draft, list).some((n) => n.toLowerCase() === value.toLowerCase())) {
       throw new Error("That option already exists.");
     }
     if (list === "layouts") {
-      draft.lists.layouts.push({ name: value, note: "", modes: [MODES.includes(mode) ? mode : "Cylinder"] });
+      draft.lists.layouts.push({ name: value, note: noteText, modes: [MODES.includes(mode) ? mode : "Cylinder"] });
     } else {
       draft.lists[list].push(value);
     }
@@ -221,10 +222,14 @@ export async function addOption(list, name, mode) {
   });
 }
 
-export async function renameOption(list, name, newName) {
+// Renames an option and, for print coverage, edits its short description.
+// Pass only what changes: { newName }, { note }, or both.
+export async function updateOption(list, name, { newName, note } = {}) {
   if (!LIST_FIELD[list]) throw new Error("Unknown option list.");
   const from = cleanOptionName(name);
-  const to = cleanOptionName(newName);
+  const to = newName === undefined ? from : cleanOptionName(newName);
+  const nextNote = note === undefined ? undefined : clean(note).slice(0, 120);
+
   return mutateState((draft) => {
     const existing = namesIn(draft, list);
     if (!existing.some((n) => n === from)) throw new Error("That option no longer exists.");
@@ -232,14 +237,24 @@ export async function renameOption(list, name, newName) {
       throw new Error("That option already exists.");
     }
     if (list === "layouts") {
-      draft.lists.layouts = draft.lists.layouts.map((l) => (l.name === from ? { ...l, name: to } : l));
+      draft.lists.layouts = draft.lists.layouts.map((l) =>
+        l.name === from ? { ...l, name: to, note: nextNote === undefined ? l.note : nextNote } : l
+      );
     } else {
+      if (nextNote !== undefined) throw new Error("Only print coverage options carry a description.");
       draft.lists[list] = draft.lists[list].map((n) => (n === from ? to : n));
     }
-    const field = LIST_FIELD[list];
-    draft.records = draft.records.map((r) => (r[field] === from ? { ...r, [field]: to } : r));
+    if (from !== to) {
+      const field = LIST_FIELD[list];
+      draft.records = draft.records.map((r) => (r[field] === from ? { ...r, [field]: to } : r));
+    }
     return draft;
   });
+}
+
+// Kept for callers that only rename.
+export async function renameOption(list, name, newName) {
+  return updateOption(list, name, { newName });
 }
 
 export async function removeOption(list, name) {
