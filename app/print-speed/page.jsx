@@ -156,21 +156,28 @@ export default function PrintSpeedPage() {
     return counts;
   }, [records]);
 
+  // Light the tile straight away, then confirm with the server. If the save
+  // fails the previous setting comes back and the reason is shown.
   const setSpeed = async (record, key) => {
-    if (saving || record[key] == null) return;
+    if (record[key] == null) return;
     const next = record.rec === key ? null : key;
-    setSaving(true);
+    const previous = record.rec;
+
+    setRecords((rows) => rows.map((r) => (r.id === record.id ? { ...r, rec: next } : r)));
+    setError("");
+
     try {
       const response = await fetch("/api/print-speed", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: record.id, data: { rec: next } }),
       });
+      if (response.status === 401) throw new Error("Your session expired. Reload the page and sign in again.");
       await apply(response, "Unable to save the speed setting.");
     } catch (e) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
+      console.error("print-speed set recommended", e);
+      setRecords((rows) => rows.map((r) => (r.id === record.id ? { ...r, rec: previous } : r)));
+      setError(e?.message || "Unable to save the speed setting.");
     }
   };
 
