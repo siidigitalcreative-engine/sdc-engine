@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutGrid, Calendar, CheckSquare, Folder, Users, Printer, Send, BarChart, Settings, Sparkles, Moon, Sun, LogOut, Megaphone, BookOpen } from "lucide-react";
+import { LayoutGrid, Calendar, CheckSquare, Folder, Users, Printer, Send, BarChart, Settings, Sparkles, Moon, Sun, LogOut, Megaphone } from "lucide-react";
 import { useTheme } from "./theme";
 import { useAuth } from "./auth";
 
@@ -18,7 +18,6 @@ const NAV = [
   { href: "/lark", name: "Lark Groups", icon: Send },
   { href: "/reports", name: "Reports", icon: BarChart },
   { href: "/ads", name: "Ads", icon: Megaphone },
-  { href: "/brands", name: "Brand Information", icon: BookOpen },
 ];
 
 export default function Sidebar({ mobile = false, onNavigate }) {
