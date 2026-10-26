@@ -39,7 +39,7 @@ export function buildPrintOverviewImage(records = [], options = {}) {
   const element = (
     <div style={{
       width: W, height: H, display: "flex", flexDirection: "column",
-      backgroundColor: C.page, padding: PAD, fontFamily: "sans-serif",
+      backgroundColor: C.page, padding: PAD, fontFamily: "Inter, sans-serif",
     }}>
       <div style={{ display: "flex", alignItems: "flex-end", marginBottom: 16 }}>
         <div style={{ display: "flex", flexDirection: "column" }}>
