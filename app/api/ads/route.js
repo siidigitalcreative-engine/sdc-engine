@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   if (!await getAuthenticatedMember(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    return NextResponse.json((await readAdsWorkspace()).state, { headers: { "Cache-Control": "private, no-store" } });
+    const { state, missing } = await readAdsWorkspace();
+    return NextResponse.json({ ...state, storageMissing: !!missing }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("GET /api/ads", error);
     return NextResponse.json({ error: "Unable to load Ads data." }, { status: 500 });
@@ -19,7 +20,7 @@ export async function POST(request) {
   if (!await getAuthenticatedMember(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { action, payload } = await request.json();
-    if (JSON.stringify(payload).length > 300000) return NextResponse.json({ error: "Payload too large." }, { status: 413 });
+    if (JSON.stringify(payload ?? null).length > 300000) return NextResponse.json({ error: "Payload too large." }, { status: 413 });
     const state = await updateAdsWorkspace(action, payload);
     return NextResponse.json(state, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
