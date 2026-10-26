@@ -1,7 +1,8 @@
 import { ImageResponse } from "next/og";
+import { interFonts } from "../../lib/print-fonts";
 import { buildTasksImage } from "../../lib/tasks-image";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 // Open /api/tasks-image in a browser (GET) to verify this file is in the right
 // folder. It MUST report renderer "board". If it says "single", this route has
@@ -15,5 +16,5 @@ export async function POST(request) {
   const tasks = Array.isArray(body.tasks) ? body.tasks : [];
   const statuses = Array.isArray(body.statuses) ? body.statuses : null;
   const { element, width, height } = buildTasksImage(tasks, statuses);
-  return new ImageResponse(element, { width, height });
+  return new ImageResponse(element, { width, height, fonts: await interFonts() });
 }
