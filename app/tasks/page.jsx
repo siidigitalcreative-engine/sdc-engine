@@ -4,6 +4,7 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from "react"
 import Link from "next/link";
 import { upload as uploadToBlob } from "@vercel/blob/client";
 import { useAuth } from "../auth";
+import { useLarkSend } from "../LarkSend";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, X, Search, Paperclip, Clock, Flag, Trash2, Tag, Sparkles, List, MoreHorizontal,
@@ -246,18 +247,7 @@ export default function TasksPage() {
 
 
   const [archivingDone, setArchivingDone] = useState(false);
-  const [larkTargets, setLarkTargets] = useState([]);
-  const [larkPicker, setLarkPicker] = useState(null);   // { endpoint, payload } while open
-  const [larkSending, setLarkSending] = useState(false);
-
-  const loadLarkTargets = useCallback(async () => {
-    try {
-      const res = await fetch("/api/lark-targets", { cache: "no-store" });
-      if (!res.ok) return;
-      const body = await res.json();
-      setLarkTargets(Array.isArray(body.targets) ? body.targets : []);
-    } catch { /* the picker still works with the default group */ }
-  }, []);
+  const { openLarkSend, larkPicker } = useLarkSend();
 
   // Sweeps everything currently in Done into the archive, on demand.
   const archiveDoneNow = useCallback(async () => {
@@ -484,29 +474,6 @@ export default function TasksPage() {
     } catch (e) { setTaskError(e.message || "Unable to export tasks image."); }
   };
 
-  // Sending now goes through a picker so the board can be posted to whichever
-  // group chat is relevant, not only the one set in the environment.
-  const sendTasksToLark = (target) => sendToLark("/api/lark/tasks-image", buildTasksPayload(), target);
-
-  const sendToLark = async (endpoint, payload, target) => {
-    try {
-      setTaskError("");
-      setLarkSending(true);
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, target }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Unable to send to Lark.");
-      setLarkPicker(null);
-    } catch (e) {
-      setTaskError(e.message || "Unable to send to Lark");
-    } finally {
-      setLarkSending(false);
-    }
-  };
-
   return (
     <>
       <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
@@ -541,7 +508,7 @@ export default function TasksPage() {
             </Link>
             <div className="flex items-center gap-2 shrink-0">
               <button onClick={exportTasksPng} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
-              <button onClick={() => { loadLarkTargets(); setLarkPicker({ endpoint: "/api/lark/tasks-image", payload: buildTasksPayload(), label: "board" }); }} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
+              <button onClick={() => openLarkSend("/api/lark/tasks-image", buildTasksPayload(), { label: "the task board" })} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
             </div>
             <button onClick={() => openCreate("todo")} className="tp-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
               <Plus size={17} /> New task
@@ -620,18 +587,9 @@ export default function TasksPage() {
           )}
         </main>
 
-      {larkPicker && (
-        <LarkPicker
-          targets={larkTargets}
-          sending={larkSending}
-          label={larkPicker.label}
-          onClose={() => !larkSending && setLarkPicker(null)}
-          onSend={(target) => sendToLark(larkPicker.endpoint, larkPicker.payload, target)}
-          onRefresh={loadLarkTargets}
-        />
-      )}
+      {larkPicker}
 
-      {modal && <TaskModal modal={modal} members={members} setForm={setForm} patchForm={patchForm} onClose={() => !savingTask && setModal(null)} onSave={save} onAutoSave={autoSaveAttachments} onDelete={remove} onArchive={archive} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
+      {modal && <TaskModal modal={modal} members={members} setForm={setForm} patchForm={patchForm} onClose={() => !savingTask && setModal(null)} onSave={save} onAutoSave={autoSaveAttachments} onDelete={remove} onArchive={archive} onSendToLark={openLarkSend} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
     </>
   );
 }
@@ -717,164 +675,7 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging, o
 }
 
 /* ---------- modal ---------- */
-function LarkPicker({ targets, sending, label, onClose, onSend, onRefresh }) {
-  const preferred = targets.find((t) => t.isDefault) || targets[0];
-  const [choice, setChoice] = useState(preferred?.id || "default");
-  const [managing, setManaging] = useState(false);
-  const [name, setName] = useState("");
-  const [hook, setHook] = useState("");
-  const [editing, setEditing] = useState(null);     // id being renamed or repointed
-  const [editName, setEditName] = useState("");
-  const [editHook, setEditHook] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!targets.some((t) => t.id === choice)) {
-      setChoice((targets.find((t) => t.isDefault) || targets[0])?.id || "default");
-    }
-  }, [targets]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const act = async (method, body) => {
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch("/api/lark-targets", {
-        method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "That did not save.");
-      setName(""); setHook("");
-      await onRefresh();
-      return true;
-    } catch (e) {
-      setError(e.message);
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-5" style={{ background: "rgba(0,0,0,.6)" }}>
-      <div className="w-full max-w-md rounded-2xl p-5 shadow-xl"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-        <h2 className="text-base font-semibold" style={{ color: "var(--text)" }}>Send to Lark</h2>
-        <p className="text-xs mt-0.5 mb-4" style={{ color: "var(--muted)" }}>
-          Choose the group chat that gets the {label === "board" ? "task board" : label}.
-        </p>
-
-        <div className="flex flex-col gap-2 mb-3">
-          {targets.length ? targets.map((t) => (
-            <div key={t.id} className="rounded-xl px-3 py-2.5"
-              style={{
-                background: choice === t.id ? "var(--dim)" : "var(--col)",
-                border: `1px solid ${choice === t.id ? "#F0784B" : "var(--border)"}`,
-              }}>
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <input type="radio" name="lark-target" checked={choice === t.id}
-                  onChange={() => setChoice(t.id)} style={{ accentColor: "#F0784B" }} />
-                <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{t.name}</span>
-                {t.isDefault && (
-                  <span className="text-[10px] font-bold uppercase tracking-wide rounded-full px-1.5 py-0.5"
-                    style={{ background: "#FCE3D6", color: "#F26A3C" }}>Default</span>
-                )}
-                <span className="text-xs ml-auto" style={{ color: "var(--faint)" }}>{t.host || t.hint}</span>
-              </label>
-
-              {!t.builtIn && (
-                <div className="flex items-center gap-3 mt-1.5 pl-6">
-                  {!t.isDefault && (
-                    <button type="button" disabled={busy}
-                      onClick={() => act("PATCH", { id: t.id, defaultFor: [...new Set([...(t.defaultFor || []), "tasks"])] })}
-                      className="text-xs" style={{ color: "var(--text-2)" }}>Make default</button>
-                  )}
-                  <button type="button" disabled={busy}
-                    onClick={() => { setEditing(editing === t.id ? null : t.id); setEditName(t.name); setEditHook(""); }}
-                    className="text-xs" style={{ color: "var(--text-2)" }}>
-                    {editing === t.id ? "Close" : "Edit"}
-                  </button>
-                  <button type="button" disabled={busy}
-                    onClick={() => { if (window.confirm(`Remove ${t.name}?`)) act("DELETE", { id: t.id }); }}
-                    className="text-xs ml-auto" style={{ color: "#E5536E" }}>Remove</button>
-                </div>
-              )}
-
-              {!t.lark && (
-                <p className="text-xs mt-1.5 pl-6" style={{ color: "#E0A93C" }}>
-                  Not a Lark bot URL. Image posts will only work with a Lark custom bot.
-                </p>
-              )}
-
-              {editing === t.id && (
-                <div className="flex flex-col gap-2 mt-2 pl-6">
-                  <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Name"
-                    className="rounded-lg px-2.5 py-2 text-sm outline-none"
-                    style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)" }} />
-                  <input value={editHook} onChange={(e) => setEditHook(e.target.value)}
-                    placeholder="New webhook URL, leave blank to keep the current one"
-                    className="rounded-lg px-2.5 py-2 text-sm outline-none"
-                    style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)" }} />
-                  <button type="button" disabled={busy}
-                    onClick={() => act("PATCH", { id: t.id, name: editName, webhook: editHook })
-                      .then(() => setEditing(null))}
-                    className="rounded-full px-3 py-1.5 text-xs font-semibold self-start"
-                    style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>Save</button>
-                </div>
-              )}
-            </div>
-          )) : (
-            <p className="text-sm" style={{ color: "var(--muted)" }}>
-              No destinations yet. Add one below, or set LARK_TASKS_BOT_WEBHOOK in the environment.
-            </p>
-          )}
-        </div>
-
-        <button type="button" onClick={() => setManaging((v) => !v)}
-          className="text-xs font-medium" style={{ color: "var(--text-2)" }}>
-          {managing ? "Hide" : "Add a group chat"}
-        </button>
-
-        {managing && (
-          <div className="mt-2.5 rounded-xl p-3 flex flex-col gap-2"
-            style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Group name, e.g. Creative Team"
-              className="rounded-lg px-2.5 py-2 text-sm outline-none"
-              style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)" }} />
-            <input value={hook} onChange={(e) => setHook(e.target.value)} placeholder="https://open.larksuite.com/open-apis/bot/v2/hook/…"
-              className="rounded-lg px-2.5 py-2 text-sm outline-none"
-              style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)" }} />
-            <button type="button" disabled={busy || !name.trim() || !hook.trim()}
-              onClick={() => act("POST", { name, webhook: hook })}
-              className="rounded-full px-3 py-2 text-sm font-semibold self-start disabled:opacity-50"
-              style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
-              {busy ? "Saving…" : "Add destination"}
-            </button>
-            <p className="text-xs" style={{ color: "var(--faint)" }}>
-              In Lark: group settings, Bots, Add Bot, Custom Bot, then copy its webhook address.
-              Any https webhook is accepted, so new groups can be added here at any time.
-            </p>
-          </div>
-        )}
-
-        {error && <p className="text-xs mt-2" style={{ color: "#E5536E" }}>{error}</p>}
-
-        <div className="flex gap-2 mt-4">
-          <button type="button" disabled={sending || !targets.length} onClick={() => onSend(choice)}
-            className="rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-50"
-            style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
-            {sending ? "Sending…" : "Send"}
-          </button>
-          <button type="button" onClick={onClose} className="tp-ib rounded-full px-4 py-2 text-sm font-medium"
-            style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAutoSave, onDelete, onArchive, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
+function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAutoSave, onDelete, onArchive, onSendToLark, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
@@ -964,15 +765,9 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
     } catch (e) { setTaskImgMsg(e.message || "Unable to export."); }
     finally { setTaskImgBusy(""); }
   };
-  const sendTaskToLark = async () => {
-    setTaskImgBusy("lark"); setTaskImgMsg("");
-    try {
-      const res = await fetch("/api/lark/task-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(singleTaskPayload()) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Unable to send to Lark.");
-      setTaskImgMsg("Sent to Lark ✓");
-    } catch (e) { setTaskImgMsg(e.message || "Unable to send to Lark."); }
-    finally { setTaskImgBusy(""); }
+  const sendTaskToLark = () => {
+    setTaskImgMsg("");
+    onSendToLark("/api/lark/task-image", singleTaskPayload(), { label: "this task" });
   };
 
   const toggleAssignee = (id) => setForm({ assignees: f.assignees.includes(id) ? f.assignees.filter((a) => a !== id) : [...f.assignees, id] });
