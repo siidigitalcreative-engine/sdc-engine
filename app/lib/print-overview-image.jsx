@@ -2,7 +2,7 @@
    a grid. Satori has no CSS grid, so rows are flex and each row's height is the
    tallest card in it. */
 
-import { printCardHeight, printCardNode } from "./print-card-image";
+import { printCardHeight, printCardNode, printCardWidth } from "./print-card-image";
 
 const C = {
   page: "#17141A", border: "#332C3A",
@@ -10,7 +10,7 @@ const C = {
 };
 
 const PAD = 26;
-const CARD_W = 420;
+const CARD_W = printCardWidth();
 const GAP = 16;
 const MAX_COLS = 3;
 const MAX_CARDS = 12;   // beyond this the image gets unwieldy to read in chat
@@ -28,7 +28,7 @@ export function buildPrintOverviewImage(records = [], options = {}) {
   for (let i = 0; i < rows.length; i += cols) lines.push(rows.slice(i, i + cols));
 
   const lineHeights = lines.map((line) =>
-    Math.max(...line.map((r) => printCardHeight(r, { width: CARD_W, layoutNote: notes[r.layout] || "" })))
+    Math.max(...line.map((r) => printCardHeight(r, { layoutNote: notes[r.layout] || "" })))
   );
 
   const W = PAD * 2 + cols * CARD_W + (cols - 1) * GAP;
@@ -60,7 +60,7 @@ export function buildPrintOverviewImage(records = [], options = {}) {
         }}>
           {line.map((r, j) => (
             <div key={r.id || j} style={{ display: "flex", width: CARD_W, marginLeft: j ? GAP : 0 }}>
-              {printCardNode(r, { width: CARD_W, layoutNote: notes[r.layout] || "" })}
+              {printCardNode(r, { layoutNote: notes[r.layout] || "" })}
             </div>
           ))}
           {line.length < cols ? <div style={{ display: "flex", flex: 1 }} /> : null}
