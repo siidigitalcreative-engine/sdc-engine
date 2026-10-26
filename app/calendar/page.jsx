@@ -3,6 +3,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
+import { useLarkSend } from "../LarkSend";
 import {
   ChevronLeft, ChevronRight, Plus, X, Trash2, Search,
   Clock, AlignLeft, Sparkles, Users,
@@ -156,19 +157,10 @@ export default function TeamCalendar() {
     }
   };
 
-  const sendToLark = async () => {
-    try {
-      setCalendarError("");
-      const res = await fetch("/api/lark/calendar-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildCalendarPayload()),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Unable to send calendar to Lark.");
-    } catch (error) {
-      setCalendarError(error.message || "Unable to send to Lark");
-    }
+  const { openLarkSend, larkPicker } = useLarkSend();
+  const sendToLark = () => {
+    setCalendarError("");
+    openLarkSend("/api/lark/calendar-image", buildCalendarPayload(), { label: "this month's schedule", kind: "calendar" });
   };
 
   const calendarEtagRef = useRef(null);
@@ -338,6 +330,7 @@ export default function TeamCalendar() {
 
   return (
     <>
+      {larkPicker}
       <main ref={calendarExportRef} className="flex-1 min-w-0 flex flex-col">
           {calendarError && (
             <div className="mx-5 mt-3 rounded-xl px-4 py-2.5 text-sm shrink-0" style={{ color: "#C23150", background: "rgba(229,83,110,0.10)", border: "1px solid rgba(229,83,110,0.24)" }}>
@@ -419,7 +412,7 @@ export default function TeamCalendar() {
       {modal && (
         <EventModal modal={modal} calendars={calendars} members={members} setForm={setForm}
           onClose={() => !savingEvent && setModal(null)} onSave={saveModal} onDelete={deleteEvent}
-          saving={savingEvent} error={calendarError} />
+          onSendToLark={openLarkSend} saving={savingEvent} error={calendarError} />
       )}
     </>
   );
@@ -640,7 +633,7 @@ function MiniMonth({ cursor, onPick }) {
 }
 
 /* ================= EVENT MODAL ================= */
-function EventModal({ modal, calendars, members, setForm, onClose, onSave, onDelete, saving, error }) {
+function EventModal({ modal, calendars, members, setForm, onClose, onSave, onDelete, onSendToLark, saving, error }) {
   const f = modal.form;
   const cal = calendars.find((c) => c.id === f.calId) || calendars[0];
   const toggleAttendee = (id) => setForm({ attendees: f.attendees.includes(id) ? f.attendees.filter((a) => a !== id) : [...f.attendees, id] });
@@ -678,14 +671,9 @@ function EventModal({ modal, calendars, members, setForm, onClose, onSave, onDel
     } catch (e) { setImgError(e.message || "Unable to export event image."); }
     finally { setImgBusy(false); }
   };
-  const sendEventToLark = async () => {
-    setImgBusy(true); setImgError("");
-    try {
-      const res = await fetch("/api/lark/event-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildEventImagePayload()) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Unable to send event to Lark.");
-    } catch (e) { setImgError(e.message || "Unable to send to Lark."); }
-    finally { setImgBusy(false); }
+  const sendEventToLark = () => {
+    setImgError("");
+    onSendToLark("/api/lark/event-image", buildEventImagePayload(), { label: "this event", kind: "calendar" });
   };
 
   return (
