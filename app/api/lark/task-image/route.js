@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveWebhook } from "../../../lib/lark-target-store";
 import { ImageResponse } from "next/og";
+import { interFonts } from "../../../lib/print-fonts";
 import { buildTaskImage } from "../../../lib/task-image";
 
 export const runtime = "nodejs";
@@ -32,7 +33,7 @@ export async function POST(request) {
     const task = body.task && typeof body.task === "object" ? body.task : {};
 
     const { element, width, height } = buildTaskImage(task);
-    const image = new ImageResponse(element, { width, height });
+    const image = new ImageResponse(element, { width, height, fonts: await interFonts() });
     const png = new Uint8Array(await image.arrayBuffer());
 
     const token = await getToken();
