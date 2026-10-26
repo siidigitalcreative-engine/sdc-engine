@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus, GripVertical, ChevronDown, ChevronUp, Copy, Trash2, Save, Wallet, BookOpen, Pencil } from "lucide-react";
+import BrandInformationPanel from "./BrandInformationPanel";
 
 const PILLARS = [
   { id: "story", name: "Storytelling", color: "#F0A5B9", focus: "Emotional stories and everyday moments", seconds: 30 },
@@ -28,7 +29,7 @@ function Pill({ children, color = "#A899B6" }) { return <span className="rounded
 function IconButton({ children, onClick, danger = false }) { return <button type="button" onClick={onClick} className="rounded-lg px-2.5 py-1.5 text-xs font-medium flex gap-1 items-center" style={{ border: "1px solid var(--border)", color: danger ? "#E77A76" : "var(--text-2)" }}>{children}</button>; }
 
 export default function AdsPage() {
-  const [data, setData] = useState({ brands: [], campaigns: [], presets: [], pillarBudgets: DEFAULT_BUDGETS });
+  const [data, setData] = useState({ brands: [], campaigns: [], presets: [], pillarBudgets: DEFAULT_BUDGETS, storageMissing: false });
   const [tab, setTab] = useState("campaigns");
   const [draft, setDraft] = useState(null);
   const [activeId, setActiveId] = useState(null);
@@ -62,11 +63,12 @@ export default function AdsPage() {
   }, 0), spent: data.campaigns.reduce((s, x) => s + (Number(x.spent) || 0), 0) }), [data]);
   const update = patch => setDraft(v => ({ ...v, ...patch }));
   const updateRow = (id, patch) => update({ rows: draft.rows.map(r => r.id === id ? { ...r, ...patch } : r) });
-  const newAd = () => { const item = freshCampaign(); item.brandId = data.brands[0]?.id || ""; item.presetId = data.presets[0]?.id || ""; setDraft(item); setActiveId(item.id); setTab("campaigns"); setMessage(""); };
+  const newAd = () => { if (data.storageMissing) { setTab("brands"); return; } const item = freshCampaign(); item.brandId = data.brands[0]?.id || ""; item.presetId = data.presets[0]?.id || ""; setDraft(item); setActiveId(item.id); setTab("campaigns"); setMessage(""); };
   const choose = item => { setDraft(structuredClone(item)); setActiveId(item.id); setMessage(""); };
   const addPillar = id => { if (!draft) return; update({ rows: [...draft.rows, { id: crypto.randomUUID(), pillar: id, budget: Number(data.pillarBudgets[id] || 0), prompt: "", open: true, concept: blankConcept(PILLARS.find(p => p.id === id)) }] }); };
   const duplicateRow = row => update({ rows: [...draft.rows, { ...structuredClone(row), id: crypto.randomUUID(), open: true }] });
   const saveAction = async (action, payload, success) => {
+    if (data.storageMissing) { setMessage("Shared Ads storage is missing. Saving is blocked; check Brand Information for recovery guidance."); return; }
     setBusy(true); setMessage("");
     try {
       const response = await fetch("/api/ads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) });
@@ -94,7 +96,9 @@ export default function AdsPage() {
   return <main className="flex-1 min-h-0 overflow-auto p-4 sm:p-6 space-y-4" style={{ color: "var(--text)" }}>
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold">Ads</h1><p className="text-sm" style={{ color: "var(--muted)" }}>Plan campaigns, build creative concepts, and manage budgets.</p></div><button onClick={newAd} className="text-white text-sm font-semibold rounded-xl px-4 py-2.5 flex gap-2 items-center" style={{ background: "linear-gradient(135deg,#FFAA62,#E53E30)" }}><Plus size={16}/> New Ad</button></div>
     <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">{[["Campaigns", metrics.campaigns], ["Running", metrics.running], ["Planned", money(metrics.planned)], ["Spent", money(metrics.spent)]].map(([key, val]) => <Box key={key}><p className="text-xs" style={{ color: "var(--muted)" }}>{key}</p><strong className="text-xl">{val}</strong></Box>)}</div>
-    <div className="flex gap-5 border-b overflow-auto" style={{ borderColor: "var(--border)" }}>{[["campaigns", "Campaigns"], ["pillars", "Pillar Budgets"], ["presets", "Standard Ad Budgets"]].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className="pb-3 text-sm whitespace-nowrap font-semibold" style={{ color: tab === id ? "var(--text)" : "var(--muted)", borderBottom: tab === id ? "3px solid #F26D52" : "3px solid transparent" }}>{label}</button>)}</div>
+    <div className="flex gap-5 border-b overflow-auto" style={{ borderColor: "var(--border)" }}>{[["campaigns", "Campaigns"], ["brands", "Brand Information"], ["pillars", "Pillar Budgets"], ["presets", "Standard Ad Budgets"]].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className="pb-3 text-sm whitespace-nowrap font-semibold" style={{ color: tab === id ? "var(--text)" : "var(--muted)", borderBottom: tab === id ? "3px solid #F26D52" : "3px solid transparent" }}>{label}</button>)}</div>
+    {data.storageMissing && tab !== "brands" && <div role="alert" className="rounded-xl p-3 text-sm" style={{ background: "rgba(240,140,70,.10)", border: "1px solid #BF7F45" }}>Shared Ads data is missing. No data has been overwritten. Open the Brand Information tab to check the recovery guidance before saving anything.</div>}
+    {tab === "brands" && <BrandInformationPanel onSaved={reload}/>}
     {tab === "campaigns" && <>
       <div className="flex flex-wrap gap-2 items-center"><span className="text-xs font-semibold" style={{ color: "var(--muted)" }}>CAMPAIGN</span>{data.campaigns.map(c => <button key={c.id} onClick={() => choose(c)} className="px-3 py-1.5 rounded-full text-xs" style={{ border: "1px solid var(--border)", background: activeId === c.id ? "var(--hover)" : "transparent" }}>{c.name}</button>)}{data.campaigns.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>Create your first campaign to get started.</span>}</div>
       {draft ? <div className="grid xl:grid-cols-[minmax(0,1.03fr)_minmax(0,.78fr)_minmax(0,1.38fr)] gap-3 items-start">
@@ -103,7 +107,7 @@ export default function AdsPage() {
           <Field label="Brand"><select className={INPUT} style={PANEL} value={draft.brandId} onChange={e => update({ brandId: e.target.value, collection: "", product: "" })}><option value="">Select Brand</option>{data.brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
           <Field label="Collection / Category"><select className={INPUT} style={PANEL} value={draft.collection} onChange={e => update({ collection: e.target.value, product: "" })}><option value="">Entire Brand</option>{(brand?.collections || []).filter(c => c.name.trim()).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></Field>
           <Field label="Product"><select className={INPUT} style={PANEL} value={draft.product} onChange={e => update({ product: e.target.value })}><option value="">All Products</option>{(collection?.products || []).filter(Boolean).map(p => <option key={p} value={p}>{p}</option>)}</select></Field>
-          <div className="rounded-xl p-3 space-y-1" style={{ background: "rgba(30,143,82,.12)", border: "1px solid rgba(57,170,104,.4)" }}><div className="flex gap-2 items-center text-sm font-semibold" style={{ color: "#45AD78" }}><BookOpen size={16}/> Brand Knowledge {brand ? "Available" : "Not Set"}</div><p className="text-xs" style={{ color: "var(--text-2)" }}>{brand ? `${brand.name}: brand voice, audience, guidelines and product information are available on the Brand Information page.` : "Add a profile on the Brand Information page, then select it here."}</p></div>
+          <div className="rounded-xl p-3 space-y-1" style={{ background: "rgba(30,143,82,.12)", border: "1px solid rgba(57,170,104,.4)" }}><div className="flex gap-2 items-center text-sm font-semibold" style={{ color: "#45AD78" }}><BookOpen size={16}/> Brand Knowledge {brand ? "Available" : "Not Set"}</div><p className="text-xs" style={{ color: "var(--text-2)" }}>{brand ? `${brand.name}: brand voice, audience, guidelines and product information are available in the Brand Information tab.` : "Add a profile in the Brand Information tab, then select it here."}</p></div>
           <Field label="Campaign Objective"><select className={INPUT} style={PANEL} value={draft.objective} onChange={e => update({ objective: e.target.value })}>{OPT_OBJECTIVES.map(o => <option key={o}>{o}</option>)}</select></Field>
           <Field label="Creative Instructions (optional)"><textarea className={INPUT + " resize-y"} rows={5} style={PANEL} value={draft.brief} onChange={e => update({ brief: e.target.value })} placeholder="Audience, tone, feel, message, visual direction..."/></Field>
           <div className="pt-3 border-t space-y-3" style={{ borderColor: "var(--border)" }}><h3 className="font-semibold flex gap-2 items-center"><Wallet size={16}/> Budget & Distribution</h3>
