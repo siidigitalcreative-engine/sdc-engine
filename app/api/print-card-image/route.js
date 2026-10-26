@@ -1,7 +1,8 @@
 import { ImageResponse } from "next/og";
+import { interFonts } from "../../lib/print-fonts";
 import { buildPrintCardImage } from "../../lib/print-card-image";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 // Open /api/print-card-image in a browser (GET) to confirm the route is live.
 export async function GET() {
@@ -27,5 +28,5 @@ export async function POST(request) {
   const body = await request.json().catch(() => ({}));
   const record = withAbsoluteImage(body.record && typeof body.record === "object" ? body.record : {}, request);
   const { element, width, height } = buildPrintCardImage(record, { layoutNote: body.layoutNote });
-  return new ImageResponse(element, { width, height });
+  return new ImageResponse(element, { width, height, fonts: await interFonts() });
 }
