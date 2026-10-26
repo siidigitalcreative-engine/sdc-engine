@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ImageResponse } from "next/og";
+import { interFonts } from "../../../lib/print-fonts";
 import { resolveWebhook } from "../../../lib/lark-target-store";
 import { buildPrintOverviewImage } from "../../../lib/print-overview-image";
 
@@ -46,7 +47,9 @@ export async function POST(request) {
 
     const records = (Array.isArray(body.records) ? body.records : []).map((r) => withAbsoluteImage(r, request));
     const { element, width, height } = buildPrintOverviewImage(records, { title: body.title, subtitle: body.subtitle, notes: body.notes });
-    const png = new Uint8Array(await new ImageResponse(element, { width, height }).arrayBuffer());
+    const png = new Uint8Array(
+      await new ImageResponse(element, { width, height, fonts: await interFonts() }).arrayBuffer()
+    );
 
     const token = await getToken();
     const form = new FormData();
