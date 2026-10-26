@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { upload as uploadToBlob } from "@vercel/blob/client";
+import { useLarkSend } from "../LarkSend";
 import {
-  Printer, Search, Plus, X, Pencil, Trash2, Image as ImageIcon,
+  Printer, Search, Plus, X, Pencil, Trash2, Download, Send, Image as ImageIcon,
   SlidersHorizontal, Layers, Folder, Gauge,
 } from "lucide-react";
 
@@ -67,6 +68,7 @@ export default function PrintHubPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState(null);
+  const [exportingId, setExportingId] = useState(null);
 
   const [query, setQuery] = useState("");
   const [brandFilter, setBrandFilter] = useState("all");
@@ -181,6 +183,53 @@ export default function PrintHubPage() {
     }
   };
 
+  const { openLarkSend, larkPicker } = useLarkSend();
+
+  // What the overview send posts: whatever the filters are currently showing.
+  const overviewPayload = () => ({
+    records: filtered,
+    notes: Object.fromEntries((lists.layouts || []).map((l) => [l.name, l.note || ""])),
+    title: "Print Hub",
+    subtitle: [
+      brandFilter === "all" ? null : brandFilter,
+      modeFilter === "all" ? null : modeFilter,
+      methodFilter === "all" ? null : methodFilter,
+      statusFilter === "all" ? null : statusFilter,
+      query.trim() ? `"${query.trim()}"` : null,
+    ].filter(Boolean).join(" · ") || "All records",
+  });
+
+  // Renders the card server-side with next/og and downloads the PNG.
+  const exportCard = async (record) => {
+    if (exportingId) return;
+    setExportingId(record.id);
+    setError("");
+    try {
+      const response = await fetch("/api/print-card-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ record, layoutNote: layoutNote(record.layout) }),
+      });
+      if (!response.ok) throw new Error("Unable to render that card.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const slug = [record.brand, record.name || record.sku, record.design]
+        .filter(Boolean).join("-").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${slug || "print-record"}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      console.error("print card export", e);
+      setError(e?.message || "Unable to export that card.");
+    } finally {
+      setExportingId(null);
+    }
+  };
+
   const openCreate = () => setModal({ mode: "create", form: blankRecord(lists) });
   const openEdit = (r) => setModal({ mode: "edit", form: { ...r, colors: [...(r.colors || [])], ink: [...(r.ink || [])] } });
 
@@ -262,6 +311,11 @@ export default function PrintHubPage() {
           <Search size={15} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search product, SKU, design" />
         </div>
+        <button onClick={() => openLarkSend("/api/lark/print-overview-image", overviewPayload(),
+            { label: `this overview (${filtered.length} record${filtered.length === 1 ? "" : "s"})`, kind: "print" })}
+          className="ps-btn" disabled={!filtered.length}>
+          <Send size={15} /> Send overview
+        </button>
         <button onClick={openCreate} className="ps-btn primary">
           <Plus size={16} /> New record
         </button>
@@ -309,13 +363,20 @@ export default function PrintHubPage() {
               </div>
               <div className="ps-grid">
                 {items.map((r) => (
-                  <Card key={r.id} r={r} onEdit={() => openEdit(r)} onSpeed={(k) => setSpeed(r, k)} layoutNote={layoutNote} />
+                  <Card key={r.id} r={r} onEdit={() => openEdit(r)} onSpeed={(k) => setSpeed(r, k)}
+                    onExport={() => exportCard(r)} exporting={exportingId === r.id}
+                    onSendLark={() => openLarkSend("/api/lark/print-card-image",
+                      { record: r, layoutNote: layoutNote(r.layout) },
+                      { label: `${r.name || r.sku || "this record"}`, kind: "print" })}
+                    layoutNote={layoutNote} />
                 ))}
               </div>
             </section>
           ))
         )}
       </div>
+
+      {larkPicker}
 
       {modal && (
         <EditSheet
@@ -336,7 +397,7 @@ export default function PrintHubPage() {
 
 /* ---------------- card ---------------- */
 
-function Card({ r, onEdit, onSpeed, layoutNote }) {
+function Card({ r, onEdit, onSpeed, onExport, onSendLark, exporting, layoutNote }) {
   const md = MODE_META[r.mode] || MODE_META.Cylinder;
   const sc = statusColor(r.status);
   const mc = methodColor(r.method);
@@ -372,9 +433,19 @@ function Card({ r, onEdit, onSpeed, layoutNote }) {
             {r.variant && <span>{r.variant}</span>}
           </div>
         </div>
-        <button className="iconbtn" onClick={onEdit} title="Edit this record" aria-label="Edit this record">
-          <Pencil size={14} />
-        </button>
+        <div className="acts">
+          <button className="iconbtn" onClick={onSendLark}
+            title="Send this card to Lark" aria-label="Send this card to Lark">
+            <Send size={14} />
+          </button>
+          <button className="iconbtn" onClick={onExport} disabled={exporting}
+            title="Export this card as PNG" aria-label="Export this card as PNG">
+            <Download size={14} />
+          </button>
+          <button className="iconbtn" onClick={onEdit} title="Edit this record" aria-label="Edit this record">
+            <Pencil size={14} />
+          </button>
+        </div>
       </div>
 
       <div className="design">
@@ -843,7 +914,8 @@ const PAGE_CSS = `
 #ps-root .ps-rec > *{flex:0 0 auto}
 #ps-root .rec-top{display:flex;align-items:flex-start;gap:9px}
 #ps-root .rec-top .t{min-width:0;flex:1}
-#ps-root .rec-top .iconbtn{margin-left:auto}
+#ps-root .rec-top .acts{display:flex;gap:6px;margin-left:auto}
+#ps-root .iconbtn:disabled{opacity:.5;cursor:wait}
 #ps-root .ps-rec h3{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--text)}
 #ps-root .brandline{font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;line-height:1.2;margin-bottom:3px}
 #ps-root .sub{font-size:12px;color:var(--muted);margin-top:2px;display:flex;gap:7px;flex-wrap:wrap}
