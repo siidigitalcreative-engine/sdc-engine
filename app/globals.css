@@ -1,9 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 html, body { margin: 0; padding: 0; }
+
+/* Inter everywhere. The family is self-hosted via next/font in layout.jsx, so
+   there is no request to Google here. This rule sits after @tailwind base so it
+   beats preflight, and it covers form controls, which inherit their own font. */
+html, body, button, input, select, textarea {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
 * { box-sizing: border-box; }
 
 .theme-light{
