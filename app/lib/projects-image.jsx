@@ -62,7 +62,7 @@ export function buildProjectsImage(projects = []) {
   };
 
   const element = (
-    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", backgroundColor: "#F7F8FA", fontFamily: "sans-serif" }}>
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", backgroundColor: "#F7F8FA", fontFamily: "Inter, sans-serif" }}>
       <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: HEAD, paddingLeft: 36, paddingRight: 36, background: "linear-gradient(135deg, #FFAA62 0%, #E53E30 100%)" }}>
         <div style={{ display: "flex", fontSize: 15, letterSpacing: 2, color: "rgba(255,255,255,0.88)", fontWeight: 600 }}>SDC PROJECTS</div>
         <div style={{ display: "flex", fontSize: 34, color: "#ffffff", fontWeight: 700, marginTop: 1 }}>Projects</div>
