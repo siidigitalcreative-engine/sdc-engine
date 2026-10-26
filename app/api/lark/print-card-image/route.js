@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ImageResponse } from "next/og";
+import { interFonts } from "../../../lib/print-fonts";
 import { resolveWebhook } from "../../../lib/lark-target-store";
 import { buildPrintCardImage } from "../../../lib/print-card-image";
 
@@ -46,7 +47,9 @@ export async function POST(request) {
 
     const record = withAbsoluteImage(body.record && typeof body.record === "object" ? body.record : {}, request);
     const { element, width, height } = buildPrintCardImage(record, { layoutNote: body.layoutNote });
-    const png = new Uint8Array(await new ImageResponse(element, { width, height }).arrayBuffer());
+    const png = new Uint8Array(
+      await new ImageResponse(element, { width, height, fonts: await interFonts() }).arrayBuffer()
+    );
 
     const token = await getToken();
     const form = new FormData();
