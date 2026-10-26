@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveWebhook } from "../../../lib/lark-target-store";
 import { ImageResponse } from "next/og";
 import { interFonts } from "../../../lib/print-fonts";
-import { buildMyTasksImage } from "../../../lib/my-tasks-image";
+import { buildEventCardImage } from "../../../lib/event-card-image";
 
 export const runtime = "nodejs";
 const LARK = "https://open.larksuite.com";
@@ -21,26 +21,25 @@ async function getToken() {
 export async function POST(request) {
   try {
     const requested = await request.clone().json().catch(() => ({}));
-    const webhook = await resolveWebhook(requested.target, "tasks");
+    const webhook = await resolveWebhook(requested.target, "calendar");
     if (!process.env.LARK_APP_ID || !process.env.LARK_APP_SECRET) {
-      return NextResponse.json({ error: "Missing LARK_APP_ID / LARK_APP_SECRET (needed to upload the image)." }, { status: 500 });
+      return NextResponse.json({ error: "Missing LARK_APP_ID / LARK_APP_SECRET (needed only to upload the image)." }, { status: 500 });
     }
     if (!webhook) {
-      return NextResponse.json({ error: "Missing LARK_TASKS_BOT_WEBHOOK / LARK_CALENDAR_BOT_WEBHOOK (the custom bot that posts to the group)." }, { status: 500 });
+      return NextResponse.json({ error: "Missing LARK_CALENDAR_BOT_WEBHOOK (the custom bot that posts to the group)." }, { status: 500 });
     }
 
     const body = await request.json().catch(() => ({}));
-    const tasks = Array.isArray(body.tasks) ? body.tasks : [];
-    const opts = body.member && typeof body.member === "object" ? body.member : {};
+    const event = body.event && typeof body.event === "object" ? body.event : {};
 
-    const { element, width, height } = buildMyTasksImage(tasks, opts);
+    const { element, width, height } = buildEventCardImage(event);
     const image = new ImageResponse(element, { width, height, fonts: await interFonts() });
     const png = new Uint8Array(await image.arrayBuffer());
 
     const token = await getToken();
     const form = new FormData();
     form.append("image_type", "message");
-    form.append("image", new Blob([png], { type: "image/png" }), "my-tasks.png");
+    form.append("image", new Blob([png], { type: "image/png" }), "event.png");
     const uploadRes = await fetch(`${LARK}/open-apis/im/v1/images`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
     const uploadData = await uploadRes.json().catch(() => ({}));
     if (uploadData.code !== 0 || !uploadData.data?.image_key) {
@@ -60,6 +59,6 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: error.message || "Unable to send daily update to Lark." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to send event image to Lark." }, { status: 500 });
   }
 }
