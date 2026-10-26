@@ -1,7 +1,8 @@
 import { ImageResponse } from "next/og";
+import { interFonts } from "../../lib/print-fonts";
 import { buildPrintOverviewImage } from "../../lib/print-overview-image";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 
 // A record's image may be stored as a relative proxy path. The renderer fetches
@@ -22,5 +23,5 @@ export async function POST(request) {
   const { element, width, height } = buildPrintOverviewImage(records, {
     title: body.title, subtitle: body.subtitle, notes: body.notes,
   });
-  return new ImageResponse(element, { width, height });
+  return new ImageResponse(element, { width, height, fonts: await interFonts() });
 }
