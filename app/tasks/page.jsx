@@ -245,6 +245,29 @@ export default function TasksPage() {
   // so can make an unsaved local transformation look like persisted data.
 
 
+  const [archivingDone, setArchivingDone] = useState(false);
+
+  // Sweeps everything currently in Done into the archive, on demand.
+  const archiveDoneNow = useCallback(async () => {
+    if (archivingDone) return;
+    const count = tasks.filter((t) => !t.archived && String(t.status) === "done").length;
+    if (!count) {
+      window.alert("Nothing in Done to archive.");
+      return;
+    }
+    if (!window.confirm(`Archive ${count} completed task${count === 1 ? "" : "s"}? They stay available on the Archive page.`)) return;
+
+    setArchivingDone(true);
+    try {
+      const response = await fetch("/api/tasks/archive-done", { method: "POST" });
+      await applyTaskResponse(response, "Unable to archive the completed tasks.");
+    } catch (e) {
+      setTaskError(e.message || "Unable to archive the completed tasks.");
+    } finally {
+      setArchivingDone(false);
+    }
+  }, [archivingDone, tasks, applyTaskResponse]);
+
   // Archived tasks live on their own page (/archive) and never show on the board.
   const visibleTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
 
@@ -479,6 +502,12 @@ export default function TasksPage() {
                   style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}><Icon size={15} />{v}</button>
               ))}
             </div>
+            <button onClick={archiveDoneNow} disabled={archivingDone}
+              title="Move everything in Done to the archive"
+              className="tp-ib rounded-full px-3 py-2 text-sm font-medium shadow-sm inline-flex items-center gap-1.5 disabled:opacity-60"
+              style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+              <CheckCircle2 size={15} /> {archivingDone ? "Archiving…" : "Archive done"}
+            </button>
             <Link href="/archive" title="Open the archive"
               className="tp-ib rounded-full px-3 py-2 text-sm font-medium shadow-sm inline-flex items-center gap-1.5"
               style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
