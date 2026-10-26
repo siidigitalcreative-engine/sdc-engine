@@ -36,7 +36,7 @@ export function buildMyTasksImage(tasks = [], opts = {}) {
   const H = HEAD + bodyH;
 
   const element = (
-    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", backgroundColor: "#F7F8FA", fontFamily: "sans-serif" }}>
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", backgroundColor: "#F7F8FA", fontFamily: "Inter, sans-serif" }}>
       {/* header */}
       <div style={{ display: "flex", alignItems: "center", height: HEAD, paddingLeft: PAD, paddingRight: PAD, background: "linear-gradient(135deg, #FFAA62 0%, #E53E30 100%)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 56, height: 56, borderRadius: 28, backgroundColor: "rgba(255,255,255,0.22)", marginRight: 16 }}>
