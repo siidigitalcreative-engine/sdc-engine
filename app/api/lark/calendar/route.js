@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveWebhook } from "../../../lib/lark-target-store";
 
 function getCalendarGrid(date, events = []) {
   const year = date.getFullYear();
@@ -61,7 +62,8 @@ function formatTime(value) {
 
 export async function POST(request) {
   try {
-    const webhook = process.env.LARK_CALENDAR_BOT_WEBHOOK;
+    const requested = await request.clone().json().catch(() => ({}));
+    const webhook = await resolveWebhook(requested.target, "calendar");
 
     if (!webhook) {
       return NextResponse.json(
