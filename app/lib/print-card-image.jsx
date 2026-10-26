@@ -63,10 +63,12 @@ const perHour = (r) => { const m = minsFor(r); return m ? Math.round((60 / m) * 
 const per100 = (r) => { const p = perHour(r); return p ? Math.round((100 / p) * 10) / 10 : null; };
 const colorCount = (r) => (r.colors || []).reduce((t, c) => t + (COLORS[c]?.n || 1), 0);
 
+// Average glyph width in Inter at the sizes used, measured against renders
+// rather than guessed: 15px semibold for the title, 12.5px regular for remarks.
 const titleLinesFor = (text, baseW) =>
-  Math.max(1, Math.min(3, Math.ceil(text.length / Math.max(14, Math.floor((baseW - CARD_PAD * 2) / 7.6)))));
+  Math.max(1, Math.min(3, Math.ceil(text.length / Math.max(12, Math.floor((baseW - CARD_PAD * 2) / 8.7)))));
 const remarkLinesFor = (text, baseW) =>
-  (text ? Math.min(4, Math.ceil(text.length / Math.max(20, Math.floor((baseW - CARD_PAD * 2 - 24) / 6.1)))) : 0);
+  (text ? Math.min(4, Math.ceil(text.length / Math.max(18, Math.floor((baseW - CARD_PAD * 2 - 24) / 6.6)))) : 0);
 
 /* Block heights in base pixels, so a grid can be laid out before drawing. */
 const rowH = {
@@ -105,7 +107,7 @@ export function buildPrintCardImage(record = {}, options = {}) {
   return {
     element: (
       <div style={{ width, height, display: "flex", backgroundColor: C.page,
-        padding: px(PAGE_PAD), fontFamily: "sans-serif" }}>
+        padding: px(PAGE_PAD), fontFamily: "Inter, sans-serif" }}>
         {printCardNode(record, options)}
       </div>
     ),
