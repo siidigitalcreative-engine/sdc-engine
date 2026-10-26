@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { resolveWebhook } from "../../../lib/lark-target-store";
 import { ImageResponse } from "next/og";
-import { buildCalendarImage } from "../../../lib/calendar-image";
+import { interFonts } from "../../../lib/print-fonts";
+import { buildProjectsImage } from "../../../lib/projects-image";
 
 export const runtime = "nodejs";
 const LARK = "https://open.larksuite.com";
@@ -13,47 +14,38 @@ async function getToken() {
     body: JSON.stringify({ app_id: process.env.LARK_APP_ID, app_secret: process.env.LARK_APP_SECRET }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!data.tenant_access_token) {
-    throw new Error(`Could not get a Lark token — check LARK_APP_ID / LARK_APP_SECRET (${data.msg || JSON.stringify(data)})`);
-  }
+  if (!data.tenant_access_token) throw new Error(`Could not get a Lark token — check LARK_APP_ID / LARK_APP_SECRET (${data.msg || JSON.stringify(data)})`);
   return data.tenant_access_token;
 }
 
 export async function POST(request) {
   try {
+    const requested = await request.clone().json().catch(() => ({}));
+    const webhook = await resolveWebhook(requested.target, "projects");
     if (!process.env.LARK_APP_ID || !process.env.LARK_APP_SECRET) {
       return NextResponse.json({ error: "Missing LARK_APP_ID / LARK_APP_SECRET (needed only to upload the image)." }, { status: 500 });
     }
-    const requested = await request.clone().json().catch(() => ({}));
-    const webhook = await resolveWebhook(requested.target, "calendar");
     if (!webhook) {
-      return NextResponse.json({ error: "Missing LARK_CALENDAR_BOT_WEBHOOK (the custom bot that posts to the group)." }, { status: 500 });
+      return NextResponse.json({ error: "Missing LARK_PROJECTS_BOT_WEBHOOK / LARK_TASKS_BOT_WEBHOOK / LARK_CALENDAR_BOT_WEBHOOK (the custom bot that posts to the group)." }, { status: 500 });
     }
 
     const body = await request.json().catch(() => ({}));
-    const events = Array.isArray(body.events) ? body.events : [];
+    const projects = Array.isArray(body.projects) ? body.projects : [];
 
-    // 1) render the calendar to PNG bytes
-    const { element, width, height } = buildCalendarImage(events, { month: body.month });
-    const image = new ImageResponse(element, { width, height });
+    const { element, width, height } = buildProjectsImage(projects);
+    const image = new ImageResponse(element, { width, height, fonts: await interFonts() });
     const png = new Uint8Array(await image.arrayBuffer());
 
-    // 2) upload via the app -> image_key  (app-level; does NOT require the bot to be in any chat)
     const token = await getToken();
     const form = new FormData();
     form.append("image_type", "message");
-    form.append("image", new Blob([png], { type: "image/png" }), "calendar.png");
-    const uploadRes = await fetch(`${LARK}/open-apis/im/v1/images`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
-    });
+    form.append("image", new Blob([png], { type: "image/png" }), "projects.png");
+    const uploadRes = await fetch(`${LARK}/open-apis/im/v1/images`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
     const uploadData = await uploadRes.json().catch(() => ({}));
     if (uploadData.code !== 0 || !uploadData.data?.image_key) {
       return NextResponse.json({ step: "upload", error: `Image upload failed — the app needs the "im:resource" permission (${uploadData.msg || JSON.stringify(uploadData)})` }, { status: 500 });
     }
 
-    // 3) deliver THROUGH the custom bot webhook (already a member of the group)
     const sendRes = await fetch(webhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -67,6 +59,6 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: error.message || "Unable to send calendar image to Lark." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to send projects image to Lark." }, { status: 500 });
   }
 }
