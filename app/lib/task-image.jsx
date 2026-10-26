@@ -57,7 +57,7 @@ export function buildTaskImage(task = {}) {
   );
 
   const element = (
-    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", backgroundColor: "#FFFFFF", fontFamily: "sans-serif" }}>
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", backgroundColor: "#FFFFFF", fontFamily: "Inter, sans-serif" }}>
       {/* header */}
       <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: HEAD, paddingLeft: PAD, paddingRight: PAD, background: "linear-gradient(135deg, #FFAA62 0%, #E53E30 100%)" }}>
         <div style={{ display: "flex", fontSize: 14, letterSpacing: 2, color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>SDC TASK</div>
