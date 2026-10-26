@@ -23,7 +23,7 @@ export function buildEventCardImage(event = {}) {
   if (attendees.length) H += 24 + 38;
 
   const element = (
-    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", backgroundColor: "#F7F8FA", fontFamily: "sans-serif" }}>
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "column", backgroundColor: "#F7F8FA", fontFamily: "Inter, sans-serif" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 96, paddingLeft: PAD, paddingRight: PAD, background: "linear-gradient(135deg, #FFAA62 0%, #E53E30 100%)" }}>
         <div style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", fontSize: 13, letterSpacing: 2, color: "rgba(255,255,255,0.88)", fontWeight: 600 }}>SDC EVENT</div>
