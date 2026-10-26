@@ -7,6 +7,7 @@ import {
   Layers, ArrowUpRight,
 } from "lucide-react";
 import { useAuth } from "../auth";
+import { useLarkSend } from "../LarkSend";
 
 const CANVAS = "var(--surface)";
 const SIDEBAR = "var(--sidebar)";
@@ -205,15 +206,10 @@ export default function DashboardPage() {
     } catch (e) { setDailyMsg(e.message || "Export failed."); }
     finally { setDailyBusy(""); }
   };
-  const sendDailyToLark = async () => {
-    setDailyBusy("lark"); setDailyMsg("");
-    try {
-      const res = await fetch("/api/lark/my-tasks-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dailyPayload()) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Unable to send to Lark.");
-      setDailyMsg("Sent to Lark ✓");
-    } catch (e) { setDailyMsg(e.message || "Send to Lark failed."); }
-    finally { setDailyBusy(""); }
+  const { openLarkSend, larkPicker } = useLarkSend({ onSent: setDailyMsg });
+  const sendDailyToLark = () => {
+    setDailyMsg("");
+    openLarkSend("/api/lark/my-tasks-image", dailyPayload(), { label: "today's tasks" });
   };
 
   const greeting = (() => { const h = now.getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; })();
@@ -221,6 +217,7 @@ export default function DashboardPage() {
 
   return (
     <>
+      {larkPicker}
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
           <header className="flex items-center gap-3 px-4 sm:px-6 pt-6 pb-4 shrink-0 flex-wrap">
             <div className="mr-auto">
