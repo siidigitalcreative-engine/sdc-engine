@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { resolveWebhook } from "../../../lib/lark-target-store";
 import { ImageResponse } from "next/og";
 import { buildProjectsImage } from "../../../lib/projects-image";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 const LARK = "https://open.larksuite.com";
 
 async function getToken() {
@@ -18,7 +19,8 @@ async function getToken() {
 
 export async function POST(request) {
   try {
-    const webhook = process.env.LARK_PROJECTS_BOT_WEBHOOK || process.env.LARK_TASKS_BOT_WEBHOOK || process.env.LARK_CALENDAR_BOT_WEBHOOK;
+    const requested = await request.clone().json().catch(() => ({}));
+    const webhook = await resolveWebhook(requested.target, "projects");
     if (!process.env.LARK_APP_ID || !process.env.LARK_APP_SECRET) {
       return NextResponse.json({ error: "Missing LARK_APP_ID / LARK_APP_SECRET (needed only to upload the image)." }, { status: 500 });
     }
