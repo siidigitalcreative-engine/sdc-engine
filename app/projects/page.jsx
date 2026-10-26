@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
+import { useLarkSend } from "../LarkSend";
 import { Plus, ChevronLeft, Search, Folder, CheckCircle, X, AlertCircle, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
@@ -157,13 +158,10 @@ export default function ProjectsPage() {
     } catch (e) { setActionErr(e.message || "Unable to export projects image."); }
   };
 
-  const sendProjectsToLark = async () => {
-    try {
-      setActionErr("");
-      const res = await fetch("/api/lark/projects-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildProjectsPayload()) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Unable to send projects to Lark.");
-    } catch (e) { setActionErr(e.message || "Unable to send to Lark"); }
+  const { openLarkSend, larkPicker } = useLarkSend();
+  const sendProjectsToLark = () => {
+    setActionErr("");
+    openLarkSend("/api/lark/projects-image", buildProjectsPayload(), { label: "the projects overview", kind: "projects" });
   };
 
   // ---------------- detail view ----------------
@@ -172,6 +170,7 @@ export default function ProjectsPage() {
     const pt = tasks.filter((t) => t.project === selected);
     return (
       <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
+        {larkPicker}
         <header className="px-4 sm:px-7 pt-6 pb-4 shrink-0">
           <button onClick={() => setSelected(null)} className="db-ib flex items-center gap-1.5 text-sm mb-3 rounded-lg pr-2 py-1" style={{ color: "var(--text-2)" }}>
             <ChevronLeft size={16} /> All projects
@@ -245,6 +244,7 @@ export default function ProjectsPage() {
   // ---------------- overview ----------------
   return (
     <>
+      {larkPicker}
       <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
         <header className="flex items-center gap-3 px-4 sm:px-7 pt-6 pb-4 shrink-0 flex-wrap">
           <div className="mr-auto">
