@@ -7,7 +7,7 @@ const initial = () => ({
   version: 1,
   brands: [],
   campaigns: [],
-  pillarBudgets: { story: 5000, showcase: 3000, hook: 2000, value: 3000, journey: 3000, interactive: 2000, relatable: 2000 },
+  pillarBudgets: { story: 5000, showcase: 3000, hook: 2000, value: 3000, journey: 3000, interactive: 2000, relatable: 2000, promotions: 0 },
   presets: [
     { id: "awareness", name: "Brand Awareness", type: "daily", amount: 1000 },
     { id: "discovery", name: "Product Discovery", type: "lifetime", amount: 14000 },
