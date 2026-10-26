@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { resolveWebhook } from "../../../lib/lark-target-store";
 import { ImageResponse } from "next/og";
 import { buildCalendarImage } from "../../../lib/calendar-image";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 const LARK = "https://open.larksuite.com";
 
 async function getToken() {
@@ -23,7 +24,9 @@ export async function POST(request) {
     if (!process.env.LARK_APP_ID || !process.env.LARK_APP_SECRET) {
       return NextResponse.json({ error: "Missing LARK_APP_ID / LARK_APP_SECRET (needed only to upload the image)." }, { status: 500 });
     }
-    if (!process.env.LARK_CALENDAR_BOT_WEBHOOK) {
+    const requested = await request.clone().json().catch(() => ({}));
+    const webhook = await resolveWebhook(requested.target, "calendar");
+    if (!webhook) {
       return NextResponse.json({ error: "Missing LARK_CALENDAR_BOT_WEBHOOK (the custom bot that posts to the group)." }, { status: 500 });
     }
 
@@ -51,7 +54,7 @@ export async function POST(request) {
     }
 
     // 3) deliver THROUGH the custom bot webhook (already a member of the group)
-    const sendRes = await fetch(process.env.LARK_CALENDAR_BOT_WEBHOOK, {
+    const sendRes = await fetch(webhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ msg_type: "image", content: { image_key: uploadData.data.image_key } }),
