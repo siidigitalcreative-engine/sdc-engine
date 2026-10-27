@@ -23,7 +23,9 @@ const WRITE_OPTS = {
   contentType: "application/json",
   allowOverwrite: true,
   addRandomSuffix: false,
-  cacheControlMaxAge: 60,
+  // No CDN caching: a read immediately after a save must see the save, and
+  // this record is small enough that caching buys nothing.
+  cacheControlMaxAge: 0,
 };
 
 // The SDK does not always throw an instance we can match, so check the name and
@@ -37,7 +39,7 @@ function isEtagConflict(error) {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function readAdsWorkspace() {
-  const result = await get(PATH, { access: "private", useCache: false });
+  const result = await get(PATH, { access: "private", useCache: false, cacheControlMaxAge: 0 });
   if (!result) return { state: initial(), etag: null, missing: true };
   if (!result.stream) throw new Error("Ads workspace could not be read. Existing data was not changed.");
 
@@ -132,7 +134,10 @@ export async function updateAdsWorkspace(action, payload) {
 
     try {
       await put(PATH, JSON.stringify(next), { ...WRITE_OPTS, ...(etag ? { ifMatch: etag } : {}) });
-      return next;
+      // Read back, so "saved" can only mean the data is actually in storage.
+      const confirmed = await readAdsWorkspace();
+      if (confirmed.missing) throw new Error("The save did not land in storage. Nothing was lost; try again.");
+      return confirmed.state;
     } catch (error) {
       if (!isEtagConflict(error)) throw error;
       lastError = error;
