@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, GripVertical, ChevronDown, ChevronUp, Copy, Trash2, Save, Wallet, BookOpen, Pencil } from "lucide-react";
+import { Plus, GripVertical, ChevronDown, ChevronUp, Copy, Trash2, Save, Wallet, BookOpen, Pencil, CalendarDays, ArrowRight } from "lucide-react";
 import BrandInformationPanel from "./BrandInformationPanel";
 
 const PILLARS = [
@@ -35,6 +35,41 @@ function campaignTotal(c, presets) {
 }
 
 const shortDate = iso => { const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleDateString("default", { day: "numeric", month: "short" }); };
+
+// Dates get the same weight as the budget figures, with how far through the
+// run it is when that is knowable.
+function Runtime({ campaign, span }) {
+  const start = Date.parse(campaign.start), end = Date.parse(campaign.end), now = Date.now();
+  const known = !isNaN(start) && !isNaN(end);
+  const elapsed = known ? Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start))) : 0;
+  const before = known && now < start;
+  const after = known && now > end;
+  const daysLeft = known ? Math.ceil((end - now) / 86400000) : null;
+
+  const note = !known ? "Dates not set"
+    : before ? "Starts in " + Math.ceil((start - now) / 86400000) + " days"
+    : after ? "Finished" + (campaign.status === "Running" ? " — still marked Running" : "")
+    : daysLeft + " days left";
+
+  return <div className="rounded-xl px-3 py-2.5" style={{ background: "var(--col)" }}>
+    <div className="flex items-center gap-2">
+      <CalendarDays size={14} style={{ color: "var(--muted)", flex: "none" }} />
+      <span className="text-sm font-semibold">{shortDate(campaign.start)}</span>
+      <ArrowRight size={13} style={{ color: "var(--muted)", flex: "none" }} />
+      <span className="text-sm font-semibold">{shortDate(campaign.end)}</span>
+      <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide"
+        style={{ background: "var(--dim)", color: "var(--text-2)" }}>{span} DAYS</span>
+    </div>
+
+    <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--dim)" }}>
+      <div style={{
+        width: Math.round(elapsed * 100) + "%", height: "100%", borderRadius: 999,
+        background: after ? "var(--faint)" : "linear-gradient(90deg,#FFAA62,#E53E30)",
+      }} />
+    </div>
+    <p className="text-[11px] mt-1.5" style={{ color: after && campaign.status === "Running" ? "#E0A93C" : "var(--muted)" }}>{note}</p>
+  </div>;
+}
 
 function CampaignCards({ campaigns, brands, presets, activeId, onOpen, onNew }) {
   if (!campaigns.length) {
@@ -95,8 +130,9 @@ function CampaignCards({ campaigns, brands, presets, activeId, onOpen, onNew }) 
           </div>
         </div>
 
+        <Runtime campaign={c} span={span} />
+
         <div className="text-xs space-y-1" style={{ color: "var(--text-2)" }}>
-          <p>{shortDate(c.start)} to {shortDate(c.end)} · {span} days</p>
           <p className="truncate">{c.platform}{c.adAccount ? " · " + c.adAccount : ""}</p>
           {c.landing && <p className="truncate" style={{ color: "#7C9CF0" }}>{String(c.landing).replace(/^https?:\/\//, "")}</p>}
         </div>
