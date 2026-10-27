@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // confirm the running deployment is the build you expect.
 export async function GET() {
   return NextResponse.json(
-    { version: "2026-10-27-ads-no-cache", ok: true },
+    { version: "2026-10-27-ads-cards", ok: true },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
