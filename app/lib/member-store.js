@@ -62,6 +62,7 @@ function normalizeStoredMember(member) {
     open: Math.max(0, Number(member.open) || 0),
     done: Math.max(0, Number(member.done) || 0),
     status: String(member.status || "Active"),
+    department: String(member.department || "sdc").trim(),
     featured: Boolean(member.featured),
     theme: member.theme === "light" ? "light" : "dark",
     pinHash: String(member.pinHash || hashPin(DEFAULT_PIN)),
