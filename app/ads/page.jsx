@@ -1,8 +1,9 @@
 "use client";
 
 import PageAccess from "../PageAccess";
+
 import { useEffect, useMemo, useState } from "react";
-import { Plus, GripVertical, ChevronDown, ChevronUp, Copy, Trash2, Save, Wallet, BookOpen, Pencil } from "lucide-react";
+import { Plus, GripVertical, ChevronDown, ChevronUp, Copy, Trash2, Save, Wallet, BookOpen, Pencil, CalendarDays, ArrowRight } from "lucide-react";
 import BrandInformationPanel from "./BrandInformationPanel";
 
 const PILLARS = [
@@ -23,6 +24,124 @@ const money = value => "₱" + Math.round(Number(value) || 0).toLocaleString("en
 const daysBetween = (start, end) => Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1 || 1);
 const blankConcept = pillar => ({ title: `${pillar.name} Concept`, summary: pillar.focus, hook: "", angle: "", voiceover: "", cta: "", duration: pillar.seconds, format: "TikTok / Reels", scenes: [] });
 const freshCampaign = () => ({ id: crypto.randomUUID(), name: "New Ad Campaign", brandId: "", collection: "", product: "", objective: "Product Discovery", brief: "", platform: "TikTok Ads", adAccount: "", landing: "", budgetSource: "preset", presetId: "discovery", budgetType: "daily", amount: 1000, start: new Date().toISOString().slice(0, 10), end: new Date(Date.now() + 13 * 86400000).toISOString().slice(0, 10), status: "Draft", spent: 0, rows: [] });
+
+const STATUS_COLOR = { Draft: "#8E8A96", Scheduled: "#E0A93C", Running: "#3FA37A", Paused: "#E5536E", Ended: "#6A6175", Completed: "#2E9B8F" };
+
+// What a campaign costs in total, whichever way its budget was set.
+function campaignTotal(c, presets) {
+  if (c.budgetSource === "pillars") return (c.rows || []).reduce((sum, r) => sum + (Number(r.budget) || 0), 0);
+  const preset = (presets || []).find(p => p.id === c.presetId);
+  const amount = Number(c.budgetSource === "preset" ? preset?.amount : c.amount) || 0;
+  const type = c.budgetSource === "preset" ? preset?.type : c.budgetType;
+  return type === "daily" ? amount * daysBetween(c.start, c.end) : amount;
+}
+
+const shortDate = iso => { const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleDateString("default", { day: "numeric", month: "short" }); };
+
+// Dates get the same weight as the budget figures, with how far through the
+// run it is when that is knowable.
+function Runtime({ campaign, span }) {
+  const start = Date.parse(campaign.start), end = Date.parse(campaign.end), now = Date.now();
+  const known = !isNaN(start) && !isNaN(end);
+  const elapsed = known ? Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start))) : 0;
+  const before = known && now < start;
+  const after = known && now > end;
+  const daysLeft = known ? Math.ceil((end - now) / 86400000) : null;
+
+  const note = !known ? "Dates not set"
+    : before ? "Starts in " + Math.ceil((start - now) / 86400000) + " days"
+    : after ? "Finished" + (campaign.status === "Running" ? " — still marked Running" : "")
+    : daysLeft + " days left";
+
+  return <div className="rounded-xl px-3 py-2.5" style={{ background: "var(--col)" }}>
+    <div className="flex items-center gap-2">
+      <CalendarDays size={14} style={{ color: "var(--muted)", flex: "none" }} />
+      <span className="text-sm font-semibold">{shortDate(campaign.start)}</span>
+      <ArrowRight size={13} style={{ color: "var(--muted)", flex: "none" }} />
+      <span className="text-sm font-semibold">{shortDate(campaign.end)}</span>
+      <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide"
+        style={{ background: "var(--dim)", color: "var(--text-2)" }}>{span} DAYS</span>
+    </div>
+
+    <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--dim)" }}>
+      <div style={{
+        width: Math.round(elapsed * 100) + "%", height: "100%", borderRadius: 999,
+        background: after ? "var(--faint)" : "linear-gradient(90deg,#FFAA62,#E53E30)",
+      }} />
+    </div>
+    <p className="text-[11px] mt-1.5" style={{ color: after && campaign.status === "Running" ? "#E0A93C" : "var(--muted)" }}>{note}</p>
+  </div>;
+}
+
+function CampaignCards({ campaigns, brands, presets, activeId, onOpen, onNew }) {
+  if (!campaigns.length) {
+    return <div className="rounded-2xl p-10 text-center" style={PANEL}>
+      <p className="text-sm" style={{ color: "var(--muted)" }}>No campaigns yet.</p>
+      <button onClick={onNew} className="mt-3 text-white text-sm font-semibold rounded-xl px-4 py-2.5 inline-flex gap-2 items-center"
+        style={{ background: "linear-gradient(135deg,#FFAA62,#E53E30)" }}><Plus size={16}/> Create the first one</button>
+    </div>;
+  }
+
+  // Newest-looking first: running, then scheduled, then the rest.
+  const order = { Running: 0, Scheduled: 1, Draft: 2, Paused: 3, Completed: 4, Ended: 5 };
+  const sorted = [...campaigns].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+
+  return <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))" }}>
+    {sorted.map(c => {
+      const brand = brands.find(b => b.id === c.brandId);
+      const total = campaignTotal(c, presets);
+      const span = daysBetween(c.start, c.end);
+      const target = c.product || c.collection || brand?.name || "Whole brand";
+      const scope = c.product ? "Product" : c.collection ? "Collection" : "Brand";
+      const sc = STATUS_COLOR[c.status] || "#8E8A96";
+      const active = activeId === c.id;
+
+      return <button key={c.id} onClick={() => onOpen(c)} type="button"
+        className="rounded-2xl p-4 text-left flex flex-col gap-3"
+        style={{ ...PANEL, borderColor: active ? "#F0784B" : "var(--border)" }}>
+
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <Pill color="#F0784B">{scope}</Pill>
+            <p className="text-[10px] font-bold tracking-wider uppercase mt-2" style={{ color: "var(--muted)" }}>
+              {brand?.name || "No brand set"}
+            </p>
+            <p className="text-sm font-semibold truncate" style={{ color: "var(--text)" }}>{c.name}</p>
+            <p className="text-xs truncate" style={{ color: "var(--muted)" }}>{target}</p>
+          </div>
+          <Pill color={sc}>{c.status}</Pill>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {(c.rows || []).length
+            ? [...new Set((c.rows || []).map(r => r.pillar))].map(id => {
+                const p = PILLARS.find(x => x.id === id);
+                return p ? <Pill key={id} color={p.color}>{p.name}</Pill> : null;
+              })
+            : <span className="text-xs" style={{ color: "var(--muted)" }}>No pillars added</span>}
+        </div>
+
+        <div className="flex gap-2">
+          <div className="flex-1 rounded-xl px-3 py-2" style={{ background: "var(--col)" }}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "var(--muted)" }}>Total</p>
+            <p className="text-sm font-semibold">{money(total)}</p>
+          </div>
+          <div className="flex-1 rounded-xl px-3 py-2" style={{ background: "var(--col)" }}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "var(--muted)" }}>Daily</p>
+            <p className="text-sm font-semibold">{money(total / span)}</p>
+          </div>
+        </div>
+
+        <Runtime campaign={c} span={span} />
+
+        <div className="text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+          <p className="truncate">{c.platform}{c.adAccount ? " · " + c.adAccount : ""}</p>
+          {c.landing && <p className="truncate" style={{ color: "#7C9CF0" }}>{String(c.landing).replace(/^https?:\/\//, "")}</p>}
+        </div>
+      </button>;
+    })}
+  </div>;
+}
 
 function Field({ label, children }) { return <label className="block space-y-1"><span className="block text-xs font-medium" style={{ color: "var(--text-2)" }}>{label}</span>{children}</label>; }
 function Box({ children, className = "" }) { return <div className={`rounded-2xl p-4 ${className}`} style={PANEL}>{children}</div>; }
@@ -101,7 +220,8 @@ function AdsPageInner() {
     {data.storageMissing && tab !== "brands" && <div role="alert" className="rounded-xl p-3 text-sm" style={{ background: "rgba(240,140,70,.10)", border: "1px solid #BF7F45" }}>Shared Ads data is missing. No data has been overwritten. Open the Brand Information tab to check the recovery guidance before saving anything.</div>}
     {tab === "brands" && <BrandInformationPanel onSaved={reload}/>}
     {tab === "campaigns" && <>
-      <div className="flex flex-wrap gap-2 items-center"><span className="text-xs font-semibold" style={{ color: "var(--muted)" }}>CAMPAIGN</span>{data.campaigns.map(c => <button key={c.id} onClick={() => choose(c)} className="px-3 py-1.5 rounded-full text-xs" style={{ border: "1px solid var(--border)", background: activeId === c.id ? "var(--hover)" : "transparent" }}>{c.name}</button>)}{data.campaigns.length === 0 && <span className="text-xs" style={{ color: "var(--muted)" }}>Create your first campaign to get started.</span>}</div>
+      <CampaignCards campaigns={data.campaigns} brands={data.brands} presets={data.presets}
+        activeId={activeId} onOpen={choose} onNew={newAd} />
       {draft ? <div className="grid xl:grid-cols-[minmax(0,1.03fr)_minmax(0,.78fr)_minmax(0,1.38fr)] gap-3 items-start">
         <Box className="space-y-4"><h2 className="font-semibold flex gap-2 items-center"><Pencil size={16}/> Campaign Setup</h2>
           <Field label="Campaign Name"><input className={INPUT} style={PANEL} value={draft.name} onChange={e => update({ name: e.target.value })}/></Field>
@@ -158,10 +278,11 @@ function AdsPageInner() {
   </main>;
 }
 
-export default function AdsPage() {
+
+export default function AdsPage(props) {
   return (
     <PageAccess page="ads">
-      <AdsPageInner />
+      <AdsPageInner {...props} />
     </PageAccess>
   );
 }
