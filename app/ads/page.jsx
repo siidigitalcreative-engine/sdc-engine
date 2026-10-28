@@ -21,7 +21,7 @@ const DEFAULT_BUDGETS = Object.fromEntries(PILLARS.map(p => [p.id, 0]));
 const OPT_OBJECTIVES = ["Brand Awareness", "Product Discovery", "Engagement", "Trust & Credibility", "Education & Consideration", "Conversion"];
 const PANEL = { background: "var(--card)", border: "1px solid var(--border)" };
 const INPUT = "w-full px-3 py-2 rounded-xl border text-sm outline-none";
-const money = value => "₱" + Math.round(Number(value) || 0).toLocaleString("en-PH");
+const money = value => "PHP " + Math.round(Number(value) || 0).toLocaleString("en-PH");
 const daysBetween = (start, end) => Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1 || 1);
 const blankConcept = pillar => ({ title: `${pillar.name} Concept`, summary: pillar.focus, hook: "", angle: "", voiceover: "", cta: "", duration: pillar.seconds, format: "TikTok / Reels", scenes: [] });
 const freshCampaign = () => ({ id: crypto.randomUUID(), name: "New Ad Campaign", brandId: "", collection: "", product: "", objective: "Product Discovery", brief: "", platform: "TikTok Ads", adAccount: "", landing: "", budgetSource: "preset", presetId: "discovery", budgetType: "daily", amount: 1000, start: new Date().toISOString().slice(0, 10), end: new Date(Date.now() + 13 * 86400000).toISOString().slice(0, 10), status: "Draft", spent: 0, rows: [] });
@@ -74,7 +74,7 @@ function Runtime({ campaign, span }) {
   </div>;
 }
 
-function CampaignCards({ campaigns, brands, presets, activeId, onOpen, onNew }) {
+function CampaignCards({ campaigns, brands, presets, activeId, onOpen, onNew, onExport, onSend, exporting }) {
   if (!campaigns.length) {
     return <div className="rounded-2xl p-10 text-center" style={PANEL}>
       <p className="text-sm" style={{ color: "var(--muted)" }}>No campaigns yet.</p>
@@ -97,8 +97,9 @@ function CampaignCards({ campaigns, brands, presets, activeId, onOpen, onNew }) 
       const sc = STATUS_COLOR[c.status] || "#8E8A96";
       const active = activeId === c.id;
 
-      return <button key={c.id} onClick={() => onOpen(c)} type="button"
-        className="rounded-2xl p-4 text-left flex flex-col gap-3"
+      return <article key={c.id} onClick={() => onOpen(c)} tabIndex={0}
+        onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(c); } }}
+        className="rounded-2xl p-4 text-left flex flex-col gap-3 cursor-pointer"
         style={{ ...PANEL, borderColor: active ? "#F0784B" : "var(--border)" }}>
 
         <div className="flex items-start gap-2">
@@ -110,7 +111,13 @@ function CampaignCards({ campaigns, brands, presets, activeId, onOpen, onNew }) 
             <p className="text-sm font-semibold truncate" style={{ color: "var(--text)" }}>{c.name}</p>
             <p className="text-xs truncate" style={{ color: "var(--muted)" }}>{target}</p>
           </div>
-          <Pill color={sc}>{c.status}</Pill>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <div className="flex items-center gap-1.5">
+              <button type="button" aria-label={`Send ${c.name} to Lark`} title="Send to Lark" onClick={e => { e.stopPropagation(); onSend(c); }} className="h-8 w-8 rounded-full flex items-center justify-center" style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}><Send size={15}/></button>
+              <button type="button" aria-label={`Export ${c.name} as PNG`} title="Export PNG" disabled={exporting} onClick={e => { e.stopPropagation(); onExport(c); }} className="h-8 w-8 rounded-full flex items-center justify-center disabled:opacity-40" style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}><Download size={15}/></button>
+            </div>
+            <Pill color={sc}>{c.status}</Pill>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-1.5">
@@ -139,7 +146,7 @@ function CampaignCards({ campaigns, brands, presets, activeId, onOpen, onNew }) 
           <p className="truncate">{c.platform}{c.adAccount ? " · " + c.adAccount : ""}</p>
           {c.landing && <p className="truncate" style={{ color: "#7C9CF0" }}>{String(c.landing).replace(/^https?:\/\//, "")}</p>}
         </div>
-      </button>;
+      </article>;
     })}
   </div>;
 }
@@ -188,19 +195,19 @@ function AdsPageInner() {
   const update = patch => setDraft(v => ({ ...v, ...patch }));
   const updateRow = (id, patch) => update({ rows: draft.rows.map(r => r.id === id ? { ...r, ...patch } : r) });
   const newAd = () => { if (data.storageMissing) { setTab("brands"); return; } const item = freshCampaign(); item.brandId = data.brands[0]?.id || ""; item.presetId = data.presets[0]?.id || ""; setDraft(item); setActiveId(item.id); setTab("campaigns"); setMessage(""); };
-  const choose = item => { setDraft(structuredClone(item)); setActiveId(item.id); setMessage(""); };
+  const choose = item => { setDraft(structuredClone(item)); setActiveId(item.id); setMessage(""); setExportNotice(""); };
   const addPillar = id => { if (!draft) return; update({ rows: [...draft.rows, { id: crypto.randomUUID(), pillar: id, budget: Number(data.pillarBudgets[id] || 0), prompt: "", open: true, concept: blankConcept(PILLARS.find(p => p.id === id)) }] }); };
   const duplicateRow = row => update({ rows: [...draft.rows, { ...structuredClone(row), id: crypto.randomUUID(), open: true }] });
-  const imagePayload = () => {
+  const imagePayload = (selectedCampaign) => {
     // The PNG corresponds to the saved summary card, not uncommitted editor values.
-    const campaign = data.campaigns.find(item => item.id === activeId);
+    const campaign = data.campaigns.find(item => item.id === selectedCampaign?.id);
     const cardBrand = data.brands.find(item => item.id === campaign?.brandId);
     const cardPreset = data.presets.find(item => item.id === campaign?.presetId);
     return campaign ? { campaign, brandName: cardBrand?.name || "", preset: cardPreset, pillars: PILLARS.map(({ id, name, color }) => ({ id, name, color })) } : null;
   };
-  const exportPng = async () => {
+  const exportPng = async (selectedCampaign) => {
     if (exporting) return;
-    const payload = imagePayload();
+    const payload = imagePayload(selectedCampaign);
     if (!payload) { setExportNotice("Save this campaign first so its summary card can be exported."); return; }
     setExporting(true); setExportNotice("Generating campaign card PNG...");
     try {
@@ -210,15 +217,15 @@ function AdsPageInner() {
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `${(draft.name || "ads-campaign").replace(/[^a-z0-9_-]+/gi, "-").slice(0, 70)}.png`;
+      a.href = url; a.download = `${(payload.campaign.name || "ads-campaign").replace(/[^a-z0-9_-]+/gi, "-").slice(0, 70)}.png`;
       document.body.appendChild(a); a.click(); a.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setExportNotice("Campaign card PNG downloaded.");
     } catch (error) { setExportNotice(error.message || "Unable to export PNG."); }
     finally { setExporting(false); }
   };
-  const sendToLark = () => {
-    const payload = imagePayload();
+  const sendToLark = (selectedCampaign) => {
+    const payload = imagePayload(selectedCampaign);
     if (!payload) { setExportNotice("Save this campaign first so its summary card can be sent to Lark."); return; }
     setExportNotice("");
     openLarkSend("/api/lark/ads-image", payload, { label: `Ads campaign: ${payload.campaign.name || "Untitled"}`, kind: "projects" });
@@ -257,7 +264,8 @@ function AdsPageInner() {
     {tab === "brands" && <BrandInformationPanel onSaved={reload}/>}
     {tab === "campaigns" && <>
       <CampaignCards campaigns={data.campaigns} brands={data.brands} presets={data.presets}
-        activeId={activeId} onOpen={choose} onNew={newAd} />
+        activeId={activeId} onOpen={choose} onNew={newAd} onExport={exportPng} onSend={sendToLark} exporting={exporting} />
+      {exportNotice && <p role="status" className="text-xs rounded-xl p-3" style={{ background: "var(--col)", color: "var(--text-2)" }}>{exportNotice}</p>}
       {draft ? <div className="grid xl:grid-cols-[minmax(0,1.03fr)_minmax(0,.78fr)_minmax(0,1.38fr)] gap-3 items-start">
         <Box className="space-y-4"><h2 className="font-semibold flex gap-2 items-center"><Pencil size={16}/> Campaign Setup</h2>
           <Field label="Campaign Name"><input className={INPUT} style={PANEL} value={draft.name} onChange={e => update({ name: e.target.value })}/></Field>
@@ -270,14 +278,14 @@ function AdsPageInner() {
           <div className="pt-3 border-t space-y-3" style={{ borderColor: "var(--border)" }}><h3 className="font-semibold flex gap-2 items-center"><Wallet size={16}/> Budget & Distribution</h3>
             <Field label="Budget Source"><select className={INPUT} style={PANEL} value={draft.budgetSource} onChange={e => update({ budgetSource: e.target.value })}><option value="preset">Standard Ad Budget</option><option value="pillars">Pillar Allocations</option><option value="custom">Custom Budget</option></select></Field>
             {draft.budgetSource === "preset" && <Field label="Budget Preset"><select className={INPUT} style={PANEL} value={draft.presetId} onChange={e => update({ presetId: e.target.value })}>{data.presets.map(p => <option key={p.id} value={p.id}>{p.name} — {money(p.amount)} {p.type === "daily" ? "/ day" : "lifetime"}</option>)}</select></Field>}
-            {draft.budgetSource === "custom" && <><Field label="Budget Type"><select className={INPUT} style={PANEL} value={draft.budgetType} onChange={e => update({ budgetType: e.target.value })}><option value="daily">Daily Budget</option><option value="lifetime">Lifetime Campaign Budget</option></select></Field><Field label="Amount (₱)"><input type="number" min="0" className={INPUT} style={PANEL} value={draft.amount} onChange={e => update({ amount: e.target.value })}/></Field></>}
+            {draft.budgetSource === "custom" && <><Field label="Budget Type"><select className={INPUT} style={PANEL} value={draft.budgetType} onChange={e => update({ budgetType: e.target.value })}><option value="daily">Daily Budget</option><option value="lifetime">Lifetime Campaign Budget</option></select></Field><Field label="Amount (PHP)"><input type="number" min="0" className={INPUT} style={PANEL} value={draft.amount} onChange={e => update({ amount: e.target.value })}/></Field></>}
             <div className="grid grid-cols-2 gap-2"><Field label="Start Date"><input type="date" className={INPUT} style={PANEL} value={draft.start} onChange={e => update({ start: e.target.value })}/></Field><Field label="End Date"><input type="date" min={draft.start} className={INPUT} style={PANEL} value={draft.end} onChange={e => update({ end: e.target.value })}/></Field></div>
             <div className="grid grid-cols-2 gap-2"><div className="p-3 rounded-xl" style={{ background: "var(--col)" }}><p className="text-[10px]" style={{ color: "var(--muted)" }}>CAMPAIGN TOTAL</p><strong className="text-lg">{money(total)}</strong></div><div className="p-3 rounded-xl" style={{ background: "var(--col)" }}><p className="text-[10px]" style={{ color: "var(--muted)" }}>AVERAGE DAILY</p><strong className="text-lg">{money(total / duration)}</strong></div></div>
             <Field label="Advertising Platform"><select className={INPUT} style={PANEL} value={draft.platform} onChange={e => update({ platform: e.target.value })}>{["TikTok Ads", "Meta Ads", "Google Ads", "Shopee Ads", "Lazada Sponsored Solutions"].map(v => <option key={v}>{v}</option>)}</select></Field>
             <Field label="Ad Account"><input className={INPUT} style={PANEL} value={draft.adAccount} onChange={e => update({ adAccount: e.target.value })}/></Field>
             <Field label="Landing Page URL"><input className={INPUT} style={PANEL} value={draft.landing} onChange={e => update({ landing: e.target.value })}/></Field>
             <Field label="Campaign Status"><select className={INPUT} style={PANEL} value={draft.status} onChange={e => update({ status: e.target.value })}>{["Draft", "Scheduled", "Running", "Paused", "Completed"].map(s => <option key={s}>{s}</option>)}</select></Field>
-            <Field label="Actual Spend (₱) — manual"><input type="number" min="0" className={INPUT} style={PANEL} value={draft.spent} onChange={e => update({ spent: e.target.value })}/></Field>
+            <Field label="Actual Spend (PHP) — manual"><input type="number" min="0" className={INPUT} style={PANEL} value={draft.spent} onChange={e => update({ spent: e.target.value })}/></Field>
             <div className="text-xs space-y-1" style={{ color: "var(--text-2)" }}><div className="flex justify-between"><span>Spent {money(draft.spent)}</span><span>Remaining {money(Math.max(0, total - Number(draft.spent || 0)))}</span></div><div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--col)" }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, total ? 100 * Number(draft.spent || 0) / total : 0)}%`, background: "#EF7E66" }}/></div></div>
           </div>
           <div className="flex gap-2"><button onClick={() => saveAction("saveCampaign", draft, "Campaign saved.")} disabled={busy || !draft.name.trim()} className="flex-1 px-3 py-2.5 rounded-xl text-white text-sm font-semibold flex gap-2 justify-center items-center" style={{ background: "#E75D48" }}><Save size={16}/> Save Campaign</button><IconButton danger onClick={() => { if (confirm("Delete this campaign?")) { saveAction("deleteCampaign", { id: draft.id }, "Campaign deleted."); setDraft(null); setActiveId(null); } }}><Trash2 size={15}/></IconButton></div>
@@ -286,8 +294,6 @@ function AdsPageInner() {
           {libraryOpen && PILLARS.map(p => <button key={p.id} draggable onDragStart={e => e.dataTransfer.setData("text/plain", JSON.stringify({ type: "pillar", id: p.id }))} onClick={() => addPillar(p.id)} className="w-full text-left rounded-xl p-3 space-y-2 cursor-grab active:cursor-grabbing" style={{ background: "var(--col)", border: "1px solid var(--border)" }}><div className="flex gap-2 items-center"><GripVertical size={15} style={{ color: "var(--muted)" }}/><Pill color={p.color}>{p.name}</Pill><Plus size={14} className="ml-auto"/></div><p className="text-xs pl-6" style={{ color: "var(--text-2)" }}>{p.focus}</p></button>)}
         </Box>
         <Box className="space-y-3"><div className="flex justify-between gap-2 items-center"><h2 className="font-semibold text-sm">Campaign Creative Board</h2><Pill>{draft.status}</Pill></div>
-          <div className="flex flex-wrap gap-2"><button type="button" disabled={exporting} onClick={exportPng} className="rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2 disabled:opacity-50" style={{ border: "1px solid var(--border)" }}><Download size={15}/>{exporting ? "Exporting..." : "Export PNG"}</button><button type="button" onClick={sendToLark} className="rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2" style={{ border: "1px solid var(--border)" }}><Send size={15}/> Send to Lark</button></div>
-          {exportNotice && <p role="status" className="text-xs rounded-xl p-2" style={{ background: "var(--col)", color: "var(--text-2)" }}>{exportNotice}</p>}
           <div className="grid grid-cols-2 gap-2">{[["Budget", money(total)], ["Daily Estimate", money(total / duration)], ["Duration", `${duration} days`], ["Platform", draft.platform]].map(([a, b]) => <div key={a} className="p-2 rounded-xl" style={{ background: "var(--col)" }}><p className="text-[10px]" style={{ color: "var(--muted)" }}>{a}</p><strong className="text-xs break-words">{b}</strong></div>)}</div>
           <div className="text-xs flex items-center justify-between" style={{ color: "var(--muted)" }}><span>Pillar Allocation: {money(pillarTotal)}</span><span>{total ? Math.round(pillarTotal / total * 100) : 0}% of budget</span></div>
           {draft.rows.map(r => { const pillar = PILLARS.find(p => p.id === r.pillar); const c = r.concept || blankConcept(pillar); return <div key={r.id} onDragOver={e => e.preventDefault()} onDrop={e => dropped(e, r.id)} className="rounded-xl p-3 space-y-3" style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
@@ -295,7 +301,7 @@ function AdsPageInner() {
             <button className="text-left w-full" onClick={() => updateRow(r.id, { open: !r.open })}><h3 className="font-semibold text-sm">{c?.title || `${pillar.name} Concept`}</h3><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{c?.summary || pillar.focus}</p><div className="mt-2 flex gap-1 flex-wrap"><Pill>{c?.duration || pillar.seconds}s Video</Pill><Pill>{c?.format || "TikTok / Reels"}</Pill><Pill>{money(r.budget)}</Pill></div></button>
             <div className="flex gap-2 flex-wrap"><IconButton onClick={() => updateRow(r.id, { open: !r.open })}><Pencil size={14}/> Edit</IconButton><IconButton onClick={() => duplicateRow(r)}><Copy size={14}/> Duplicate</IconButton><IconButton danger onClick={() => update({ rows: draft.rows.filter(x => x.id !== r.id) })}><Trash2 size={14}/></IconButton></div>
             {r.open && <div className="pt-3 border-t space-y-3" style={{ borderColor: "var(--border)" }}>
-              <Field label="Pillar Budget Allocation (₱)"><input type="number" min="0" value={r.budget} onChange={e => updateRow(r.id, { budget: e.target.value })} className={INPUT} style={PANEL}/></Field>
+              <Field label="Pillar Budget Allocation (PHP)"><input type="number" min="0" value={r.budget} onChange={e => updateRow(r.id, { budget: e.target.value })} className={INPUT} style={PANEL}/></Field>
               <Field label="Creative Direction Notes (optional)"><textarea rows={3} value={r.prompt || ""} onChange={e => updateRow(r.id, { prompt: e.target.value })} className={INPUT + " resize-y"} style={PANEL} placeholder="Audience, tone, mood, key angle, camera style..."/></Field>
               <Field label="Content Title"><input className={INPUT} style={PANEL} value={c.title || ""} onChange={e => updateRow(r.id, { concept: { ...c, title: e.target.value } })}/></Field>
               <Field label="Content Summary"><textarea className={INPUT} style={PANEL} rows={2} value={c.summary || ""} onChange={e => updateRow(r.id, { concept: { ...c, summary: e.target.value } })}/></Field>
@@ -311,7 +317,7 @@ function AdsPageInner() {
       </div> : <Box className="text-sm" ><span style={{ color: "var(--muted)" }}>Select a campaign above or click New Ad.</span></Box>}
     </>}
     {tab === "pillars" && <Box className="space-y-4 max-w-3xl"><h2 className="text-lg font-semibold">Content Pillar Budget Settings</h2><p className="text-sm" style={{ color: "var(--muted)" }}>Default allocation per new content row. Campaign-specific changes do not change these defaults.</p>{PILLARS.map(p => <div className="flex gap-2 items-center justify-between" key={p.id}><Pill color={p.color}>{p.name}</Pill><input aria-label={`${p.name} default budget`} type="number" min="0" className={INPUT + " max-w-36"} style={PANEL} value={pillarValues[p.id] ?? 0} onChange={e => setPillarValues(v => ({ ...v, [p.id]: e.target.value }))}/></div>)}<button onClick={() => saveAction("savePillarBudgets", pillarValues, "Pillar budgets saved.")} disabled={busy} className="rounded-xl px-4 py-2 text-white text-sm" style={{ background: "#E7614C" }}><Save size={15} className="inline mr-2"/> Save Defaults</button></Box>}
-    {tab === "presets" && <Box className="space-y-4 max-w-3xl"><h2 className="text-lg font-semibold">Standard Ad Budget Settings</h2><p className="text-sm" style={{ color: "var(--muted)" }}>Reusable budgets, separate from content pillar allocation. Set either a Daily Budget or a Lifetime Campaign Budget.</p>{presetValues.map(p => <div key={p.id} className="grid sm:grid-cols-[1fr_130px_140px_auto] gap-2 items-end rounded-xl p-3" style={{ background: "var(--col)" }}><Field label="Preset Name"><input className={INPUT} style={PANEL} value={p.name} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))}/></Field><Field label="Budget Type"><select className={INPUT} style={PANEL} value={p.type} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, type: e.target.value } : x))}><option value="daily">Daily</option><option value="lifetime">Lifetime</option></select></Field><Field label="Amount (₱)"><input type="number" min="0" className={INPUT} style={PANEL} value={p.amount} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, amount: e.target.value } : x))}/></Field><IconButton danger onClick={() => setPresetValues(a => a.filter(x => x.id !== p.id))}><Trash2 size={16}/></IconButton></div>)}<div className="flex flex-wrap gap-2"><IconButton onClick={() => setPresetValues(a => [...a, { id: crypto.randomUUID(), name: "New Preset", type: "daily", amount: 1000 }])}><Plus size={15}/> Add Preset</IconButton><button disabled={busy} onClick={() => saveAction("savePresets", presetValues.map(p => ({ ...p, amount: Math.max(0, Number(p.amount) || 0) })), "Standard Ad Budgets saved.")} className="rounded-xl px-4 py-2 text-white text-sm flex gap-2 items-center" style={{ background: "#E7614C" }}><Save size={15}/> Save Presets</button></div></Box>}
+    {tab === "presets" && <Box className="space-y-4 max-w-3xl"><h2 className="text-lg font-semibold">Standard Ad Budget Settings</h2><p className="text-sm" style={{ color: "var(--muted)" }}>Reusable budgets, separate from content pillar allocation. Set either a Daily Budget or a Lifetime Campaign Budget.</p>{presetValues.map(p => <div key={p.id} className="grid sm:grid-cols-[1fr_130px_140px_auto] gap-2 items-end rounded-xl p-3" style={{ background: "var(--col)" }}><Field label="Preset Name"><input className={INPUT} style={PANEL} value={p.name} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))}/></Field><Field label="Budget Type"><select className={INPUT} style={PANEL} value={p.type} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, type: e.target.value } : x))}><option value="daily">Daily</option><option value="lifetime">Lifetime</option></select></Field><Field label="Amount (PHP)"><input type="number" min="0" className={INPUT} style={PANEL} value={p.amount} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, amount: e.target.value } : x))}/></Field><IconButton danger onClick={() => setPresetValues(a => a.filter(x => x.id !== p.id))}><Trash2 size={16}/></IconButton></div>)}<div className="flex flex-wrap gap-2"><IconButton onClick={() => setPresetValues(a => [...a, { id: crypto.randomUUID(), name: "New Preset", type: "daily", amount: 1000 }])}><Plus size={15}/> Add Preset</IconButton><button disabled={busy} onClick={() => saveAction("savePresets", presetValues.map(p => ({ ...p, amount: Math.max(0, Number(p.amount) || 0) })), "Standard Ad Budgets saved.")} className="rounded-xl px-4 py-2 text-white text-sm flex gap-2 items-center" style={{ background: "#E7614C" }}><Save size={15}/> Save Presets</button></div></Box>}
     {message && <div role="status" className="rounded-xl px-3 py-2 text-sm" style={{ background: "var(--col)", color: "var(--text-2)" }}>{message}</div>}
     {larkPicker}
   </main>;
