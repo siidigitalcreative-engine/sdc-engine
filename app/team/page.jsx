@@ -1,5 +1,7 @@
 "use client";
 
+import PageAccess from "../PageAccess";
+
 import React, { useEffect, useRef, useState } from "react";
 import {
   Plus, Search, MoreHorizontal, Pencil, Trash2, X, UserPlus, Save, AlertTriangle,
@@ -37,7 +39,7 @@ function makeInitials(name) {
     .join("");
 }
 
-export default function TeamPage() {
+function TeamPageInner() {
   const { members, currentMember, addMember, updateMember, deleteMember } = useAuth();
   const { dark } = useTheme();
   const [query, setQuery] = useState("");
@@ -389,3 +391,12 @@ function NumberField({ label, value, onChange }) {
 }
 
 const inputStyle = { background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" };
+
+
+export default function TeamPage(props) {
+  return (
+    <PageAccess page="team">
+      <TeamPageInner {...props} />
+    </PageAccess>
+  );
+}
