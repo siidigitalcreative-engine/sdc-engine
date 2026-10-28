@@ -1,5 +1,7 @@
 "use client";
 
+import PageAccess from "../PageAccess";
+
 import React, { useCallback, useEffect, useState } from "react";
 import { Send, Plus, Pencil, Trash2, CheckCircle2, AlertTriangle } from "lucide-react";
 
@@ -14,7 +16,7 @@ const PURPOSES = [
   { id: "print", name: "Print Hub", note: "reserved for print exports" },
 ];
 
-export default function LarkGroupsPage() {
+function LarkGroupsPageInner() {
   const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -237,5 +239,14 @@ function Empty({ text }) {
       <Send size={26} className="mx-auto mb-3" style={{ opacity: 0.5 }} />
       <p className="text-sm">{text}</p>
     </div>
+  );
+}
+
+
+export default function LarkGroupsPage(props) {
+  return (
+    <PageAccess page="lark">
+      <LarkGroupsPageInner {...props} />
+    </PageAccess>
   );
 }
