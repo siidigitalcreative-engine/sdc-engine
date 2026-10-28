@@ -3,7 +3,7 @@
 import PageAccess from "../PageAccess";
 import DepartmentView from "../DepartmentView";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "../auth";
 import { useLarkSend } from "../LarkSend";
 import { Plus, ChevronLeft, Search, Folder, CheckCircle, X, AlertCircle, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
@@ -50,7 +50,7 @@ function Avatars({ list, size = 20 }) {
 }
 
 function ProjectsPageInner() {
-  const { members } = useAuth();
+  const { members, department } = useAuth();
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [statuses, setStatuses] = useState(null);
@@ -73,6 +73,16 @@ function ProjectsPageInner() {
   }, [members]);
 
   const [deptView, setDeptView] = useState("all");
+  const deptTouchedRef = useRef(false);
+  const changeDeptView = (next) => { deptTouchedRef.current = true; setDeptView(next); };
+  // Open on the signed-in member's own department (admin departments only —
+  // everyone else is already limited by the API). A manual pick is kept.
+  const deptId = department?.id;
+  const deptIsAdmin = !!department?.admin;
+  useEffect(() => {
+    if (deptTouchedRef.current || !deptIsAdmin || !deptId) return;
+    setDeptView(deptId);
+  }, [deptId, deptIsAdmin]);
   const [projectDepartments, setProjectDepartments] = useState({});
 
   const load = useCallback(() => {
@@ -262,7 +272,7 @@ function ProjectsPageInner() {
             <p className="text-sm" style={{ color: "var(--muted)" }}>{stats.length} projects across the team</p>
             {actionErr && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{actionErr}</p>}
           </div>
-          <DepartmentView value={deptView} onChange={setDeptView} />
+          <DepartmentView value={deptView} onChange={changeDeptView} />
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search projects"
