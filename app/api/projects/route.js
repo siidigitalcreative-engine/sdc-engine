@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { filterProjects, viewerScope } from "../../lib/scope";
 import { readProjectsState, mutateProjects, cleanProjectName } from "../../lib/project-store";
 import { mutateTasks } from "../../lib/task-store";
 import { getAuthenticatedMember } from "../../lib/auth-token";
@@ -17,12 +18,16 @@ function json(body, status = 200, etag) {
 
 export async function GET(request) {
   try {
+    const actor = await getAuthenticatedMember(request);
+    if (!actor) return json({ error: "Unauthorized." }, 401);
+    const scope = await viewerScope(actor, request);
+
     const currentEtag = request.headers.get("if-none-match") || undefined;
     const result = await readProjectsState({ ifNoneMatch: currentEtag });
     if (result.notModified) {
       return new NextResponse(null, { status: 304, headers: { ETag: result.etag, "Cache-Control": "private, no-cache" } });
     }
-    return json({ projects: result.state.projects }, 200, result.etag);
+    return json({ projects: filterProjects(result.state.projects, result.state.departments, scope), departments: result.state.departments, scope: { departmentId: scope.departmentId, isAdmin: scope.isAdmin } }, 200, result.etag);
   } catch (error) {
     console.error("GET /api/projects", error);
     return json({ error: "Unable to load projects." }, 500);
@@ -36,7 +41,8 @@ export async function POST(request) {
     const body = await request.json();
     const name = cleanProjectName(body.name);
     const result = await mutateProjects((projects) => [...projects, name]);
-    return json({ projects: result.state.projects }, 201, result.etag);
+    const scope = await viewerScope(actor, request);
+    return json({ projects: filterProjects(result.state.projects, result.state.departments, scope), departments: result.state.departments, scope: { departmentId: scope.departmentId, isAdmin: scope.isAdmin } }, 201, result.etag);
   } catch (error) {
     console.error("POST /api/projects", error);
     return json({ error: error.message || "Unable to add project." }, 400);
@@ -55,7 +61,8 @@ export async function PATCH(request) {
 
     const result = await mutateProjects((projects) => projects.map((p) => (same(p, from) ? to : p)));
     await mutateTasks((tasks) => tasks.map((t) => (same(t.project, from) ? { ...t, project: to } : t)));
-    return json({ projects: result.state.projects }, 200, result.etag);
+    const scope = await viewerScope(actor, request);
+    return json({ projects: filterProjects(result.state.projects, result.state.departments, scope), departments: result.state.departments, scope: { departmentId: scope.departmentId, isAdmin: scope.isAdmin } }, 200, result.etag);
   } catch (error) {
     console.error("PATCH /api/projects", error);
     return json({ error: error.message || "Unable to rename project." }, 400);
@@ -78,7 +85,8 @@ export async function DELETE(request) {
     } else if (taskAction === "unlabel") {
       await mutateTasks((tasks) => tasks.map((t) => (same(t.project, name) ? { ...t, project: "" } : t)));
     }
-    return json({ projects: result.state.projects }, 200, result.etag);
+    const scope = await viewerScope(actor, request);
+    return json({ projects: filterProjects(result.state.projects, result.state.departments, scope), departments: result.state.departments, scope: { departmentId: scope.departmentId, isAdmin: scope.isAdmin } }, 200, result.etag);
   } catch (error) {
     console.error("DELETE /api/projects", error);
     return json({ error: error.message || "Unable to delete project." }, 400);
