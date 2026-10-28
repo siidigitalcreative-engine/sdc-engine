@@ -328,13 +328,13 @@ function MemberModal({ member, onClose, onSave }) {
               <input value={form.loc} onChange={(e) => set("loc", e.target.value)} placeholder="Manila" className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle} />
             </Field>
             <Field label="Department">
-              <select value={form.department || ""} onChange={(e) => set("department", e.target.value)} className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle}>
+              <select value={form.department || ""} onChange={(e) => set("department", e.target.value)} className="w-full rounded-xl px-3 py-2.5 outline-none" style={selectStyle}>
                 {!departments.length && <option value="">Loading…</option>}
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </Field>
             <Field label="Status">
-              <select value={form.status} onChange={(e) => set("status", e.target.value)} className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle}>
+              <select value={form.status} onChange={(e) => set("status", e.target.value)} className="w-full rounded-xl px-3 py-2.5 outline-none" style={selectStyle}>
                 {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </Field>
@@ -413,6 +413,21 @@ function NumberField({ label, value, onChange }) {
 }
 
 const inputStyle = { background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" };
+const CHEVRON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238C8398' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`;
+
+
+// The browser pins its own dropdown arrow to the right edge and ignores padding,
+// so selects draw their own and leave room for it.
+const selectStyle = {
+  ...inputStyle,
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  appearance: "none",
+  backgroundImage: CHEVRON,
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 14px center",
+  paddingRight: 38,
+};
 
 
 export default function TeamPage(props) {
