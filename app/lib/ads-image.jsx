@@ -10,8 +10,8 @@ const shortDate = iso => { const date = new Date(iso); return isNaN(date) ? "—
 const label = value => String(value ?? "");
 const shorten = (s, max = 65) => label(s).length > max ? label(s).slice(0, max - 1) + "…" : label(s);
 
-function Pill({ name, color }) {
-  return <div style={{ display: "flex", padding: "8px 13px", marginRight: 8, marginBottom: 8, background: `${color}22`, color, borderRadius: 30, fontSize: 20, fontWeight: 700 }}>{name}</div>;
+function Pill({ name, color, header = false }) {
+  return <div style={{ display: "flex", padding: "8px 13px", marginRight: header ? 0 : 8, marginBottom: header ? 0 : 8, background: `${color}22`, color, borderRadius: 30, fontSize: 20, fontWeight: 700 }}>{name}</div>;
 }
 
 
@@ -38,12 +38,12 @@ export function buildAdsImage({ campaign = {}, brandName = "", preset = null, pi
   const element = <div style={{ display: "flex", flexDirection: "column", width: 640, height, padding: 32, background: C.bg, border: `2px solid ${C.border}`, borderRadius: 30, color: C.text, fontFamily: "Inter" }}>
     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
       <div style={{ display: "flex", flexDirection: "column", maxWidth: 470 }}>
-        <div style={{ display: "flex" }}><Pill name={scope} color={C.orange}/></div>
+        <div style={{ display: "flex" }}><Pill name={scope} color={C.orange} header/></div>
         <span style={{ color: C.secondary, fontSize: 19, fontWeight: 700, letterSpacing: 1, marginTop: 10 }}>{shorten(brandName || "NO BRAND SET", 35).toUpperCase()}</span>
         <span style={{ color: C.text, fontSize: 29, fontWeight: 750, marginTop: 4 }}>{shorten(campaign.name || "Untitled campaign", 36)}</span>
         <span style={{ color: C.secondary, fontSize: 23, marginTop: 3 }}>{shorten(target, 42)}</span>
       </div>
-      <Pill name={campaign.status || "Draft"} color={statusColor}/>
+      <Pill name={campaign.status || "Draft"} color={statusColor} header/>
     </div>
 
     <div style={{ display: "flex", flexWrap: "wrap", marginTop: 28, minHeight: 48 }}>
