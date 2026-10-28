@@ -1,6 +1,7 @@
 "use client";
 
 import PageAccess from "../PageAccess";
+import DepartmentView from "../DepartmentView";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
@@ -71,17 +72,24 @@ function ProjectsPageInner() {
     return map;
   }, [members]);
 
+  const [deptView, setDeptView] = useState("all");
+  const [projectDepartments, setProjectDepartments] = useState({});
+
   const load = useCallback(() => {
+    // Both calls carry the chosen department so the project cards and the task
+    // counts on them describe the same slice.
+    const q = deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : "";
     return Promise.all([
-      fetch("/api/projects", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { projects: [] })).catch(() => ({ projects: [] })),
-      fetch("/api/tasks", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { tasks: [] })).catch(() => ({ tasks: [] })),
+      fetch(`/api/projects${q}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : { projects: [] })).catch(() => ({ projects: [] })),
+      fetch(`/api/tasks${q}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : { tasks: [] })).catch(() => ({ tasks: [] })),
       fetch("/api/statuses", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { statuses: null })).catch(() => ({ statuses: null })),
     ]).then(([pj, tk, st]) => {
       setProjects(Array.isArray(pj.projects) ? pj.projects : []);
       setTasks((Array.isArray(tk.tasks) ? tk.tasks : []).map((t) => ({ ...t, start: t.start ? fromDateInput(t.start) : null, due: t.due ? fromDateInput(t.due) : null })));
       setStatuses(Array.isArray(st.statuses) && st.statuses.length ? st.statuses : null);
+      setProjectDepartments(pj.departments || {});
     });
-  }, []);
+  }, [deptView]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -254,6 +262,7 @@ function ProjectsPageInner() {
             <p className="text-sm" style={{ color: "var(--muted)" }}>{stats.length} projects across the team</p>
             {actionErr && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{actionErr}</p>}
           </div>
+          <DepartmentView value={deptView} onChange={setDeptView} />
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search projects"
