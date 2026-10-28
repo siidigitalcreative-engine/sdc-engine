@@ -1,6 +1,7 @@
 "use client";
 
 import PageAccess from "../PageAccess";
+import DepartmentView from "../DepartmentView";
 
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -102,7 +103,7 @@ function packEvents(items) {
 
 
 function TeamCalendarInner() {
-  const { members } = useAuth();
+  const { members, department } = useAuth();
   const memberByRef = useMemo(() => {
     const map = {};
     members.forEach((member) => {
@@ -167,6 +168,24 @@ function TeamCalendarInner() {
 
   const calendarEtagRef = useRef(null);
   const loadingCalendarRef = useRef(false);
+
+  const [deptView, setDeptView] = useState("all");
+  const deptTouchedRef = useRef(false);
+  const changeDeptView = (next) => {
+    deptTouchedRef.current = true;
+    calendarEtagRef.current = null;       // the cached ETag belongs to the old view
+    setDeptView(next);
+  };
+  // Open on the signed-in member's own department. Only admin departments can
+  // switch views (everyone else is already limited by the API), and a manual
+  // choice from the picker is never overridden.
+  const deptId = department?.id;
+  const deptIsAdmin = !!department?.admin;
+  useEffect(() => {
+    if (deptTouchedRef.current || !deptIsAdmin || !deptId) return;
+    calendarEtagRef.current = null;
+    setDeptView(deptId);
+  }, [deptId, deptIsAdmin]);
   const [calendars, setCalendars] = useState(SEED_CALENDARS);
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState(null);
@@ -188,7 +207,7 @@ function TeamCalendarInner() {
     try {
       const headers = {};
       if (!force && calendarEtagRef.current) headers["If-None-Match"] = calendarEtagRef.current;
-      const response = await fetch("/api/calendar", { headers, cache: "no-store" });
+      const response = await fetch(`/api/calendar${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, { headers, cache: "no-store" });
       if (response.status === 304) return;
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -204,7 +223,7 @@ function TeamCalendarInner() {
     } finally {
       loadingCalendarRef.current = false;
     }
-  }, [hydrateEvents]);
+  }, [hydrateEvents, deptView]);
 
   const applyCalendarResponse = useCallback(async (response, fallback) => {
     if (!response.ok) {
@@ -268,12 +287,14 @@ function TeamCalendarInner() {
       desc: f.desc,
       attendees: normalizeMemberRefs(f.attendees),
     };
+    // An admin looking at one department files new events under it.
+    if (modal.mode !== "edit" && deptView && deptView !== "all") base.department = deptView;
 
     setSavingEvent(true);
     setCalendarError("");
     try {
       const isEdit = modal.mode === "edit";
-      const response = await fetch("/api/calendar", {
+      const response = await fetch(`/api/calendar${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isEdit ? { id: f.id, data: base } : { data: base }),
@@ -292,7 +313,7 @@ function TeamCalendarInner() {
     setSavingEvent(true);
     setCalendarError("");
     try {
-      const response = await fetch("/api/calendar", {
+      const response = await fetch(`/api/calendar${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: modal.form.id }),
@@ -363,6 +384,7 @@ function TeamCalendarInner() {
                     style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>{v}</button>
                 ))}
               </div>
+              <DepartmentView value={deptView} onChange={changeDeptView} />
               <div className="flex items-center gap-2 shrink-0">
                 <button onClick={exportCalendarPng} className="tc-pill rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
                 <button onClick={sendToLark} className="tc-pill rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
