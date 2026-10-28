@@ -1,5 +1,7 @@
 "use client";
 
+import PageAccess from "../PageAccess";
+
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
 import { useLarkSend } from "../LarkSend";
@@ -46,7 +48,7 @@ function Avatars({ list, size = 20 }) {
   );
 }
 
-export default function ProjectsPage() {
+function ProjectsPageInner() {
   const { members } = useAuth();
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -381,5 +383,14 @@ export default function ProjectsPage() {
         </div>
       )}
     </>
+  );
+}
+
+
+export default function ProjectsPage(props) {
+  return (
+    <PageAccess page="projects">
+      <ProjectsPageInner {...props} />
+    </PageAccess>
   );
 }
