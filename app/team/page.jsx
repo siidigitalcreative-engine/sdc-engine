@@ -22,6 +22,7 @@ const EMPTY_FORM = {
   role: "",
   loc: "Manila",
   status: "Active",
+  department: "",
   projects: 0,
   open: 0,
   done: 0,
@@ -255,6 +256,21 @@ function MemberCard({ m, dark, isCurrent, onEdit, onDelete }) {
 
 function MemberModal({ member, onClose, onSave }) {
   const [form, setForm] = useState(() => member ? { ...member, pin: "" } : { ...EMPTY_FORM });
+  const [departments, setDepartments] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/departments", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled || !body?.departments) return;
+        setDepartments(body.departments);
+        // A new member defaults to the first department rather than an empty value.
+        setForm((f) => (f.department ? f : { ...f, department: body.departments[0]?.id || "" }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -310,6 +326,12 @@ function MemberModal({ member, onClose, onSave }) {
             </Field>
             <Field label="Location">
               <input value={form.loc} onChange={(e) => set("loc", e.target.value)} placeholder="Manila" className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle} />
+            </Field>
+            <Field label="Department">
+              <select value={form.department || ""} onChange={(e) => set("department", e.target.value)} className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle}>
+                {!departments.length && <option value="">Loading…</option>}
+                {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
             </Field>
             <Field label="Status">
               <select value={form.status} onChange={(e) => set("status", e.target.value)} className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle}>
