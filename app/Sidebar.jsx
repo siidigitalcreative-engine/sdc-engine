@@ -9,22 +9,22 @@ import { useAuth } from "./auth";
 const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 const ON_ACCENT = "var(--on-accent)";
 const NAV = [
-  { href: "/dashboard", name: "Dashboard", icon: LayoutGrid },
-  { href: "/calendar", name: "Calendar", icon: Calendar },
-  { href: "/tasks", name: "Tasks", icon: CheckSquare },
-  { href: "/projects", name: "Projects", icon: Folder },
-  { href: "/print", name: "Print Hub", icon: Printer },
-  { href: "/team", name: "Team Members", icon: Users },
-  { href: "/lark", name: "Lark Groups", icon: Send },
-  { href: "/reports", name: "Reports", icon: BarChart },
-  { href: "/ads", name: "Ads", icon: Megaphone },
+  { href: "/dashboard", name: "Dashboard", icon: LayoutGrid, page: "dashboard" },
+  { href: "/calendar", name: "Calendar", icon: Calendar, page: "calendar" },
+  { href: "/tasks", name: "Tasks", icon: CheckSquare, page: "tasks" },
+  { href: "/projects", name: "Projects", icon: Folder, page: "projects" },
+  { href: "/print", name: "Print Hub", icon: Printer, page: "print" },
+  { href: "/team", name: "Team Members", icon: Users, page: "team" },
+  { href: "/lark", name: "Lark Groups", icon: Send, page: "lark" },
+  { href: "/reports", name: "Reports", icon: BarChart, page: "reports" },
+  { href: "/ads", name: "Ads", icon: Megaphone, page: "ads" },
 ];
 
 export default function Sidebar({ mobile = false, onNavigate }) {
   const pathname = usePathname();
   const router = useRouter();
   const { dark, toggle } = useTheme();
-  const { currentMember, logout } = useAuth();
+  const { currentMember, logout, canOpen, allowedPages } = useAuth();
 
   if (!currentMember) return null;
 
@@ -53,7 +53,7 @@ export default function Sidebar({ mobile = false, onNavigate }) {
       </div>
 
       <nav className="flex flex-col gap-1">
-        {NAV.map((n) => {
+        {NAV.filter((n) => !allowedPages || canOpen(n.page)).map((n) => {
           const on = pathname === n.href;
           const Icon = n.icon;
           return (
@@ -65,9 +65,11 @@ export default function Sidebar({ mobile = false, onNavigate }) {
       </nav>
 
       <div className="mt-auto flex flex-col gap-1">
-        <Link href="/settings" onClick={onNavigate} className="sb-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium" style={{ color: "var(--text-2)" }}>
-          <Settings size={18} /> Settings
-        </Link>
+        {canOpen("settings") && (
+          <Link href="/settings" onClick={onNavigate} className="sb-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium" style={{ color: "var(--text-2)" }}>
+            <Settings size={18} /> Settings
+          </Link>
+        )}
         <button onClick={handleLogout} className="sb-nav flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-left" style={{ color: "var(--text-2)" }}>
           <LogOut size={18} /> Log out
         </button>
