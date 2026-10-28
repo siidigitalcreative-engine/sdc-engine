@@ -72,6 +72,7 @@ function normalizeTask(task = {}) {
     id: String(task.id || `task-${randomUUID()}`),
     title: String(task.title || "Untitled task").trim() || "Untitled task",
     project: String(task.project || "Daily Tasks"),
+    department: String(task.department || "sdc").trim() || "sdc",
     desc: String(task.desc || ""),
     notes: String(task.notes || ""),
     status,
