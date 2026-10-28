@@ -1,5 +1,7 @@
 "use client";
 
+import PageAccess from "../PageAccess";
+
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
@@ -99,7 +101,7 @@ function packEvents(items) {
 
 
 
-export default function TeamCalendar() {
+function TeamCalendarInner() {
   const { members } = useAuth();
   const memberByRef = useMemo(() => {
     const map = {};
@@ -773,5 +775,14 @@ function EventModal({ modal, calendars, members, setForm, onClose, onSave, onDel
         </div>
       </div>
     </div>
+  );
+}
+
+
+export default function TeamCalendar(props) {
+  return (
+    <PageAccess page="calendar">
+      <TeamCalendarInner {...props} />
+    </PageAccess>
   );
 }
