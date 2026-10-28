@@ -29,14 +29,24 @@ export function cleanProjectName(name) {
 }
 
 function makeInitialState() {
-  return { version: 1, updatedAt: new Date().toISOString(), projects: normalizeList(DEFAULT_PROJECTS) };
+  return { version: 1, updatedAt: new Date().toISOString(), projects: normalizeList(DEFAULT_PROJECTS), departments: {} };
 }
 
 async function parseResult(result) {
   if (!result?.stream) return null;
   const text = await new Response(result.stream).text();
   const parsed = JSON.parse(text);
-  return { version: 1, updatedAt: parsed.updatedAt || new Date().toISOString(), projects: normalizeList(parsed.projects) };
+  // Departments are a side map keyed by project name, so the project list
+  // itself stays a plain array of names and nothing downstream changes.
+  const departments = {};
+  if (parsed.departments && typeof parsed.departments === "object") {
+    Object.entries(parsed.departments).forEach(([name, dept]) => {
+      const key = String(name).trim();
+      const value = String(dept || "").trim();
+      if (key && value) departments[key] = value;
+    });
+  }
+  return { version: 1, updatedAt: parsed.updatedAt || new Date().toISOString(), projects: normalizeList(parsed.projects), departments };
 }
 
 async function createInitialBlob() {
@@ -73,7 +83,7 @@ export async function mutateProjects(mutator, maxAttempts = 12) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const current = await readProjectsState();
     const nextProjects = normalizeList(await mutator([...current.state.projects]));
-    const nextState = { version: 1, updatedAt: new Date().toISOString(), projects: nextProjects };
+    const nextState = { version: 1, updatedAt: new Date().toISOString(), projects: nextProjects, departments: current.state.departments };
     try {
       const blob = await put(PATHNAME, JSON.stringify(nextState), {
         access: "private", contentType: "application/json", allowOverwrite: true,
@@ -91,7 +101,7 @@ export async function mutateProjects(mutator, maxAttempts = 12) {
   // with a short cache TTL if it was stored with a long one.
   const latest = await readProjectsState();
   const finalProjects = normalizeList(await mutator([...latest.state.projects]));
-  const finalState = { version: 1, updatedAt: new Date().toISOString(), projects: finalProjects };
+  const finalState = { version: 1, updatedAt: new Date().toISOString(), projects: finalProjects, departments: latest.state.departments };
   try {
     const blob = await put(PATHNAME, JSON.stringify(finalState), {
       access: "private", contentType: "application/json", allowOverwrite: true,
@@ -101,4 +111,28 @@ export async function mutateProjects(mutator, maxAttempts = 12) {
   } catch (error) {
     throw lastError || error;
   }
+}
+
+// Assigns a project to a department. Projects with no entry belong to the
+// default department, so nothing has to be migrated.
+export async function setProjectDepartment(name, departmentId) {
+  const key = String(name || "").trim();
+  const value = String(departmentId || "").trim();
+  if (!key) throw new Error("A project name is required.");
+
+  const current = await readProjectsState();
+  const departments = { ...current.state.departments };
+  if (value) departments[key] = value; else delete departments[key];
+
+  const nextState = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    projects: current.state.projects,
+    departments,
+  };
+  const blob = await put(PATHNAME, JSON.stringify(nextState), {
+    access: "private", contentType: "application/json", allowOverwrite: true,
+    addRandomSuffix: false, cacheControlMaxAge: 60,
+  });
+  return { state: nextState, etag: blob.etag };
 }
