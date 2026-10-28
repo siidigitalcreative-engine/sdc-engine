@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { filterTasks, viewerScope } from "../../lib/scope";
 import { getAuthenticatedMember } from "../../lib/auth-token";
 import {
   createTask,
@@ -40,7 +41,9 @@ export async function GET(request) {
       });
     }
 
-    return json({ tasks: result.state.tasks }, 200, result.etag);
+    // Only this member's department, unless they are in an admin department.
+    const scope = await viewerScope(actor, request);
+    return json({ tasks: filterTasks(result.state.tasks, scope), scope: { departmentId: scope.departmentId, isAdmin: scope.isAdmin } }, 200, result.etag);
   } catch (error) {
     console.error("GET /api/tasks", error);
     return json({ error: "Unable to load tasks." }, 500);
@@ -53,13 +56,18 @@ export async function POST(request) {
     if (!actor) return json({ error: "Unauthorized." }, 401);
 
     const body = await request.json();
-    const task = createTask(body.data || body);
+    const scope = await viewerScope(actor, request);
+    const incoming = body.data || body;
+    const task = createTask({
+      ...incoming,
+      department: scope.isAdmin && incoming.department ? incoming.department : scope.departmentId,
+    });
     if (isBaseConfigured()) {
       try { const recordId = await syncCreate(task); if (recordId) task.larkRecordId = recordId; }
       catch (e) { console.error("Lark Base create sync failed", e); }
     }
     const result = await mutateTasks((tasks) => [...tasks, task]);
-    return json({ tasks: result.state.tasks, task }, 201, result.etag);
+    return json({ tasks: filterTasks(result.state.tasks, scope), task }, 201, result.etag);
   } catch (error) {
     console.error("POST /api/tasks", error);
     return json({ error: error.message || "Unable to create task." }, 400);
@@ -99,7 +107,8 @@ export async function PATCH(request) {
       } catch (e) { console.error("Lark Base update sync failed", e); }
     }
 
-    return json({ tasks: result.state.tasks, task: updated }, 200, result.etag);
+    const scope = await viewerScope(actor, request);
+    return json({ tasks: filterTasks(result.state.tasks, scope), task: updated }, 200, result.etag);
   } catch (error) {
     console.error("PATCH /api/tasks", error);
     return json({ error: error.message || "Unable to update task." }, 400);
@@ -128,7 +137,9 @@ export async function DELETE(request) {
       return tasks.filter((task) => String(task.id) !== id);
     });
 
-    return json({ tasks: result.state.tasks }, 200, result.etag);
+    // Only this member's department, unless they are in an admin department.
+    const scope = await viewerScope(actor, request);
+    return json({ tasks: filterTasks(result.state.tasks, scope), scope: { departmentId: scope.departmentId, isAdmin: scope.isAdmin } }, 200, result.etag);
   } catch (error) {
     console.error("DELETE /api/tasks", error);
     return json({ error: error.message || "Unable to delete task." }, 400);
