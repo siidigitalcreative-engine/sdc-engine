@@ -182,6 +182,12 @@ function TasksPageInner() {
     }))
   ), []);
 
+  const [deptView, setDeptView] = useState("all");
+  const changeDeptView = (next) => {
+    taskEtagRef.current = null;          // the cached ETag belongs to the old view
+    setDeptView(next);
+  };
+
   const loadTasks = useCallback(async ({ force = false } = {}) => {
     if (loadingTasksRef.current) return;
     loadingTasksRef.current = true;
@@ -252,11 +258,6 @@ function TasksPageInner() {
 
   const [archivingDone, setArchivingDone] = useState(false);
   const { openLarkSend, larkPicker } = useLarkSend();
-  const [deptView, setDeptView] = useState("all");
-  const changeDeptView = (next) => {
-    taskEtagRef.current = null;          // the cached ETag belongs to the old view
-    setDeptView(next);
-  };
 
   // Sweeps everything currently in Done into the archive, on demand.
   const archiveDoneNow = useCallback(async () => {
