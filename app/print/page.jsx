@@ -1,5 +1,7 @@
 "use client";
 
+import PageAccess from "../PageAccess";
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { upload as uploadToBlob } from "@vercel/blob/client";
 import { useLarkSend } from "../LarkSend";
@@ -61,7 +63,7 @@ const blankRecord = (lists) => ({
   status: lists.statuses[0] || "", remarks: "",
 });
 
-export default function PrintHubPage() {
+function PrintHubPageInner() {
   const [records, setRecords] = useState([]);
   const [lists, setLists] = useState({ brands: [], methods: [], statuses: [], layouts: [] });
   const [loading, setLoading] = useState(true);
@@ -1066,3 +1068,12 @@ const PAGE_CSS = `
   #ps-root .fgrid .wide,#ps-root .seph{grid-column:span 1}
 }
 `;
+
+
+export default function PrintHubPage(props) {
+  return (
+    <PageAccess page="print">
+      <PrintHubPageInner {...props} />
+    </PageAccess>
+  );
+}
