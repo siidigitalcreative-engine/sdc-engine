@@ -1,6 +1,7 @@
 "use client";
 
 import PageAccess from "../PageAccess";
+import DepartmentView from "../DepartmentView";
 
 import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -187,8 +188,9 @@ function TasksPageInner() {
     const generationAtStart = mutationGenerationRef.current;
     try {
       const headers = {};
+      // An ETag belongs to the department view it came from, so a switch forces a fresh read.
       if (!force && taskEtagRef.current) headers["If-None-Match"] = taskEtagRef.current;
-      const response = await fetch("/api/tasks", { headers, cache: "no-store" });
+      const response = await fetch(`/api/tasks${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, { headers, cache: "no-store" });
       if (response.status === 304) return;
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -212,7 +214,7 @@ function TasksPageInner() {
     } finally {
       loadingTasksRef.current = false;
     }
-  }, [hydrateTasks]);
+  }, [hydrateTasks, deptView]);
 
   const applyTaskResponse = useCallback(async (response, fallback) => {
     if (!response.ok) {
@@ -250,6 +252,11 @@ function TasksPageInner() {
 
   const [archivingDone, setArchivingDone] = useState(false);
   const { openLarkSend, larkPicker } = useLarkSend();
+  const [deptView, setDeptView] = useState("all");
+  const changeDeptView = (next) => {
+    taskEtagRef.current = null;          // the cached ETag belongs to the old view
+    setDeptView(next);
+  };
 
   // Sweeps everything currently in Done into the archive, on demand.
   const archiveDoneNow = useCallback(async () => {
@@ -497,6 +504,7 @@ function TasksPageInner() {
                   style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}><Icon size={15} />{v}</button>
               ))}
             </div>
+            <DepartmentView value={deptView} onChange={changeDeptView} />
             <button onClick={archiveDoneNow} disabled={archivingDone}
               title="Move everything in Done to the archive"
               className="tp-ib rounded-full px-3 py-2 text-sm font-medium shadow-sm inline-flex items-center gap-1.5 disabled:opacity-60"
