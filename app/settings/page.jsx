@@ -17,6 +17,8 @@ function SettingsInner() {
   const [renaming, setRenaming] = useState(null);
   const [draftName, setDraftName] = useState("");
   const [newName, setNewName] = useState("");
+  const [members, setMembers] = useState([]);
+  const [expanded, setExpanded] = useState(null);
 
   const apply = (body) => {
     setDepartments(body.departments || []);
@@ -26,10 +28,15 @@ function SettingsInner() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/departments", { cache: "no-store" });
+      const [res, memberRes] = await Promise.all([
+        fetch("/api/departments", { cache: "no-store" }),
+        fetch("/api/members", { cache: "no-store" }),
+      ]);
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || "Unable to load departments.");
       apply(body);
+      const memberBody = await memberRes.json().catch(() => ({}));
+      setMembers(Array.isArray(memberBody.members) ? memberBody.members : []);
       setError("");
     } catch (e) {
       setError(e.message);
@@ -58,6 +65,28 @@ function SettingsInner() {
       setBusy(false);
     }
   };
+
+  // Moving someone between departments from this side; the member form does
+  // the same thing from the other side.
+  const moveMember = async (memberId, departmentId) => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/members", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: memberId, data: { department: departmentId } }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Unable to move that member.");
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const membersIn = (deptId) => members.filter((m) => (m.department || departments[0]?.id) === deptId);
 
   // Always-on and admin-only pages are fixed, so no change here can lock anyone out.
   const isFixed = (page) => page.always || page.adminOnly;
@@ -124,6 +153,11 @@ function SettingsInner() {
               </span>
 
               <div className="flex gap-1.5 ml-auto flex-wrap">
+                <button disabled={busy} onClick={() => setExpanded(expanded === d.id ? null : d.id)}
+                  className="rounded-full px-3 py-1.5 text-xs font-medium"
+                  style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>
+                  {expanded === d.id ? "Hide members" : "Members"}
+                </button>
                 <button disabled={busy} onClick={() => { setRenaming(d.id); setDraftName(d.name); }}
                   className="rounded-full px-3 py-1.5 text-xs font-medium"
                   style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>Rename</button>
@@ -140,6 +174,35 @@ function SettingsInner() {
                   className="rounded-full px-3 py-1.5 text-xs font-medium"
                   style={{ border: "1px solid var(--border)", color: "#E5536E" }}>Remove</button>
               </div>
+
+              {expanded === d.id && (
+                <div className="w-full mt-1 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                  <div className="flex flex-wrap gap-2 mb-2.5">
+                    {membersIn(d.id).length ? membersIn(d.id).map((m) => (
+                      <span key={m.id} className="inline-flex items-center gap-2 rounded-full pl-1 pr-2.5 py-1"
+                        style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                        <span className="h-6 w-6 rounded-full inline-flex items-center justify-center text-[10px] font-bold text-white"
+                          style={{ background: m.c }}>{m.i}</span>
+                        <span className="text-xs font-medium" style={{ color: "var(--text)" }}>{m.name}</span>
+                      </span>
+                    )) : (
+                      <span className="text-xs" style={{ color: "var(--muted)" }}>No one in this department yet.</span>
+                    )}
+                  </div>
+
+                  <select value="" disabled={busy}
+                    onChange={(e) => { if (e.target.value) moveMember(e.target.value, d.id); }}
+                    className="rounded-xl px-3 py-2 text-xs outline-none"
+                    style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)" }}>
+                    <option value="">Move someone into {d.name}…</option>
+                    {members.filter((m) => (m.department || departments[0]?.id) !== d.id).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} — currently {(departments.find((x) => x.id === (m.department || departments[0]?.id))?.name) || "unassigned"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           ))}
 
