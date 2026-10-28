@@ -6,6 +6,8 @@ import PageAccess from "../PageAccess";
 
 const ACCENT = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 const SWATCHES = ["#7C6FF0", "#3E8ED0", "#3FA37A", "#E0A93C", "#F0784B", "#E5536E", "#2E9B8F", "#8E8A96"];
+const CHEVRON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238C8398' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`;
+
 
 function SettingsInner() {
   const [departments, setDepartments] = useState([]);
@@ -193,7 +195,12 @@ function SettingsInner() {
                   <select value="" disabled={busy}
                     onChange={(e) => { if (e.target.value) moveMember(e.target.value, d.id); }}
                     className="rounded-xl px-3 py-2 text-xs outline-none"
-                    style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)" }}>
+                    style={{
+                      background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)",
+                      WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
+                      backgroundImage: CHEVRON, backgroundRepeat: "no-repeat",
+                      backgroundPosition: "right 12px center", paddingRight: 34,
+                    }}>
                     <option value="">Move someone into {d.name}…</option>
                     {members.filter((m) => (m.department || departments[0]?.id) !== d.id).map((m) => (
                       <option key={m.id} value={m.id}>
