@@ -1,5 +1,7 @@
 "use client";
 
+import PageAccess from "../PageAccess";
+
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
 import {
@@ -39,7 +41,7 @@ function taskDate(task) {
   return null;
 }
 
-export default function ArchivePage() {
+function ArchivePageInner() {
   const { members } = useAuth();
   const memberByRef = useMemo(() => {
     const map = {};
@@ -412,5 +414,14 @@ function EmptyState({ text }) {
       <Archive size={28} className="mx-auto mb-3" style={{ opacity: 0.5 }} />
       <p className="text-sm">{text}</p>
     </div>
+  );
+}
+
+
+export default function ArchivePage(props) {
+  return (
+    <PageAccess page="tasks">
+      <ArchivePageInner {...props} />
+    </PageAccess>
   );
 }
