@@ -30,6 +30,9 @@ export function filterTasks(tasks, scope) {
   return tasks.filter((task) => departmentOf(task) === scope.filterId);
 }
 
+// Calendar events carry a department the same way tasks do.
+export const filterEvents = filterTasks;
+
 // Projects are names; their department lives in a side map.
 export function filterProjects(projects, departments, scope) {
   if (!scope.filterId) return projects;
