@@ -81,7 +81,7 @@ const NAV = [
 
 
 function TasksPageInner() {
-  const { members, currentMember: authCurrentMember, member } = useAuth();
+  const { members, currentMember: authCurrentMember, member, department } = useAuth();
   const currentMember = authCurrentMember || member || members.find((m) => m.id === "cn" || m.i === "CN") || null;
   const memberByRef = useMemo(() => {
     const map = {};
@@ -183,10 +183,22 @@ function TasksPageInner() {
   ), []);
 
   const [deptView, setDeptView] = useState("all");
+  const deptTouchedRef = useRef(false);
   const changeDeptView = (next) => {
+    deptTouchedRef.current = true;
     taskEtagRef.current = null;          // the cached ETag belongs to the old view
     setDeptView(next);
   };
+  // Open on the signed-in member's own department. Only admin departments can
+  // switch views at all (everyone else is already limited by the API), and a
+  // manual choice from the picker is never overridden.
+  const deptId = department?.id;
+  const deptIsAdmin = !!department?.admin;
+  useEffect(() => {
+    if (deptTouchedRef.current || !deptIsAdmin || !deptId) return;
+    taskEtagRef.current = null;
+    setDeptView(deptId);
+  }, [deptId, deptIsAdmin]);
 
   const loadTasks = useCallback(async ({ force = false } = {}) => {
     if (loadingTasksRef.current) return;
