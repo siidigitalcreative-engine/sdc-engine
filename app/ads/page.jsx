@@ -160,6 +160,7 @@ function AdsPageInner() {
   const [pillarValues, setPillarValues] = useState(DEFAULT_BUDGETS);
   const [presetValues, setPresetValues] = useState([]);
   const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
   const { openLarkSend, larkPicker } = useLarkSend({ onSent: () => setMessage("Campaign image sent to Lark.") });
 
   const reload = async () => {
@@ -190,26 +191,37 @@ function AdsPageInner() {
   const choose = item => { setDraft(structuredClone(item)); setActiveId(item.id); setMessage(""); };
   const addPillar = id => { if (!draft) return; update({ rows: [...draft.rows, { id: crypto.randomUUID(), pillar: id, budget: Number(data.pillarBudgets[id] || 0), prompt: "", open: true, concept: blankConcept(PILLARS.find(p => p.id === id)) }] }); };
   const duplicateRow = row => update({ rows: [...draft.rows, { ...structuredClone(row), id: crypto.randomUUID(), open: true }] });
-  const imagePayload = () => ({ campaign: draft, brandName: brand?.name || "", preset, pillars: PILLARS.map(({ id, name, color }) => ({ id, name, color })) });
+  const imagePayload = () => {
+    // The PNG corresponds to the saved summary card, not uncommitted editor values.
+    const campaign = data.campaigns.find(item => item.id === activeId);
+    const cardBrand = data.brands.find(item => item.id === campaign?.brandId);
+    const cardPreset = data.presets.find(item => item.id === campaign?.presetId);
+    return campaign ? { campaign, brandName: cardBrand?.name || "", preset: cardPreset, pillars: PILLARS.map(({ id, name, color }) => ({ id, name, color })) } : null;
+  };
   const exportPng = async () => {
-    if (!draft || exporting) return;
-    setExporting(true); setMessage("");
+    if (exporting) return;
+    const payload = imagePayload();
+    if (!payload) { setExportNotice("Save this campaign first so its summary card can be exported."); return; }
+    setExporting(true); setExportNotice("Generating campaign card PNG...");
     try {
-      const response = await fetch("/api/ads-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(imagePayload()) });
-      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || "Unable to export PNG."); }
+      const response = await fetch("/api/ads-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || (response.status === 404 ? "PNG route missing from deployment. Add app/api/ads-image/route.js." : `Unable to export PNG (HTTP ${response.status}).`)); }
+      if (!(response.headers.get("content-type") || "").includes("image/png")) throw new Error("PNG service returned an unexpected response.");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = `${(draft.name || "ads-campaign").replace(/[^a-z0-9_-]+/gi, "-").slice(0, 70)}.png`;
       document.body.appendChild(a); a.click(); a.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMessage("Campaign PNG downloaded.");
-    } catch (error) { setMessage(error.message || "Unable to export PNG."); }
+      setExportNotice("Campaign card PNG downloaded.");
+    } catch (error) { setExportNotice(error.message || "Unable to export PNG."); }
     finally { setExporting(false); }
   };
   const sendToLark = () => {
-    if (!draft) return;
-    openLarkSend("/api/lark/ads-image", imagePayload(), { label: `Ads campaign: ${draft.name || "Untitled"}`, kind: "projects" });
+    const payload = imagePayload();
+    if (!payload) { setExportNotice("Save this campaign first so its summary card can be sent to Lark."); return; }
+    setExportNotice("");
+    openLarkSend("/api/lark/ads-image", payload, { label: `Ads campaign: ${payload.campaign.name || "Untitled"}`, kind: "projects" });
   };
   const saveAction = async (action, payload, success) => {
     if (data.storageMissing) { setMessage("Shared Ads storage is missing. Saving is blocked; check Brand Information for recovery guidance."); return; }
@@ -275,6 +287,7 @@ function AdsPageInner() {
         </Box>
         <Box className="space-y-3"><div className="flex justify-between gap-2 items-center"><h2 className="font-semibold text-sm">Campaign Creative Board</h2><Pill>{draft.status}</Pill></div>
           <div className="flex flex-wrap gap-2"><button type="button" disabled={exporting} onClick={exportPng} className="rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2 disabled:opacity-50" style={{ border: "1px solid var(--border)" }}><Download size={15}/>{exporting ? "Exporting..." : "Export PNG"}</button><button type="button" onClick={sendToLark} className="rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2" style={{ border: "1px solid var(--border)" }}><Send size={15}/> Send to Lark</button></div>
+          {exportNotice && <p role="status" className="text-xs rounded-xl p-2" style={{ background: "var(--col)", color: "var(--text-2)" }}>{exportNotice}</p>}
           <div className="grid grid-cols-2 gap-2">{[["Budget", money(total)], ["Daily Estimate", money(total / duration)], ["Duration", `${duration} days`], ["Platform", draft.platform]].map(([a, b]) => <div key={a} className="p-2 rounded-xl" style={{ background: "var(--col)" }}><p className="text-[10px]" style={{ color: "var(--muted)" }}>{a}</p><strong className="text-xs break-words">{b}</strong></div>)}</div>
           <div className="text-xs flex items-center justify-between" style={{ color: "var(--muted)" }}><span>Pillar Allocation: {money(pillarTotal)}</span><span>{total ? Math.round(pillarTotal / total * 100) : 0}% of budget</span></div>
           {draft.rows.map(r => { const pillar = PILLARS.find(p => p.id === r.pillar); const c = r.concept || blankConcept(pillar); return <div key={r.id} onDragOver={e => e.preventDefault()} onDrop={e => dropped(e, r.id)} className="rounded-xl p-3 space-y-3" style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
