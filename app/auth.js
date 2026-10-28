@@ -17,6 +17,8 @@ async function getError(response, fallback) {
 export function AuthProvider({ children }) {
   const [members, setMembers] = useState([]);
   const [sessionId, setSessionId] = useState(null);
+  const [department, setDepartment] = useState(null);
+  const [allowedPages, setAllowedPages] = useState(null);   // null until known
   const [ready, setReady] = useState(false);
   const etagRef = useRef(null);
   const loadingMembersRef = useRef(false);
@@ -55,6 +57,8 @@ export function AuthProvider({ children }) {
       }
       const body = await response.json();
       setSessionId(body.member?.id || null);
+      setDepartment(body.department || null);
+      setAllowedPages(Array.isArray(body.allowedPages) ? body.allowedPages : null);
       return body.member || null;
     } catch {
       setSessionId(null);
@@ -162,10 +166,17 @@ export function AuthProvider({ children }) {
     return true;
   };
 
+  // Until the session is known, allowedPages is null and callers wait rather
+  // than flashing a sidebar the member may not be entitled to.
+  const canOpen = (pageId) => (allowedPages ? allowedPages.includes(pageId) : false);
+
   const value = {
     ready,
     members,
     currentMember,
+    department,
+    allowedPages,
+    canOpen,
     login,
     logout,
     addMember,
