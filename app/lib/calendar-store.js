@@ -30,6 +30,8 @@ function normalizeEvent(event = {}) {
     allDay: Boolean(event.allDay),
     done: Boolean(event.done),
     desc: String(event.desc || ""),
+    // Older events have no department and belong to the default one, like tasks.
+    department: String(event.department || "sdc").trim() || "sdc",
     attendees: [...new Set(Array.isArray(event.attendees) ? event.attendees.map(String).filter(Boolean) : [])],
   };
 }
