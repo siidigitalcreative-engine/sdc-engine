@@ -4,7 +4,7 @@ import React from "react";
 // Used unchanged by both Export PNG and Send to Lark.
 const C = { bg: "#1D1C22", border: "#343039", tile: "#16151A", secondary: "#8E8996", text: "#F5F3F6", blue: "#7C9CF0", orange: "#F0784B" };
 const STATUS = { Draft: "#8E8A96", Scheduled: "#E0A93C", Running: "#3FA37A", Paused: "#E5536E", Ended: "#6A6175", Completed: "#2E9B8F" };
-const money = value => Math.round(Number(value) || 0).toLocaleString("en-PH");
+const money = value => "PHP " + Math.round(Number(value) || 0).toLocaleString("en-PH");
 const days = (start, end) => Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1 || 1);
 const shortDate = iso => { const date = new Date(iso); return isNaN(date) ? "—" : date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }); };
 const label = value => String(value ?? "");
@@ -14,17 +14,6 @@ function Pill({ name, color }) {
   return <div style={{ display: "flex", padding: "8px 13px", marginRight: 8, marginBottom: 8, background: `${color}22`, color, borderRadius: 30, fontSize: 20, fontWeight: 700 }}>{name}</div>;
 }
 
-// The bundled Inter WOFF subset does not include U+20B1. Draw the peso mark as
-// a vector so downloaded PNGs and Lark images never show a missing-glyph box.
-function PesoAmount({ amount }) {
-  return <div style={{ display: "flex", alignItems: "center", marginTop: 5 }}>
-    <svg width="28" height="34" viewBox="0 0 28 34" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M6 31V3H14.5C22.5 3 25 8.4 23.7 13.4C22.6 18 18.7 20 13.3 20H6" stroke="#F5F3F6" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M3 10H25M3 15H24" stroke="#F5F3F6" strokeWidth="2.2" strokeLinecap="round"/>
-    </svg>
-    <span style={{ color: C.text, fontSize: 31, fontWeight: 800 }}>{money(amount)}</span>
-  </div>;
-}
 
 export function buildAdsImage({ campaign = {}, brandName = "", preset = null, pillars = [] } = {}) {
   const rows = Array.isArray(campaign.rows) ? campaign.rows : [];
@@ -62,7 +51,7 @@ export function buildAdsImage({ campaign = {}, brandName = "", preset = null, pi
     </div>
 
     <div style={{ display: "flex", gap: 16, marginTop: 17 }}>
-      {[["TOTAL", total], ["DAILY", total / span]].map(([title, value]) => <div key={title} style={{ display: "flex", flexDirection: "column", flex: 1, padding: 24, background: C.tile, borderRadius: 26 }}><span style={{ color: C.secondary, fontSize: 20, fontWeight: 700 }}>{title}</span><PesoAmount amount={value}/></div>)}
+      {[["TOTAL", total], ["DAILY", total / span]].map(([title, value]) => <div key={title} style={{ display: "flex", flexDirection: "column", flex: 1, padding: 24, background: C.tile, borderRadius: 26 }}><span style={{ color: C.secondary, fontSize: 20, fontWeight: 700 }}>{title}</span><span style={{ color: C.text, fontSize: 31, fontWeight: 800, marginTop: 5 }}>{money(value)}</span></div>)}
     </div>
 
     <div style={{ display: "flex", flexDirection: "column", marginTop: 22, padding: 24, background: C.tile, borderRadius: 26 }}>
