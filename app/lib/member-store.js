@@ -225,6 +225,7 @@ export function createMemberInput(data = {}) {
     open: data.open,
     done: data.done,
     status: data.status,
+    department: data.department,
     featured: false,
     theme: data.theme || "dark",
     pinHash: hashPin(pin),
