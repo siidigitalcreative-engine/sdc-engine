@@ -1,58 +1,65 @@
 import React from "react";
 
-const COLORS = { ink: "#25202B", sub: "#665D6C", light: "#F7F5F4", line: "#E8E2E1", orange: "#E86146", white: "#FFFFFF" };
-const money = n => `PHP ${Math.round(Number(n) || 0).toLocaleString("en-PH")}`;
-const safe = value => String(value ?? "").trim();
-const days = (a, b) => Math.max(1, Math.round((Date.parse(b) - Date.parse(a)) / 86400000) + 1 || 1);
-const text = (value, fallback = "Not specified") => safe(value) || fallback;
+// Image counterpart of the existing campaign summary card in app/ads/page.jsx.
+// Used unchanged by both Export PNG and Send to Lark.
+const C = { bg: "#1D1C22", border: "#343039", tile: "#16151A", secondary: "#8E8996", text: "#F5F3F6", blue: "#7C9CF0", orange: "#F0784B" };
+const STATUS = { Draft: "#8E8A96", Scheduled: "#E0A93C", Running: "#3FA37A", Paused: "#E5536E", Ended: "#6A6175", Completed: "#2E9B8F" };
+const money = value => "₱" + Math.round(Number(value) || 0).toLocaleString("en-PH");
+const days = (start, end) => Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1 || 1);
+const shortDate = iso => { const date = new Date(iso); return isNaN(date) ? "—" : date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }); };
+const label = value => String(value ?? "");
+const shorten = (s, max = 65) => label(s).length > max ? label(s).slice(0, max - 1) + "…" : label(s);
 
-function Line({ label, value }) {
-  return <div style={{ display: "flex", flexDirection: "column", width: "100%", marginBottom: 12 }}>
-    <span style={{ fontSize: 16, color: COLORS.sub, marginBottom: 4 }}>{label}</span>
-    <span style={{ fontSize: 22, color: COLORS.ink, whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{text(value)}</span>
-  </div>;
+function Pill({ name, color }) {
+  return <div style={{ display: "flex", padding: "8px 13px", marginRight: 8, marginBottom: 8, background: `${color}22`, color, borderRadius: 30, fontSize: 20, fontWeight: 700 }}>{name}</div>;
 }
 
 export function buildAdsImage({ campaign = {}, brandName = "", preset = null, pillars = [] } = {}) {
-  const rows = Array.isArray(campaign.rows) ? campaign.rows.slice(0, 35) : [];
-  const sceneCount = rows.reduce((sum, r) => sum + Math.min(12, Array.isArray(r?.concept?.scenes) ? r.concept.scenes.length : 0), 0);
-  const height = Math.min(14000, 650 + rows.length * 375 + sceneCount * 80);
-  const duration = days(campaign.start, campaign.end);
+  const rows = Array.isArray(campaign.rows) ? campaign.rows : [];
+  const span = days(campaign.start, campaign.end);
   const allocated = rows.reduce((sum, row) => sum + (Number(row.budget) || 0), 0);
-  const type = campaign.budgetSource === "preset" ? preset?.type : campaign.budgetType;
+  const budgetType = campaign.budgetSource === "preset" ? preset?.type : campaign.budgetType;
   const amount = Number(campaign.budgetSource === "preset" ? preset?.amount : campaign.amount) || 0;
-  const total = campaign.budgetSource === "pillars" ? allocated : type === "daily" ? amount * duration : amount;
+  const total = campaign.budgetSource === "pillars" ? allocated : budgetType === "daily" ? amount * span : amount;
+  const scope = campaign.product ? "Product" : campaign.collection ? "Collection" : "Brand";
+  const target = campaign.product || campaign.collection || brandName || "Whole brand";
+  const uniquePillars = [...new Set(rows.map(row => row.pillar))].map(id => pillars.find(p => p.id === id)).filter(Boolean);
+  const start = Date.parse(campaign.start), end = Date.parse(campaign.end), now = Date.now();
+  const known = Number.isFinite(start) && Number.isFinite(end);
+  const elapsed = known ? Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start))) : 0;
+  const before = known && now < start, after = known && now > end;
+  const daysLeft = known ? Math.ceil((end - now) / 86400000) : 0;
+  const timing = !known ? "Dates not set" : before ? `Starts in ${Math.ceil((start - now) / 86400000)} days` : after ? `Finished${campaign.status === "Running" ? " — still marked Running" : ""}` : `${daysLeft} days left`;
+  const statusColor = STATUS[campaign.status] || STATUS.Draft;
+  const lines = Math.max(1, Math.ceil(uniquePillars.reduce((n, p) => n + p.name.length + 4, 0) / 33));
+  const height = 790 + Math.max(0, lines - 1) * 52;
 
-  const element = <div style={{ display: "flex", flexDirection: "column", width: 1200, height, background: COLORS.light, color: COLORS.ink, padding: 54, fontFamily: "Inter" }}>
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 28, borderBottom: `3px solid ${COLORS.orange}` }}>
-      <div style={{ display: "flex", flexDirection: "column" }}><span style={{ color: COLORS.orange, fontSize: 21, fontWeight: 700, letterSpacing: 2 }}>SDC • ADS CAMPAIGN</span><span style={{ marginTop: 12, fontSize: 49, fontWeight: 800 }}>{text(campaign.name, "Untitled Campaign")}</span><span style={{ marginTop: 8, fontSize: 21, color: COLORS.sub }}>{text(brandName, "Brand not selected")}  •  {text(campaign.collection, "All collections")}  •  {text(campaign.product, "All products")}</span></div>
-      <span style={{ background: COLORS.white, border: `1px solid ${COLORS.line}`, padding: 14, borderRadius: 14, fontSize: 20 }}>{text(campaign.status, "Draft")}</span>
+  const element = <div style={{ display: "flex", flexDirection: "column", width: 640, height, padding: 32, background: C.bg, border: `2px solid ${C.border}`, borderRadius: 30, color: C.text, fontFamily: "Inter" }}>
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", flexDirection: "column", maxWidth: 470 }}>
+        <div style={{ display: "flex" }}><Pill name={scope} color={C.orange}/></div>
+        <span style={{ color: C.secondary, fontSize: 19, fontWeight: 700, letterSpacing: 1, marginTop: 10 }}>{shorten(brandName || "NO BRAND SET", 35).toUpperCase()}</span>
+        <span style={{ color: C.text, fontSize: 29, fontWeight: 750, marginTop: 4 }}>{shorten(campaign.name || "Untitled campaign", 36)}</span>
+        <span style={{ color: C.secondary, fontSize: 23, marginTop: 3 }}>{shorten(target, 42)}</span>
+      </div>
+      <Pill name={campaign.status || "Draft"} color={statusColor}/>
     </div>
-    <div style={{ display: "flex", gap: 16, marginTop: 28 }}>
-      {[["TOTAL BUDGET", money(total)], ["DAILY ESTIMATE", money(total / duration)], ["DURATION", `${duration} days`], ["PLATFORM", text(campaign.platform)]].map(([label, value]) => <div key={label} style={{ display: "flex", flexDirection: "column", flex: 1, padding: 20, borderRadius: 16, background: COLORS.white, border: `1px solid ${COLORS.line}` }}><span style={{ fontSize: 14, color: COLORS.sub }}>{label}</span><span style={{ fontSize: 23, fontWeight: 700, marginTop: 8 }}>{value}</span></div>)}
+
+    <div style={{ display: "flex", flexWrap: "wrap", marginTop: 28, minHeight: 48 }}>
+      {uniquePillars.length ? uniquePillars.map(p => <Pill key={p.id} name={p.name} color={p.color}/>) : <span style={{ fontSize: 21, color: C.secondary }}>No pillars added</span>}
     </div>
-    <div style={{ display: "flex", background: COLORS.white, border: `1px solid ${COLORS.line}`, borderRadius: 18, padding: 24, marginTop: 18 }}>
-      <div style={{ display: "flex", flexDirection: "column", width: "50%" }}><Line label="Objective" value={campaign.objective}/><Line label="Campaign Dates" value={`${text(campaign.start)} to ${text(campaign.end)}`}/></div>
-      <div style={{ display: "flex", flexDirection: "column", width: "50%" }}><Line label="Ad Account" value={campaign.adAccount}/><Line label="Landing Page" value={campaign.landing}/></div>
+
+    <div style={{ display: "flex", gap: 16, marginTop: 17 }}>
+      {[["TOTAL", money(total)], ["DAILY", money(total / span)]].map(([title, value]) => <div key={title} style={{ display: "flex", flexDirection: "column", flex: 1, padding: 24, background: C.tile, borderRadius: 26 }}><span style={{ color: C.secondary, fontSize: 20, fontWeight: 700 }}>{title}</span><span style={{ color: C.text, fontSize: 31, fontWeight: 800, marginTop: 5 }}>{value}</span></div>)}
     </div>
-    {safe(campaign.brief) && <div style={{ display: "flex", flexDirection: "column", padding: 22, background: COLORS.white, borderRadius: 16, marginTop: 18, border: `1px solid ${COLORS.line}` }}><span style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>CREATIVE INSTRUCTIONS</span><span style={{ fontSize: 19, color: COLORS.sub, whiteSpace: "pre-wrap" }}>{campaign.brief.slice(0, 550)}</span></div>}
-    <div style={{ fontSize: 26, fontWeight: 800, marginTop: 29, marginBottom: 15 }}>Content Pillars ({rows.length})</div>
-    {rows.map((row, index) => {
-      const pillar = pillars.find(p => p.id === row.pillar) || { name: "Content Pillar", color: COLORS.orange };
-      const concept = row.concept || {};
-      const scenes = Array.isArray(concept.scenes) ? concept.scenes.slice(0, 12) : [];
-      return <div key={row.id || index} style={{ display: "flex", flexDirection: "column", padding: 24, marginBottom: 15, background: COLORS.white, border: `1px solid ${COLORS.line}`, borderRadius: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}><span style={{ fontWeight: 800, fontSize: 24, color: pillar.color }}>{index + 1}. {pillar.name}</span><span style={{ fontWeight: 700, fontSize: 20 }}>{money(row.budget)}  •  {text(concept.duration, "—")} sec</span></div>
-        <span style={{ fontSize: 23, fontWeight: 700, marginBottom: 8 }}>{text(concept.title)}</span>
-        <span style={{ fontSize: 18, color: COLORS.sub, marginBottom: 10, whiteSpace: "pre-wrap" }}>{safe(concept.summary).slice(0, 250)}</span>
-        <div style={{ display: "flex", gap: 16, marginBottom: 9 }}><div style={{ display: "flex", flexDirection: "column", flex: 1 }}><span style={{ fontSize: 15, color: COLORS.sub }}>Hook / Creative Angle</span><span style={{ fontSize: 17 }}>{text(concept.hook || concept.angle).slice(0, 180)}</span></div><div style={{ display: "flex", flexDirection: "column", flex: 1 }}><span style={{ fontSize: 15, color: COLORS.sub }}>CTA</span><span style={{ fontSize: 17 }}>{text(concept.cta).slice(0, 180)}</span></div></div>
-        {safe(concept.voiceover) && <span style={{ fontSize: 17, color: COLORS.ink, marginTop: 5 }}>Script / VO: {concept.voiceover.slice(0, 240)}</span>}
-        {safe(row.prompt) && <span style={{ fontSize: 16, color: COLORS.sub, marginTop: 5 }}>Direction: {row.prompt.slice(0, 200)}</span>}
-        {scenes.length > 0 && <div style={{ display: "flex", flexDirection: "column", marginTop: 12, borderTop: `1px solid ${COLORS.line}`, paddingTop: 10 }}><span style={{ fontSize: 17, fontWeight: 700, marginBottom: 7 }}>VIDEO OUTLINE</span>{scenes.map((s, i) => <span key={i} style={{ fontSize: 16, color: COLORS.sub, marginBottom: 5 }}>{i + 1}. {text(s.label, "Scene")} ({text(s.start, "0")}–{text(s.end, "?")}s): {text(s.visual, "Visual pending").slice(0, 125)} {safe(s.camera) ? `• ${s.camera.slice(0, 65)}` : ""}</span>)}</div>}
-      </div>;
-    })}
-    {Array.isArray(campaign.rows) && campaign.rows.length > 35 && <span style={{ color: COLORS.sub, fontSize: 18 }}>Additional pillars not included; export a smaller campaign to see all rows.</span>}
-    <div style={{ display: "flex", marginTop: "auto", justifyContent: "space-between", fontSize: 16, color: COLORS.sub }}><span>Sunbeams Digital Creative Engine</span><span>Exported {new Date().toISOString().slice(0, 10)}</span></div>
+
+    <div style={{ display: "flex", flexDirection: "column", marginTop: 22, padding: 24, background: C.tile, borderRadius: 26 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><span style={{ color: C.secondary, fontSize: 24 }}>▦</span><span style={{ color: C.text, fontSize: 26, fontWeight: 700, marginLeft: 12 }}>{shortDate(campaign.start)}</span><span style={{ color: C.secondary, fontSize: 22, marginLeft: 16 }}>→</span><span style={{ color: C.text, fontSize: 26, fontWeight: 700, marginLeft: 16 }}>{shortDate(campaign.end)}</span><div style={{ display: "flex", flex: 1 }}/><Pill name={`${span} DAYS`} color={C.secondary}/></div>
+      <div style={{ display: "flex", height: 12, background: "#27262C", borderRadius: 20, marginTop: 16, overflow: "hidden" }}><div style={{ width: `${Math.round(elapsed * 100)}%`, height: 12, background: after ? C.secondary : C.orange, borderRadius: 20 }}/></div>
+      <span style={{ color: after && campaign.status === "Running" ? "#E0A93C" : C.secondary, fontSize: 20, marginTop: 11 }}>{timing}</span>
+    </div>
+
+    <div style={{ display: "flex", flexDirection: "column", marginTop: 25 }}><span style={{ color: "#C3BECA", fontSize: 22 }}>{shorten(`${label(campaign.platform)}${campaign.adAccount ? ` · ${campaign.adAccount}` : ""}`, 47)}</span>{campaign.landing && <span style={{ color: C.blue, fontSize: 21, marginTop: 10 }}>{shorten(label(campaign.landing).replace(/^https?:\/\//, ""), 48)}</span>}</div>
   </div>;
-  return { element, width: 1200, height };
+  return { element, width: 640, height };
 }
