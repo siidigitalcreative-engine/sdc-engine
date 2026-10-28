@@ -1,277 +1,1079 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Plus, GripVertical, ChevronDown, ChevronUp, Copy, Trash2, Save, Wallet, BookOpen, Pencil, CalendarDays, ArrowRight } from "lucide-react";
-import BrandInformationPanel from "./BrandInformationPanel";
+import PageAccess from "../PageAccess";
 
-const PILLARS = [
-  { id: "story", name: "Storytelling", color: "#F0A5B9", focus: "Emotional stories and everyday moments", seconds: 30 },
-  { id: "showcase", name: "Product Showcase", color: "#8FC1FF", focus: "Features, benefits, demonstrations", seconds: 15 },
-  { id: "hook", name: "7-Second Hook", color: "#FFA079", focus: "Quick reveal and attention-grabbing opening", seconds: 7 },
-  { id: "value", name: "Consumables / Value-Driven", color: "#9FDEB8", focus: "Tips, how-to, FAQs, product care", seconds: 20 },
-  { id: "journey", name: "Journey / Behind-the-Scenes", color: "#F6D28E", focus: "People, process, and progress", seconds: 30 },
-  { id: "interactive", name: "Interactive Content", color: "#CBB1FA", focus: "Questions, polls, and choices", seconds: 15 },
-  { id: "relatable", name: "Relatable Content", color: "#8CDDD6", focus: "Common situations, trends, and humor", seconds: 15 },
-  { id: "promotions", name: "Promotions / Offers", color: "#F3AE81", focus: "Discounts, vouchers, flash sales, bundles, BOGO deals, seasonal and limited-time offers", seconds: 15 },
-];
-const DEFAULT_BUDGETS = Object.fromEntries(PILLARS.map(p => [p.id, 0]));
-const OPT_OBJECTIVES = ["Brand Awareness", "Product Discovery", "Engagement", "Trust & Credibility", "Education & Consideration", "Conversion"];
-const PANEL = { background: "var(--card)", border: "1px solid var(--border)" };
-const INPUT = "w-full px-3 py-2 rounded-xl border text-sm outline-none";
-const money = value => "₱" + Math.round(Number(value) || 0).toLocaleString("en-PH");
-const daysBetween = (start, end) => Math.max(1, Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1 || 1);
-const blankConcept = pillar => ({ title: `${pillar.name} Concept`, summary: pillar.focus, hook: "", angle: "", voiceover: "", cta: "", duration: pillar.seconds, format: "TikTok / Reels", scenes: [] });
-const freshCampaign = () => ({ id: crypto.randomUUID(), name: "New Ad Campaign", brandId: "", collection: "", product: "", objective: "Product Discovery", brief: "", platform: "TikTok Ads", adAccount: "", landing: "", budgetSource: "preset", presetId: "discovery", budgetType: "daily", amount: 1000, start: new Date().toISOString().slice(0, 10), end: new Date(Date.now() + 13 * 86400000).toISOString().slice(0, 10), status: "Draft", spent: 0, rows: [] });
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { upload as uploadToBlob } from "@vercel/blob/client";
+import { useLarkSend } from "../LarkSend";
+import {
+  Printer, Search, Plus, X, Pencil, Trash2, Download, Send, Image as ImageIcon,
+  SlidersHorizontal, Layers, Folder, Gauge,
+} from "lucide-react";
 
-const STATUS_COLOR = { Draft: "#8E8A96", Scheduled: "#E0A93C", Running: "#3FA37A", Paused: "#E5536E", Ended: "#6A6175", Completed: "#2E9B8F" };
+const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 
-// What a campaign costs in total, whichever way its budget was set.
-function campaignTotal(c, presets) {
-  if (c.budgetSource === "pillars") return (c.rows || []).reduce((sum, r) => sum + (Number(r.budget) || 0), 0);
-  const preset = (presets || []).find(p => p.id === c.presetId);
-  const amount = Number(c.budgetSource === "preset" ? preset?.amount : c.amount) || 0;
-  const type = c.budgetSource === "preset" ? preset?.type : c.budgetType;
-  return type === "daily" ? amount * daysBetween(c.start, c.end) : amount;
+const MODES = ["Cylinder", "Flat"];
+const MODE_META = {
+  Cylinder: { c: "#F0784B", s: "#FCE7DD" },
+  Flat: { c: "#3E8ED0", s: "#E3EEF9" },
+};
+const INK_LAYERS = {
+  Primer:  { c: "#E0A93C", s: "#FAEFD6" },
+  White:   { c: "#6A7382", s: "#E9ECF1" },
+  CMYK:    { c: "#7C5CD8", s: "#EBE4FA" },
+  Varnish: { c: "#3E8ED0", s: "#E3EEF9" },
+};
+const COLOR_CHOICES = {
+  Black: { c: "#2B2630", s: "#E6E3EA", n: 1 },
+  White: { c: "#6A7382", s: "#E9ECF1", n: 1 },
+  CMYK:  { c: "#7C5CD8", s: "#EBE4FA", n: 4 },
+};
+const SWATCHES = ["#7C6FF0", "#3E8ED0", "#3FA37A", "#E0A93C", "#F0784B", "#E5536E", "#2E9B8F", "#8E8A96"];
+const hash = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
+const swatchFor = (name) => SWATCHES[hash(String(name || "x")) % SWATCHES.length];
+
+const STATUS_HINT = {
+  "Not started": "#8E8A96", "Sample done": "#E0A93C", Approved: "#3FA37A",
+  Printed: "#2E9B8F", "In production": "#3E8ED0", "On hold": "#E5536E",
+};
+const statusColor = (name) => STATUS_HINT[name] || swatchFor(name);
+const methodColor = (name) => (name === "Direct Print" ? "#7C5CD8" : name === "Sticker Print" ? "#3FA37A" : swatchFor(name));
+const tint = (hex) => `${hex}22`;
+
+const GROUPS = {
+  brand: (r) => r.brand,
+  mode: (r) => r.mode,
+  method: (r) => r.method,
+  status: (r) => r.status,
+  nothing: () => "All records",
+};
+
+const minsFor = (r) => (r.rec ? r[r.rec] : null);
+const perHour = (r) => { const m = minsFor(r); return m ? Math.round((60 / m) * 10) / 10 : null; };
+const per100 = (r) => { const p = perHour(r); return p ? Math.round((100 / p) * 10) / 10 : null; };
+const colorCount = (r) => (r.colors || []).reduce((t, c) => t + (COLOR_CHOICES[c]?.n || 1), 0);
+const inkText = (r) => (Array.isArray(r.ink) && r.ink.length ? r.ink.join(" + ") : null);
+
+const blankRecord = (lists) => ({
+  id: null, brand: lists.brands[0] || "", mode: "Cylinder", img: null,
+  name: "", sku: "", variant: "", h: null, w: null, base: null, ml: null,
+  design: "", layout: null, method: lists.methods[0] || "",
+  paw: null, pah: null, colors: [], ink: [],
+  slow: null, med: null, fast: null, rec: null,
+  status: lists.statuses[0] || "", remarks: "",
+});
+
+function PrintHubPageInner() {
+  const [records, setRecords] = useState([]);
+  const [lists, setLists] = useState({ brands: [], methods: [], statuses: [], layouts: [] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [modal, setModal] = useState(null);
+  const [exportingId, setExportingId] = useState(null);
+
+  const [query, setQuery] = useState("");
+  const [brandFilter, setBrandFilter] = useState("all");
+  const [modeFilter, setModeFilter] = useState("all");
+  const [methodFilter, setMethodFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [groupBy, setGroupBy] = useState("brand");
+
+  const etagRef = useRef(null);
+
+  const apply = useCallback(async (response, fallback) => {
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || fallback);
+    }
+    const body = await response.json();
+    const etag = response.headers.get("etag");
+    if (etag) etagRef.current = etag;
+    setRecords(Array.isArray(body.records) ? body.records : []);
+    if (body.lists) setLists(body.lists);
+    setError("");
+    return body;
+  }, []);
+
+  const load = useCallback(async ({ force = false } = {}) => {
+    try {
+      const headers = {};
+      if (!force && etagRef.current) headers["If-None-Match"] = etagRef.current;
+      const response = await fetch("/api/print", { headers, cache: "no-store" });
+      if (response.status === 304) return;
+      await apply(response, "Unable to load print records.");
+    } catch (e) {
+      setError(e.message || "Unable to load print records.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apply]);
+
+  useEffect(() => { load({ force: true }); }, [load]);
+
+  const layoutsFor = useCallback(
+    (mode) => (lists.layouts || []).filter((l) => l.modes.includes(mode)),
+    [lists.layouts]
+  );
+  const layoutNote = useCallback(
+    (name) => (lists.layouts || []).find((l) => l.name === name)?.note || "",
+    [lists.layouts]
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return records.filter((r) => {
+      if (brandFilter !== "all" && r.brand !== brandFilter) return false;
+      if (modeFilter !== "all" && r.mode !== modeFilter) return false;
+      if (methodFilter !== "all" && r.method !== methodFilter) return false;
+      if (statusFilter !== "all" && r.status !== statusFilter) return false;
+      if (!q) return true;
+      return [r.name, r.sku, r.design, r.variant, r.method, r.layout, inkText(r)]
+        .some((v) => String(v || "").toLowerCase().includes(q));
+    });
+  }, [records, query, brandFilter, modeFilter, methodFilter, statusFilter]);
+
+  const lanes = useMemo(() => {
+    const keyOf = GROUPS[groupBy] || GROUPS.brand;
+    const map = new Map();
+    filtered.forEach((r) => {
+      const k = keyOf(r) || "Unassigned";
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(r);
+    });
+    return [...map.entries()];
+  }, [filtered, groupBy]);
+
+  const stats = useMemo(() => {
+    const rates = records.map(perHour).filter(Boolean);
+    return {
+      count: records.length,
+      rate: rates.length ? Math.round((rates.reduce((a, b) => a + b, 0) / rates.length) * 10) / 10 : "—",
+      brands: new Set(records.map((r) => r.brand)).size,
+      timed: records.filter((r) => r.slow != null || r.med != null || r.fast != null).length,
+    };
+  }, [records]);
+
+  const brandCounts = useMemo(() => {
+    const counts = {};
+    records.forEach((r) => { counts[r.brand] = (counts[r.brand] || 0) + 1; });
+    return counts;
+  }, [records]);
+
+  // Light the tile straight away, then confirm with the server. If the save
+  // fails the previous setting comes back and the reason is shown.
+  const setSpeed = async (record, key) => {
+    if (record[key] == null) return;
+    const next = record.rec === key ? null : key;
+    const previous = record.rec;
+
+    setRecords((rows) => rows.map((r) => (r.id === record.id ? { ...r, rec: next } : r)));
+    setError("");
+
+    try {
+      const response = await fetch("/api/print", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: record.id, data: { rec: next } }),
+      });
+      if (response.status === 401) throw new Error("Your session expired. Reload the page and sign in again.");
+      await apply(response, "Unable to save the speed setting.");
+    } catch (e) {
+      console.error("print set recommended", e);
+      setRecords((rows) => rows.map((r) => (r.id === record.id ? { ...r, rec: previous } : r)));
+      setError(e?.message || "Unable to save the speed setting.");
+    }
+  };
+
+  const { openLarkSend, larkPicker } = useLarkSend();
+
+  // What the overview send posts: whatever the filters are currently showing.
+  const overviewPayload = () => ({
+    records: filtered,
+    notes: Object.fromEntries((lists.layouts || []).map((l) => [l.name, l.note || ""])),
+    title: "Print Hub",
+    subtitle: [
+      brandFilter === "all" ? null : brandFilter,
+      modeFilter === "all" ? null : modeFilter,
+      methodFilter === "all" ? null : methodFilter,
+      statusFilter === "all" ? null : statusFilter,
+      query.trim() ? `"${query.trim()}"` : null,
+    ].filter(Boolean).join(" · ") || "All records",
+  });
+
+  // Renders the card server-side with next/og and downloads the PNG.
+  const exportCard = async (record) => {
+    if (exportingId) return;
+    setExportingId(record.id);
+    setError("");
+    try {
+      const response = await fetch("/api/print-card-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ record, layoutNote: layoutNote(record.layout) }),
+      });
+      if (!response.ok) throw new Error("Unable to render that card.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const slug = [record.brand, record.name || record.sku, record.design]
+        .filter(Boolean).join("-").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${slug || "print-record"}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      console.error("print card export", e);
+      setError(e?.message || "Unable to export that card.");
+    } finally {
+      setExportingId(null);
+    }
+  };
+
+  const openCreate = () => setModal({ mode: "create", form: blankRecord(lists) });
+  const openEdit = (r) => setModal({ mode: "edit", form: { ...r, colors: [...(r.colors || [])], ink: [...(r.ink || [])] } });
+
+  // Returns an error string on failure so the sheet can show it in place;
+  // returns null when the save went through.
+  const saveModal = async (form) => {
+    setSaving(true);
+    setError("");
+    const FIELDS = [
+      "brand", "mode", "img", "name", "sku", "variant", "h", "w", "base", "ml",
+      "design", "layout", "method", "paw", "pah", "colors", "ink",
+      "slow", "med", "fast", "rec", "status", "remarks",
+    ];
+    const data = {};
+    FIELDS.forEach((k) => { data[k] = form[k] ?? null; });
+    data.colors = Array.isArray(form.colors) ? form.colors : [];
+    data.ink = Array.isArray(form.ink) ? form.ink : [];
+
+    try {
+      const response = await fetch("/api/print", {
+        method: form.id ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form.id ? { id: form.id, data } : { data }),
+      });
+      if (response.status === 401) throw new Error("Your session expired. Reload the page and sign in again.");
+      await apply(response, "Unable to save the record.");
+      setModal(null);
+      // Belt and braces: pull a fresh copy so a stale ETag can never leave the
+      // board showing the pre-edit version.
+      load({ force: true });
+      return null;
+    } catch (e) {
+      console.error("print save", e);
+      const message = e?.message || "Unable to save the record.";
+      setError(message);
+      return message;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeRecord = async (id) => {
+    if (!window.confirm("Delete this record permanently?")) return;
+    setSaving(true);
+    try {
+      const response = await fetch("/api/print", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      await apply(response, "Unable to delete the record.");
+      setModal(null);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const listAction = async (method, body, fallback) => {
+    const response = await fetch("/api/print/lists", {
+      method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    await apply(response, fallback);
+  };
+
+  return (
+    <main id="ps-root" className="flex-1 min-w-0 flex flex-col overflow-y-auto">
+      <style>{PAGE_CSS}</style>
+
+      <header className="flex items-center gap-3 px-4 sm:px-7 pt-6 pb-4 shrink-0 flex-wrap">
+        <div className="mr-auto">
+          <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Print Hub</h1>
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            Print specs, coverage and machine speeds for every product and design
+          </p>
+          {error && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{error}</p>}
+        </div>
+        <div className="ps-search">
+          <Search size={15} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search product, SKU, design" />
+        </div>
+        <button onClick={() => openLarkSend("/api/lark/print-overview-image", overviewPayload(),
+            { label: `this overview (${filtered.length} record${filtered.length === 1 ? "" : "s"})`, kind: "print" })}
+          className="ps-btn" disabled={!filtered.length}>
+          <Send size={15} /> Send overview
+        </button>
+        <button onClick={openCreate} className="ps-btn primary">
+          <Plus size={16} /> New record
+        </button>
+      </header>
+
+      <div className="px-4 sm:px-7 pb-4 grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+        <Stat icon={Printer} tint="#F26A3C" soft="#FCE3D6" label="Records" value={stats.count} note="product and design pairs" />
+        <Stat icon={Gauge} tint="#3FA37A" soft="#DEF1E7" label="Avg output" value={stats.rate} note="pcs per hour, recommended" />
+        <Stat icon={Folder} tint="#7C5CD8" soft="#EBE4FA" label="Brands" value={stats.brands} note="covered so far" />
+        <Stat icon={Layers} tint="#3E8ED0" soft="#E3EEF9" label="Timed" value={stats.timed} note="have speed data" />
+      </div>
+
+      <div className="px-4 sm:px-7 pb-4 shrink-0 flex flex-col gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Chip on={brandFilter === "all"} onClick={() => setBrandFilter("all")} label="All brands" count={records.length} />
+          {lists.brands.filter((b) => brandCounts[b]).map((b) => (
+            <Chip key={b} on={brandFilter === b} onClick={() => setBrandFilter(b)} label={b} count={brandCounts[b]} dot={swatchFor(b)} />
+          ))}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={modeFilter} onChange={setModeFilter} all="All modes" options={MODES} />
+          <Select value={methodFilter} onChange={setMethodFilter} all="All methods" options={lists.methods} />
+          <Select value={statusFilter} onChange={setStatusFilter} all="All statuses" options={lists.statuses} />
+          <select className="ps-select" style={{ marginLeft: "auto" }} value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value)}>
+            {Object.keys(GROUPS).map((g) => <option key={g} value={g}>Group by {g}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="px-4 sm:px-7 pb-8">
+        {loading ? (
+          <Empty text="Loading records…" />
+        ) : !records.length ? (
+          <Empty text="No print records yet. Add the first one with New record." />
+        ) : !filtered.length ? (
+          <Empty text="No records match these filters." />
+        ) : (
+          lanes.map(([name, items]) => (
+            <section key={name} className="ps-lane">
+              <div className="ps-lane-head">
+                <h2>{name}</h2>
+                <span className="n">{items.length}</span>
+                {items.length > 3 && <span className="more">scroll sideways for {items.length - 3} more</span>}
+              </div>
+              <div className="ps-grid">
+                {items.map((r) => (
+                  <Card key={r.id} r={r} onEdit={() => openEdit(r)} onSpeed={(k) => setSpeed(r, k)}
+                    onExport={() => exportCard(r)} exporting={exportingId === r.id}
+                    onSendLark={() => openLarkSend("/api/lark/print-card-image",
+                      { record: r, layoutNote: layoutNote(r.layout) },
+                      { label: `${r.name || r.sku || "this record"}`, kind: "print" })}
+                    layoutNote={layoutNote} />
+                ))}
+              </div>
+            </section>
+          ))
+        )}
+      </div>
+
+      {larkPicker}
+
+      {modal && (
+        <EditSheet
+          key={modal.form.id || "new"}
+          initial={modal.form}
+          lists={lists}
+          layoutsFor={layoutsFor}
+          saving={saving}
+          onClose={() => setModal(null)}
+          onSave={saveModal}
+          onDelete={modal.form.id ? () => removeRecord(modal.form.id) : null}
+          onListAction={listAction}
+        />
+      )}
+    </main>
+  );
 }
 
-const shortDate = iso => { const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleDateString("default", { day: "numeric", month: "short" }); };
+/* ---------------- card ---------------- */
 
-// Dates get the same weight as the budget figures, with how far through the
-// run it is when that is knowable.
-function Runtime({ campaign, span }) {
-  const start = Date.parse(campaign.start), end = Date.parse(campaign.end), now = Date.now();
-  const known = !isNaN(start) && !isNaN(end);
-  const elapsed = known ? Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start))) : 0;
-  const before = known && now < start;
-  const after = known && now > end;
-  const daysLeft = known ? Math.ceil((end - now) / 86400000) : null;
+function Card({ r, onEdit, onSpeed, onExport, onSendLark, exporting, layoutNote }) {
+  const md = MODE_META[r.mode] || MODE_META.Cylinder;
+  const sc = statusColor(r.status);
+  const mc = methodColor(r.method);
+  const bc = swatchFor(r.brand);
+  const ph = perHour(r);
+  const h100 = per100(r);
 
-  const note = !known ? "Dates not set"
-    : before ? "Starts in " + Math.ceil((start - now) / 86400000) + " days"
-    : after ? "Finished" + (campaign.status === "Running" ? " — still marked Running" : "")
-    : daysLeft + " days left";
-
-  return <div className="rounded-xl px-3 py-2.5" style={{ background: "var(--col)" }}>
-    <div className="flex items-center gap-2">
-      <CalendarDays size={14} style={{ color: "var(--muted)", flex: "none" }} />
-      <span className="text-sm font-semibold">{shortDate(campaign.start)}</span>
-      <ArrowRight size={13} style={{ color: "var(--muted)", flex: "none" }} />
-      <span className="text-sm font-semibold">{shortDate(campaign.end)}</span>
-      <span className="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide"
-        style={{ background: "var(--dim)", color: "var(--text-2)" }}>{span} DAYS</span>
+  const cell = (k, v, unit, span) => (
+    <div className={`cell${span ? " span2" : ""}`} key={k}>
+      <div className="k">{k}</div>
+      <div className={`v${v == null ? " none" : ""}`}>{v == null ? "Not set" : <>{v}{unit && <span>{unit}</span>}</>}</div>
     </div>
+  );
 
-    <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--dim)" }}>
-      <div style={{
-        width: Math.round(elapsed * 100) + "%", height: "100%", borderRadius: 999,
-        background: after ? "var(--faint)" : "linear-gradient(90deg,#FFAA62,#E53E30)",
-      }} />
-    </div>
-    <p className="text-[11px] mt-1.5" style={{ color: after && campaign.status === "Running" ? "#E0A93C" : "var(--muted)" }}>{note}</p>
-  </div>;
+  const speed = (key, label) => (
+    <button key={key} type="button" onClick={() => onSpeed(key)}
+      className={`sp${r.rec === key ? " on" : ""}${r[key] == null ? " empty" : ""}`}>
+      <div className="k">{label}</div>
+      <div className="v">{r[key] == null ? "—" : r[key]}</div>
+      <div className="u">min / pc</div>
+    </button>
+  );
+
+  return (
+    <article className="ps-rec">
+      <div className="rec-top">
+        <div className="t">
+          <span className="mode" style={{ background: md.s, color: md.c }}>{r.mode}</span>
+          <div className="brandline" style={{ color: bc }}>{r.brand}</div>
+          <h3>{r.name || r.sku || "Untitled product"}</h3>
+          <div className="sub">
+            {r.name && r.sku && <code>{r.sku}</code>}
+            {r.variant && <span>{r.variant}</span>}
+          </div>
+        </div>
+        <div className="acts">
+          <button className="iconbtn" onClick={onSendLark}
+            title="Send this card to Lark" aria-label="Send this card to Lark">
+            <Send size={14} />
+          </button>
+          <button className="iconbtn" onClick={onExport} disabled={exporting}
+            title="Export this card as PNG" aria-label="Export this card as PNG">
+            <Download size={14} />
+          </button>
+          <button className="iconbtn" onClick={onEdit} title="Edit this record" aria-label="Edit this record">
+            <Pencil size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="design">
+        <span className="nm">{r.design}</span>
+        <span className="dot" />
+        <span className="pill" style={{ background: tint(mc), color: mc }}>{r.method}</span>
+        <span className="pill" style={{ marginLeft: "auto", background: tint(sc), color: sc }}>{r.status}</span>
+      </div>
+
+      {r.img ? (
+        <div className="shot"><img src={r.img} alt={r.design} /></div>
+      ) : (
+        <button className="shot empty" onClick={onEdit} title="Add an image">
+          <ImageIcon size={22} /><span>Add image</span>
+        </button>
+      )}
+
+      <div className="speeds">{speed("slow", "Slow")}{speed("med", "Medium")}{speed("fast", "Fast")}</div>
+
+      <div className="out">
+        <div><div className="k">Per hour</div><div className="v">{ph == null ? "—" : `${ph} pcs`}</div></div>
+        <div><div className="k">Per 100 pcs</div><div className="v">{h100 == null ? "—" : `${h100} hrs`}</div></div>
+      </div>
+
+      <div className="specs">
+        <div className="row">
+          {cell("Height", r.h, "mm")}{cell("Width", r.w, "mm")}
+          {cell("Base", r.base, "mm")}{cell("Capacity", r.ml, "ml")}
+        </div>
+        <div className="row">
+          <div className="cell span2 group">
+            <div className="k">Print area</div>
+            <div className="pair">
+              <div><div className="sk">Width</div>
+                <div className={`v${r.paw == null ? " none" : ""}`}>{r.paw == null ? "Not set" : <>{r.paw}<span>mm</span></>}</div>
+              </div>
+              <div><div className="sk">Height</div>
+                <div className={`v${r.pah == null ? " none" : ""}`}>{r.pah == null ? "Not set" : <>{r.pah}<span>mm</span></>}</div>
+              </div>
+            </div>
+          </div>
+          <div className="cell span2">
+            <div className="k">Colors</div>
+            {r.colors?.length ? (
+              <div className="inkrow">
+                {r.colors.map((c) => {
+                  const m = COLOR_CHOICES[c] || COLOR_CHOICES.Black;
+                  return <span key={c} className="layer" style={{ background: m.s, color: m.c }}>{c}</span>;
+                })}
+                <span className="cnt">{colorCount(r)} total</span>
+              </div>
+            ) : <div className="v none">Not set</div>}
+          </div>
+        </div>
+        <div className="row one">
+          <div className="cell">
+            <div className="k">Print coverage</div>
+            {r.layout ? (
+              <div className="v wrap">{r.layout}<span className="lnote">{layoutNote(r.layout)}</span></div>
+            ) : <div className="v none">Not set</div>}
+          </div>
+        </div>
+        <div className="row one">
+          <div className="cell">
+            <div className="k">Ink build</div>
+            {inkText(r) ? (
+              <div className="inkrow">
+                {r.ink.map((l, i) => {
+                  const m = INK_LAYERS[l] || INK_LAYERS.CMYK;
+                  return (
+                    <React.Fragment key={`${l}-${i}`}>
+                      {i > 0 && <span className="plus">+</span>}
+                      <span className="layer" style={{ background: m.s, color: m.c }}>{l}</span>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            ) : <div className="v none">Not set</div>}
+          </div>
+        </div>
+      </div>
+
+      {r.remarks && <div className="rem">{r.remarks}</div>}
+    </article>
+  );
 }
 
-function CampaignCards({ campaigns, brands, presets, activeId, onOpen, onNew }) {
-  if (!campaigns.length) {
-    return <div className="rounded-2xl p-10 text-center" style={PANEL}>
-      <p className="text-sm" style={{ color: "var(--muted)" }}>No campaigns yet.</p>
-      <button onClick={onNew} className="mt-3 text-white text-sm font-semibold rounded-xl px-4 py-2.5 inline-flex gap-2 items-center"
-        style={{ background: "linear-gradient(135deg,#FFAA62,#E53E30)" }}><Plus size={16}/> Create the first one</button>
-    </div>;
-  }
+/* ---------------- edit sheet ---------------- */
 
-  // Newest-looking first: running, then scheduled, then the rest.
-  const order = { Running: 0, Scheduled: 1, Draft: 2, Paused: 3, Completed: 4, Ended: 5 };
-  const sorted = [...campaigns].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
-
-  return <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))" }}>
-    {sorted.map(c => {
-      const brand = brands.find(b => b.id === c.brandId);
-      const total = campaignTotal(c, presets);
-      const span = daysBetween(c.start, c.end);
-      const target = c.product || c.collection || brand?.name || "Whole brand";
-      const scope = c.product ? "Product" : c.collection ? "Collection" : "Brand";
-      const sc = STATUS_COLOR[c.status] || "#8E8A96";
-      const active = activeId === c.id;
-
-      return <button key={c.id} onClick={() => onOpen(c)} type="button"
-        className="rounded-2xl p-4 text-left flex flex-col gap-3"
-        style={{ ...PANEL, borderColor: active ? "#F0784B" : "var(--border)" }}>
-
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <Pill color="#F0784B">{scope}</Pill>
-            <p className="text-[10px] font-bold tracking-wider uppercase mt-2" style={{ color: "var(--muted)" }}>
-              {brand?.name || "No brand set"}
-            </p>
-            <p className="text-sm font-semibold truncate" style={{ color: "var(--text)" }}>{c.name}</p>
-            <p className="text-xs truncate" style={{ color: "var(--muted)" }}>{target}</p>
-          </div>
-          <Pill color={sc}>{c.status}</Pill>
-        </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          {(c.rows || []).length
-            ? [...new Set((c.rows || []).map(r => r.pillar))].map(id => {
-                const p = PILLARS.find(x => x.id === id);
-                return p ? <Pill key={id} color={p.color}>{p.name}</Pill> : null;
-              })
-            : <span className="text-xs" style={{ color: "var(--muted)" }}>No pillars added</span>}
-        </div>
-
-        <div className="flex gap-2">
-          <div className="flex-1 rounded-xl px-3 py-2" style={{ background: "var(--col)" }}>
-            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "var(--muted)" }}>Total</p>
-            <p className="text-sm font-semibold">{money(total)}</p>
-          </div>
-          <div className="flex-1 rounded-xl px-3 py-2" style={{ background: "var(--col)" }}>
-            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "var(--muted)" }}>Daily</p>
-            <p className="text-sm font-semibold">{money(total / span)}</p>
-          </div>
-        </div>
-
-        <Runtime campaign={c} span={span} />
-
-        <div className="text-xs space-y-1" style={{ color: "var(--text-2)" }}>
-          <p className="truncate">{c.platform}{c.adAccount ? " · " + c.adAccount : ""}</p>
-          {c.landing && <p className="truncate" style={{ color: "#7C9CF0" }}>{String(c.landing).replace(/^https?:\/\//, "")}</p>}
-        </div>
-      </button>;
-    })}
-  </div>;
-}
-
-function Field({ label, children }) { return <label className="block space-y-1"><span className="block text-xs font-medium" style={{ color: "var(--text-2)" }}>{label}</span>{children}</label>; }
-function Box({ children, className = "" }) { return <div className={`rounded-2xl p-4 ${className}`} style={PANEL}>{children}</div>; }
-function Pill({ children, color = "#A899B6" }) { return <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color, background: `${color}22` }}>{children}</span>; }
-function IconButton({ children, onClick, danger = false }) { return <button type="button" onClick={onClick} className="rounded-lg px-2.5 py-1.5 text-xs font-medium flex gap-1 items-center" style={{ border: "1px solid var(--border)", color: danger ? "#E77A76" : "var(--text-2)" }}>{children}</button>; }
-
-export default function AdsPage() {
-  const [data, setData] = useState({ brands: [], campaigns: [], presets: [], pillarBudgets: DEFAULT_BUDGETS, storageMissing: false });
-  const [tab, setTab] = useState("campaigns");
-  const [draft, setDraft] = useState(null);
-  const [activeId, setActiveId] = useState(null);
-  const [message, setMessage] = useState("");
+function EditSheet({ initial, lists, layoutsFor, saving, onClose, onSave, onDelete, onListAction }) {
+  const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
-  const [libraryOpen, setLibraryOpen] = useState(true);
-  const [pillarValues, setPillarValues] = useState(DEFAULT_BUDGETS);
-  const [presetValues, setPresetValues] = useState([]);
+  const [openList, setOpenList] = useState(null);
+  const [listError, setListError] = useState("");
+  const [imgError, setImgError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const fileRef = useRef(null);
 
-  const reload = async () => {
-    const response = await fetch("/api/ads", { cache: "no-store" });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error);
-    setData(result); setPillarValues(result.pillarBudgets || DEFAULT_BUDGETS); setPresetValues(result.presets || []);
-    return result;
-  };
-  useEffect(() => { reload().catch(e => setMessage(e.message)); }, []);
-  const brand = data.brands.find(x => x.id === draft?.brandId);
-  const collection = brand?.collections?.find(x => x.name === draft?.collection);
-  const preset = data.presets.find(x => x.id === draft?.presetId);
-  const duration = draft ? daysBetween(draft.start, draft.end) : 1;
-  const pillarTotal = (draft?.rows || []).reduce((s, r) => s + (Number(r.budget) || 0), 0);
-  const budgetType = draft?.budgetSource === "preset" ? preset?.type : draft?.budgetType;
-  const budgetAmount = draft?.budgetSource === "preset" ? preset?.amount : draft?.amount;
-  const total = draft?.budgetSource === "pillars" ? pillarTotal : (budgetType === "daily" ? (Number(budgetAmount) || 0) * duration : (Number(budgetAmount) || 0));
-  const metrics = useMemo(() => ({ campaigns: data.campaigns.length, running: data.campaigns.filter(x => x.status === "Running").length, planned: data.campaigns.reduce((sum, x) => {
-    const p = data.presets.find(v => v.id === x.presetId);
-    const amount = x.budgetSource === "pillars" ? (x.rows || []).reduce((s, r) => s + (Number(r.budget) || 0), 0) : Number(x.budgetSource === "preset" ? p?.amount : x.amount) || 0;
-    const type = x.budgetSource === "preset" ? p?.type : x.budgetType;
-    return sum + (x.budgetSource !== "pillars" && type === "daily" ? amount * daysBetween(x.start, x.end) : amount);
-  }, 0), spent: data.campaigns.reduce((s, x) => s + (Number(x.spent) || 0), 0) }), [data]);
-  const update = patch => setDraft(v => ({ ...v, ...patch }));
-  const updateRow = (id, patch) => update({ rows: draft.rows.map(r => r.id === id ? { ...r, ...patch } : r) });
-  const newAd = () => { if (data.storageMissing) { setTab("brands"); return; } const item = freshCampaign(); item.brandId = data.brands[0]?.id || ""; item.presetId = data.presets[0]?.id || ""; setDraft(item); setActiveId(item.id); setTab("campaigns"); setMessage(""); };
-  const choose = item => { setDraft(structuredClone(item)); setActiveId(item.id); setMessage(""); };
-  const addPillar = id => { if (!draft) return; update({ rows: [...draft.rows, { id: crypto.randomUUID(), pillar: id, budget: Number(data.pillarBudgets[id] || 0), prompt: "", open: true, concept: blankConcept(PILLARS.find(p => p.id === id)) }] }); };
-  const duplicateRow = row => update({ rows: [...draft.rows, { ...structuredClone(row), id: crypto.randomUUID(), open: true }] });
-  const saveAction = async (action, payload, success) => {
-    if (data.storageMissing) { setMessage("Shared Ads storage is missing. Saving is blocked; check Brand Information for recovery guidance."); return; }
-    setBusy(true); setMessage("");
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const numOrNull = (v) => (v === "" ? null : Number(v));
+
+  const coverage = layoutsFor(form.mode);
+  useEffect(() => {
+    if (form.layout && !coverage.some((l) => l.name === form.layout)) set({ layout: null });
+  }, [form.mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Centre-crop to a square, resize, then upload straight to Blob storage.
+  const pickImage = async (file) => {
+    if (!file) return;
+    setBusy(true);
     try {
-      const response = await fetch("/api/ads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, payload }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-      setData(result); setPillarValues(result.pillarBudgets); setPresetValues(result.presets);
-      setMessage(success || "Saved.");
-    } catch (error) { setMessage(error.message); } finally { setBusy(false); }
-  };
-  const reorder = (source, target) => {
-    if (!source || !target || source === target) return;
-    const copy = [...draft.rows]; const from = copy.findIndex(x => x.id === source); const to = copy.findIndex(x => x.id === target);
-    if (from < 0 || to < 0) return;
-    copy.splice(to, 0, ...copy.splice(from, 1)); update({ rows: copy });
-  };
-  const dropped = (event, target) => {
-    event.preventDefault();
-    try {
-      const payload = JSON.parse(event.dataTransfer.getData("text/plain"));
-      if (payload.type === "pillar") addPillar(payload.id);
-      if (payload.type === "row") reorder(payload.id, target);
-    } catch { /* Ignore non-app drags. */ }
+      const dataUrl = await new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result);
+        fr.onerror = () => rej(new Error("Could not read that file."));
+        fr.readAsDataURL(file);
+      });
+      const img = await new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im);
+        im.onerror = () => rej(new Error("That file is not an image."));
+        im.src = dataUrl;
+      });
+      const side = Math.min(img.width, img.height);
+      const canvas = document.createElement("canvas");
+      canvas.width = 800; canvas.height = 800;
+      canvas.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 800, 800);
+      const blob = await new Promise((res, rej) => {
+        canvas.toBlob((b) => (b ? res(b) : rej(new Error("Could not process that image."))), "image/jpeg", 0.85);
+      });
+
+      // Same route and access mode as task attachments, served back through
+      // the /api/attachments proxy that streams the private blob.
+      const pathname = `sdc/print/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+      const uploaded = await uploadToBlob(pathname, new File([blob], "photo.jpg", { type: "image/jpeg" }), {
+        access: "private",
+        handleUploadUrl: "/api/upload-token",
+        contentType: "image/jpeg",
+      });
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      set({ img: `${origin}/api/attachments/${uploaded.pathname}` });
+      setImgError("");
+    } catch (e) {
+      console.error("print image upload", e);
+      setImgError(e?.message || "Upload failed. Please try again.");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
   };
 
-  return <main className="flex-1 min-h-0 overflow-auto p-4 sm:p-6 space-y-4" style={{ color: "var(--text)" }}>
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold">Ads</h1><p className="text-sm" style={{ color: "var(--muted)" }}>Plan campaigns, build creative concepts, and manage budgets.</p></div><button onClick={newAd} className="text-white text-sm font-semibold rounded-xl px-4 py-2.5 flex gap-2 items-center" style={{ background: "linear-gradient(135deg,#FFAA62,#E53E30)" }}><Plus size={16}/> New Ad</button></div>
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">{[["Campaigns", metrics.campaigns], ["Running", metrics.running], ["Planned", money(metrics.planned)], ["Spent", money(metrics.spent)]].map(([key, val]) => <Box key={key}><p className="text-xs" style={{ color: "var(--muted)" }}>{key}</p><strong className="text-xl">{val}</strong></Box>)}</div>
-    <div className="flex gap-5 border-b overflow-auto" style={{ borderColor: "var(--border)" }}>{[["campaigns", "Campaigns"], ["brands", "Brand Information"], ["pillars", "Pillar Budgets"], ["presets", "Standard Ad Budgets"]].map(([id, label]) => <button key={id} onClick={() => setTab(id)} className="pb-3 text-sm whitespace-nowrap font-semibold" style={{ color: tab === id ? "var(--text)" : "var(--muted)", borderBottom: tab === id ? "3px solid #F26D52" : "3px solid transparent" }}>{label}</button>)}</div>
-    {data.storageMissing && tab !== "brands" && <div role="alert" className="rounded-xl p-3 text-sm" style={{ background: "rgba(240,140,70,.10)", border: "1px solid #BF7F45" }}>Shared Ads data is missing. No data has been overwritten. Open the Brand Information tab to check the recovery guidance before saving anything.</div>}
-    {tab === "brands" && <BrandInformationPanel onSaved={reload}/>}
-    {tab === "campaigns" && <>
-      <CampaignCards campaigns={data.campaigns} brands={data.brands} presets={data.presets}
-        activeId={activeId} onOpen={choose} onNew={newAd} />
-      {draft ? <div className="grid xl:grid-cols-[minmax(0,1.03fr)_minmax(0,.78fr)_minmax(0,1.38fr)] gap-3 items-start">
-        <Box className="space-y-4"><h2 className="font-semibold flex gap-2 items-center"><Pencil size={16}/> Campaign Setup</h2>
-          <Field label="Campaign Name"><input className={INPUT} style={PANEL} value={draft.name} onChange={e => update({ name: e.target.value })}/></Field>
-          <Field label="Brand"><select className={INPUT} style={PANEL} value={draft.brandId} onChange={e => update({ brandId: e.target.value, collection: "", product: "" })}><option value="">Select Brand</option>{data.brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
-          <Field label="Collection / Category"><select className={INPUT} style={PANEL} value={draft.collection} onChange={e => update({ collection: e.target.value, product: "" })}><option value="">Entire Brand</option>{(brand?.collections || []).filter(c => c.name.trim()).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></Field>
-          <Field label="Product"><select className={INPUT} style={PANEL} value={draft.product} onChange={e => update({ product: e.target.value })}><option value="">All Products</option>{(collection?.products || []).filter(Boolean).map(p => <option key={p} value={p}>{p}</option>)}</select></Field>
-          <div className="rounded-xl p-3 space-y-1" style={{ background: "rgba(30,143,82,.12)", border: "1px solid rgba(57,170,104,.4)" }}><div className="flex gap-2 items-center text-sm font-semibold" style={{ color: "#45AD78" }}><BookOpen size={16}/> Brand Knowledge {brand ? "Available" : "Not Set"}</div><p className="text-xs" style={{ color: "var(--text-2)" }}>{brand ? `${brand.name}: brand voice, audience, guidelines and product information are available in the Brand Information tab.` : "Add a profile in the Brand Information tab, then select it here."}</p></div>
-          <Field label="Campaign Objective"><select className={INPUT} style={PANEL} value={draft.objective} onChange={e => update({ objective: e.target.value })}>{OPT_OBJECTIVES.map(o => <option key={o}>{o}</option>)}</select></Field>
-          <Field label="Creative Instructions (optional)"><textarea className={INPUT + " resize-y"} rows={5} style={PANEL} value={draft.brief} onChange={e => update({ brief: e.target.value })} placeholder="Audience, tone, feel, message, visual direction..."/></Field>
-          <div className="pt-3 border-t space-y-3" style={{ borderColor: "var(--border)" }}><h3 className="font-semibold flex gap-2 items-center"><Wallet size={16}/> Budget & Distribution</h3>
-            <Field label="Budget Source"><select className={INPUT} style={PANEL} value={draft.budgetSource} onChange={e => update({ budgetSource: e.target.value })}><option value="preset">Standard Ad Budget</option><option value="pillars">Pillar Allocations</option><option value="custom">Custom Budget</option></select></Field>
-            {draft.budgetSource === "preset" && <Field label="Budget Preset"><select className={INPUT} style={PANEL} value={draft.presetId} onChange={e => update({ presetId: e.target.value })}>{data.presets.map(p => <option key={p.id} value={p.id}>{p.name} — {money(p.amount)} {p.type === "daily" ? "/ day" : "lifetime"}</option>)}</select></Field>}
-            {draft.budgetSource === "custom" && <><Field label="Budget Type"><select className={INPUT} style={PANEL} value={draft.budgetType} onChange={e => update({ budgetType: e.target.value })}><option value="daily">Daily Budget</option><option value="lifetime">Lifetime Campaign Budget</option></select></Field><Field label="Amount (₱)"><input type="number" min="0" className={INPUT} style={PANEL} value={draft.amount} onChange={e => update({ amount: e.target.value })}/></Field></>}
-            <div className="grid grid-cols-2 gap-2"><Field label="Start Date"><input type="date" className={INPUT} style={PANEL} value={draft.start} onChange={e => update({ start: e.target.value })}/></Field><Field label="End Date"><input type="date" min={draft.start} className={INPUT} style={PANEL} value={draft.end} onChange={e => update({ end: e.target.value })}/></Field></div>
-            <div className="grid grid-cols-2 gap-2"><div className="p-3 rounded-xl" style={{ background: "var(--col)" }}><p className="text-[10px]" style={{ color: "var(--muted)" }}>CAMPAIGN TOTAL</p><strong className="text-lg">{money(total)}</strong></div><div className="p-3 rounded-xl" style={{ background: "var(--col)" }}><p className="text-[10px]" style={{ color: "var(--muted)" }}>AVERAGE DAILY</p><strong className="text-lg">{money(total / duration)}</strong></div></div>
-            <Field label="Advertising Platform"><select className={INPUT} style={PANEL} value={draft.platform} onChange={e => update({ platform: e.target.value })}>{["TikTok Ads", "Meta Ads", "Google Ads", "Shopee Ads", "Lazada Sponsored Solutions"].map(v => <option key={v}>{v}</option>)}</select></Field>
-            <Field label="Ad Account"><input className={INPUT} style={PANEL} value={draft.adAccount} onChange={e => update({ adAccount: e.target.value })}/></Field>
-            <Field label="Landing Page URL"><input className={INPUT} style={PANEL} value={draft.landing} onChange={e => update({ landing: e.target.value })}/></Field>
-            <Field label="Campaign Status"><select className={INPUT} style={PANEL} value={draft.status} onChange={e => update({ status: e.target.value })}>{["Draft", "Scheduled", "Running", "Paused", "Completed"].map(s => <option key={s}>{s}</option>)}</select></Field>
-            <Field label="Actual Spend (₱) — manual"><input type="number" min="0" className={INPUT} style={PANEL} value={draft.spent} onChange={e => update({ spent: e.target.value })}/></Field>
-            <div className="text-xs space-y-1" style={{ color: "var(--text-2)" }}><div className="flex justify-between"><span>Spent {money(draft.spent)}</span><span>Remaining {money(Math.max(0, total - Number(draft.spent || 0)))}</span></div><div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--col)" }}><div className="h-full rounded-full" style={{ width: `${Math.min(100, total ? 100 * Number(draft.spent || 0) / total : 0)}%`, background: "#EF7E66" }}/></div></div>
+  const runList = async (fn) => {
+    setListError("");
+    try { await fn(); } catch (e) { setListError(e.message || "That change was not saved."); }
+  };
+
+  const managed = (label, key, listName, options, wide) => (
+    <div className={`f managed${wide ? " wide" : ""}`}>
+      <label>{label}</label>
+      <div className="row1">
+        <select className="ps-select" value={form[key] ?? ""} onChange={(e) => set({ [key]: e.target.value || null })}>
+          {key === "layout" && <option value="">Not set</option>}
+          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+        <button type="button" className={`gear${openList === listName ? " on" : ""}`}
+          onClick={() => setOpenList(openList === listName ? null : listName)}
+          title="Manage these options" aria-label="Manage these options">
+          <SlidersHorizontal size={15} />
+        </button>
+      </div>
+      {openList === listName && (
+        <ListManager
+          list={listName}
+          options={options}
+          mode={form.mode}
+          error={listError}
+          notes={listName === "layouts" ? Object.fromEntries(layoutsFor(form.mode).map((l) => [l.name, l.note || ""])) : null}
+          onAdd={(name) => runList(() => onListAction("POST", { list: listName, name, mode: form.mode }, "Unable to add that option."))}
+          onRename={(name, newName) => runList(() => onListAction("PATCH", { list: listName, name, newName }, "Unable to rename that option."))}
+          onNote={(name, note) => runList(() => onListAction("PATCH", { list: listName, name, note }, "Unable to save that description."))}
+          onRemove={(name) => runList(() => onListAction("DELETE", { list: listName, name }, "Unable to remove that option."))}
+        />
+      )}
+    </div>
+  );
+
+  return (
+    <div className="ps-scrim" onClick={(e) => { if (e.target.classList.contains("ps-scrim")) onClose(); }}>
+      <div className="ps-sheet">
+        <h2>{form.id ? "Edit record" : "New record"}</h2>
+        <p className="cap">{[form.name || form.sku, form.design].filter(Boolean).join(" · ") || "Fill in what you know, the rest can wait"}</p>
+
+        <div className="fgrid">
+          {managed("Brand", "brand", "brands", lists.brands)}
+          <div className="f">
+            <label>Print mode</label>
+            <select className="ps-select" value={form.mode} onChange={(e) => set({ mode: e.target.value })}>
+              {MODES.map((m) => <option key={m}>{m}</option>)}
+            </select>
           </div>
-          <div className="flex gap-2"><button onClick={() => saveAction("saveCampaign", draft, "Campaign saved.")} disabled={busy || !draft.name.trim()} className="flex-1 px-3 py-2.5 rounded-xl text-white text-sm font-semibold flex gap-2 justify-center items-center" style={{ background: "#E75D48" }}><Save size={16}/> Save Campaign</button><IconButton danger onClick={() => { if (confirm("Delete this campaign?")) { saveAction("deleteCampaign", { id: draft.id }, "Campaign deleted."); setDraft(null); setActiveId(null); } }}><Trash2 size={15}/></IconButton></div>
-        </Box>
-        <Box className="space-y-3"><div className="flex justify-between items-center gap-2"><h2 className="font-semibold text-sm">Content Pillar Library</h2><button aria-label="Toggle pillar library" onClick={() => setLibraryOpen(!libraryOpen)}>{libraryOpen ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button></div><p className="text-xs" style={{ color: "var(--muted)" }}>Drag pillars into the Creative Board, or click to add.</p>
-          {libraryOpen && PILLARS.map(p => <button key={p.id} draggable onDragStart={e => e.dataTransfer.setData("text/plain", JSON.stringify({ type: "pillar", id: p.id }))} onClick={() => addPillar(p.id)} className="w-full text-left rounded-xl p-3 space-y-2 cursor-grab active:cursor-grabbing" style={{ background: "var(--col)", border: "1px solid var(--border)" }}><div className="flex gap-2 items-center"><GripVertical size={15} style={{ color: "var(--muted)" }}/><Pill color={p.color}>{p.name}</Pill><Plus size={14} className="ml-auto"/></div><p className="text-xs pl-6" style={{ color: "var(--text-2)" }}>{p.focus}</p></button>)}
-        </Box>
-        <Box className="space-y-3"><div className="flex justify-between gap-2 items-center"><h2 className="font-semibold text-sm">Campaign Creative Board</h2><Pill>{draft.status}</Pill></div>
-          <div className="grid grid-cols-2 gap-2">{[["Budget", money(total)], ["Daily Estimate", money(total / duration)], ["Duration", `${duration} days`], ["Platform", draft.platform]].map(([a, b]) => <div key={a} className="p-2 rounded-xl" style={{ background: "var(--col)" }}><p className="text-[10px]" style={{ color: "var(--muted)" }}>{a}</p><strong className="text-xs break-words">{b}</strong></div>)}</div>
-          <div className="text-xs flex items-center justify-between" style={{ color: "var(--muted)" }}><span>Pillar Allocation: {money(pillarTotal)}</span><span>{total ? Math.round(pillarTotal / total * 100) : 0}% of budget</span></div>
-          {draft.rows.map(r => { const pillar = PILLARS.find(p => p.id === r.pillar); const c = r.concept || blankConcept(pillar); return <div key={r.id} onDragOver={e => e.preventDefault()} onDrop={e => dropped(e, r.id)} className="rounded-xl p-3 space-y-3" style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
-            <div className="flex justify-between items-center"><div className="flex gap-2 items-center"><GripVertical size={16} draggable onDragStart={e => { e.stopPropagation(); e.dataTransfer.setData("text/plain", JSON.stringify({ type: "row", id: r.id })); }} className="cursor-grab"/><Pill color={pillar.color}>{pillar.name}</Pill></div><button onClick={() => updateRow(r.id, { open: !r.open })} aria-label="Expand or collapse">{r.open ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button></div>
-            <button className="text-left w-full" onClick={() => updateRow(r.id, { open: !r.open })}><h3 className="font-semibold text-sm">{c?.title || `${pillar.name} Concept`}</h3><p className="text-xs mt-1" style={{ color: "var(--muted)" }}>{c?.summary || pillar.focus}</p><div className="mt-2 flex gap-1 flex-wrap"><Pill>{c?.duration || pillar.seconds}s Video</Pill><Pill>{c?.format || "TikTok / Reels"}</Pill><Pill>{money(r.budget)}</Pill></div></button>
-            <div className="flex gap-2 flex-wrap"><IconButton onClick={() => updateRow(r.id, { open: !r.open })}><Pencil size={14}/> Edit</IconButton><IconButton onClick={() => duplicateRow(r)}><Copy size={14}/> Duplicate</IconButton><IconButton danger onClick={() => update({ rows: draft.rows.filter(x => x.id !== r.id) })}><Trash2 size={14}/></IconButton></div>
-            {r.open && <div className="pt-3 border-t space-y-3" style={{ borderColor: "var(--border)" }}>
-              <Field label="Pillar Budget Allocation (₱)"><input type="number" min="0" value={r.budget} onChange={e => updateRow(r.id, { budget: e.target.value })} className={INPUT} style={PANEL}/></Field>
-              <Field label="Creative Direction Notes (optional)"><textarea rows={3} value={r.prompt || ""} onChange={e => updateRow(r.id, { prompt: e.target.value })} className={INPUT + " resize-y"} style={PANEL} placeholder="Audience, tone, mood, key angle, camera style..."/></Field>
-              <Field label="Content Title"><input className={INPUT} style={PANEL} value={c.title || ""} onChange={e => updateRow(r.id, { concept: { ...c, title: e.target.value } })}/></Field>
-              <Field label="Content Summary"><textarea className={INPUT} style={PANEL} rows={2} value={c.summary || ""} onChange={e => updateRow(r.id, { concept: { ...c, summary: e.target.value } })}/></Field>
-              <div className="grid grid-cols-2 gap-2"><Field label="Video Duration (seconds)"><input type="number" min="1" className={INPUT} style={PANEL} value={c.duration || ""} onChange={e => updateRow(r.id, { concept: { ...c, duration: e.target.value } })}/></Field><Field label="Format / Platform"><input className={INPUT} style={PANEL} value={c.format || ""} onChange={e => updateRow(r.id, { concept: { ...c, format: e.target.value } })}/></Field></div>
-              {[["Creative Angle", "angle"], ["Opening Hook", "hook"], ["Script / Voiceover", "voiceover"], ["CTA", "cta"]].map(([label, key]) => <Field key={key} label={label}><textarea className={INPUT} style={PANEL} rows={2} value={c[key] || ""} onChange={e => updateRow(r.id, { concept: { ...c, [key]: e.target.value } })}/></Field>)}
-              <div className="flex items-center justify-between gap-2"><h4 className="text-sm font-semibold">Video Guide / Scene-by-Scene Outline</h4><IconButton onClick={() => updateRow(r.id, { concept: { ...c, scenes: [...(c.scenes || []), { start: "", end: "", label: "", visual: "", camera: "" }] } })}><Plus size={14}/> Add Scene</IconButton></div>
-              {(c.scenes || []).length === 0 && <p className="text-xs" style={{ color: "var(--muted)" }}>No scenes yet. Add scenes to create your video outline.</p>}
-              <div className="space-y-2">{(c.scenes || []).map((s, i) => <div key={i} className="p-2.5 rounded-xl text-xs space-y-2" style={PANEL}><div className="flex items-center justify-between"><span className="font-semibold">Scene {i + 1}</span><IconButton danger onClick={() => updateRow(r.id, { concept: { ...c, scenes: c.scenes.filter((_, j) => j !== i) } })}><Trash2 size={14}/></IconButton></div><div className="grid grid-cols-2 gap-2"><Field label="Start (sec)"><input className={INPUT} style={PANEL} value={s.start || ""} onChange={e => updateRow(r.id, { concept: { ...c, scenes: c.scenes.map((scene, j) => i === j ? { ...scene, start: e.target.value } : scene) } })}/></Field><Field label="End (sec)"><input className={INPUT} style={PANEL} value={s.end || ""} onChange={e => updateRow(r.id, { concept: { ...c, scenes: c.scenes.map((scene, j) => i === j ? { ...scene, end: e.target.value } : scene) } })}/></Field></div><Field label="Scene Label"><input className={INPUT} style={PANEL} value={s.label || ""} onChange={e => updateRow(r.id, { concept: { ...c, scenes: c.scenes.map((scene, j) => i === j ? { ...scene, label: e.target.value } : scene) } })}/></Field><Field label="Visual / Action"><textarea aria-label={`Scene ${i + 1} visual`} className={INPUT} style={PANEL} rows={2} value={s.visual || ""} onChange={e => updateRow(r.id, { concept: { ...c, scenes: c.scenes.map((scene, j) => i === j ? { ...scene, visual: e.target.value } : scene) } })}/></Field><Field label="Camera / Transition"><input aria-label={`Scene ${i + 1} camera direction`} className={INPUT} style={PANEL} value={s.camera || ""} onChange={e => updateRow(r.id, { concept: { ...c, scenes: c.scenes.map((scene, j) => i === j ? { ...scene, camera: e.target.value } : scene) } })}/></Field></div>)}</div>
-            </div>}
-          </div>; })}
-          <div className="rounded-xl p-6 text-center text-sm" style={{ border: "1px dashed var(--muted)", color: "var(--muted)" }} onDragOver={e => e.preventDefault()} onDrop={e => dropped(e)}><Plus size={20} className="mx-auto mb-2"/> Drag another content pillar here</div>
-        </Box>
-      </div> : <Box className="text-sm" ><span style={{ color: "var(--muted)" }}>Select a campaign above or click New Ad.</span></Box>}
-    </>}
-    {tab === "pillars" && <Box className="space-y-4 max-w-3xl"><h2 className="text-lg font-semibold">Content Pillar Budget Settings</h2><p className="text-sm" style={{ color: "var(--muted)" }}>Default allocation per new content row. Campaign-specific changes do not change these defaults.</p>{PILLARS.map(p => <div className="flex gap-2 items-center justify-between" key={p.id}><Pill color={p.color}>{p.name}</Pill><input aria-label={`${p.name} default budget`} type="number" min="0" className={INPUT + " max-w-36"} style={PANEL} value={pillarValues[p.id] ?? 0} onChange={e => setPillarValues(v => ({ ...v, [p.id]: e.target.value }))}/></div>)}<button onClick={() => saveAction("savePillarBudgets", pillarValues, "Pillar budgets saved.")} disabled={busy} className="rounded-xl px-4 py-2 text-white text-sm" style={{ background: "#E7614C" }}><Save size={15} className="inline mr-2"/> Save Defaults</button></Box>}
-    {tab === "presets" && <Box className="space-y-4 max-w-3xl"><h2 className="text-lg font-semibold">Standard Ad Budget Settings</h2><p className="text-sm" style={{ color: "var(--muted)" }}>Reusable budgets, separate from content pillar allocation. Set either a Daily Budget or a Lifetime Campaign Budget.</p>{presetValues.map(p => <div key={p.id} className="grid sm:grid-cols-[1fr_130px_140px_auto] gap-2 items-end rounded-xl p-3" style={{ background: "var(--col)" }}><Field label="Preset Name"><input className={INPUT} style={PANEL} value={p.name} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))}/></Field><Field label="Budget Type"><select className={INPUT} style={PANEL} value={p.type} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, type: e.target.value } : x))}><option value="daily">Daily</option><option value="lifetime">Lifetime</option></select></Field><Field label="Amount (₱)"><input type="number" min="0" className={INPUT} style={PANEL} value={p.amount} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, amount: e.target.value } : x))}/></Field><IconButton danger onClick={() => setPresetValues(a => a.filter(x => x.id !== p.id))}><Trash2 size={16}/></IconButton></div>)}<div className="flex flex-wrap gap-2"><IconButton onClick={() => setPresetValues(a => [...a, { id: crypto.randomUUID(), name: "New Preset", type: "daily", amount: 1000 }])}><Plus size={15}/> Add Preset</IconButton><button disabled={busy} onClick={() => saveAction("savePresets", presetValues.map(p => ({ ...p, amount: Math.max(0, Number(p.amount) || 0) })), "Standard Ad Budgets saved.")} className="rounded-xl px-4 py-2 text-white text-sm flex gap-2 items-center" style={{ background: "#E7614C" }}><Save size={15}/> Save Presets</button></div></Box>}
-    {message && <div role="status" className="rounded-xl px-3 py-2 text-sm" style={{ background: "var(--col)", color: "var(--text-2)" }}>{message}</div>}
-  </main>;
+          {managed("Status", "status", "statuses", lists.statuses)}
+          <div className="f" />
+          <div className="f wide"><label>Product name</label>
+            <input value={form.name} onChange={(e) => set({ name: e.target.value })} /></div>
+          <div className="f"><label>SKU</label>
+            <input value={form.sku} onChange={(e) => set({ sku: e.target.value })} /></div>
+          <div className="f"><label>Color / variant</label>
+            <input value={form.variant} onChange={(e) => set({ variant: e.target.value })} /></div>
+
+          <div className="seph">Image</div>
+          <div className="f imgfield">
+            <div className="prev">{form.img ? <img src={form.img} alt="" /> : "No image"}</div>
+            <div className="side">
+              <div className="btnrow">
+                <button type="button" className="ps-btn" disabled={busy} onClick={() => fileRef.current?.click()}>
+                  {busy ? "Uploading…" : form.img ? "Replace image" : "Choose image"}
+                </button>
+                <button type="button" className="ps-btn" disabled={busy || !form.img}
+                  onClick={() => { set({ img: null }); setImgError(""); }}>Remove</button>
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }}
+                onChange={(e) => pickImage(e.target.files?.[0])} />
+              {imgError
+                ? <div className="hint" style={{ color: "#E5536E" }}>{imgError}</div>
+                : <div className="hint">Cropped to a square from the centre and resized to 800 × 800.</div>}
+            </div>
+          </div>
+
+          <div className="seph">Measurements</div>
+          {[["Height (mm)", "h"], ["Dia. / width (mm)", "w"], ["Base dia. (mm)", "base"], ["Capacity (ml)", "ml"]].map(([l, k]) => (
+            <div className="f" key={k}><label>{l}</label>
+              <input type="number" value={form[k] ?? ""} onChange={(e) => set({ [k]: numOrNull(e.target.value) })} /></div>
+          ))}
+
+          <div className="seph">Print</div>
+          <div className="f wide"><label>Print design</label>
+            <input value={form.design} onChange={(e) => set({ design: e.target.value })} /></div>
+          {managed("Print coverage", "layout", "layouts", coverage.map((l) => l.name), true)}
+          {managed("Print method", "method", "methods", lists.methods)}
+          <div className="f"><label>Print area W (mm)</label>
+            <input type="number" value={form.paw ?? ""} onChange={(e) => set({ paw: numOrNull(e.target.value) })} /></div>
+          <div className="f"><label>Print area H (mm)</label>
+            <input type="number" value={form.pah ?? ""} onChange={(e) => set({ pah: numOrNull(e.target.value) })} /></div>
+          <div className="f wide">
+            <label>Colors</label>
+            <div className="addrow">
+              {Object.entries(COLOR_CHOICES).map(([c, m]) => {
+                const on = form.colors.includes(c);
+                return (
+                  <button type="button" key={c} className="addbtn"
+                    style={on ? { background: m.s, color: m.c, borderColor: "transparent" } : { background: "var(--card)", color: "var(--muted)" }}
+                    onClick={() => set({ colors: on ? form.colors.filter((x) => x !== c) : [...form.colors, c] })}>
+                    {on ? "✓ " : "+ "}{c}{m.n > 1 && <span style={{ opacity: 0.7 }}> ({m.n})</span>}
+                  </button>
+                );
+              })}
+              <span className="cnt" style={{ alignSelf: "center", marginLeft: 4 }}>{colorCount(form)} total</span>
+            </div>
+          </div>
+
+          <div className="f wide inkbuild">
+            <label>Ink build</label>
+            <div className="seq">
+              {form.ink.length ? form.ink.map((l, i) => {
+                const m = INK_LAYERS[l] || INK_LAYERS.CMYK;
+                return (
+                  <React.Fragment key={`${l}-${i}`}>
+                    {i > 0 && <span className="plus">+</span>}
+                    <span className="layer" style={{ background: m.s, color: m.c }}
+                      onClick={() => set({ ink: form.ink.filter((_, idx) => idx !== i) })}
+                      title="Remove this layer">{l}<span className="x">×</span></span>
+                  </React.Fragment>
+                );
+              }) : <span className="ph">Tap a layer below to build the sequence</span>}
+            </div>
+            <div className="addrow">
+              {Object.entries(INK_LAYERS).map(([l, m]) => (
+                <button type="button" key={l} className="addbtn"
+                  style={{ background: m.s, color: m.c, borderColor: "transparent" }}
+                  onClick={() => set({ ink: [...form.ink, l] })}>+ {l}</button>
+              ))}
+              <button type="button" className="addbtn ghost" onClick={() => set({ ink: form.ink.slice(0, -1) })}>Undo</button>
+              <button type="button" className="addbtn ghost" onClick={() => set({ ink: [] })}>Clear</button>
+            </div>
+          </div>
+
+          <div className="seph">Minutes per piece</div>
+          {[["Slow", "slow"], ["Medium", "med"], ["Fast", "fast"]].map(([l, k]) => (
+            <div className="f" key={k}><label>{l}</label>
+              <input type="number" step="0.1" value={form[k] ?? ""} onChange={(e) => set({ [k]: numOrNull(e.target.value) })} /></div>
+          ))}
+          <div className="f"><label>Recommended</label>
+            <select className="ps-select" value={form.rec ?? ""} onChange={(e) => set({ rec: e.target.value || null })}>
+              <option value="">Not set</option>
+              <option value="slow">Slow</option>
+              <option value="med">Medium</option>
+              <option value="fast">Fast</option>
+            </select>
+          </div>
+
+          <div className="seph">Remarks</div>
+          <div className="f wide">
+            <textarea value={form.remarks} onChange={(e) => set({ remarks: e.target.value })} />
+          </div>
+        </div>
+
+        <div className="sheet-foot">
+          <button type="button" className="ps-btn primary" disabled={saving || busy}
+            onClick={async () => {
+              setSaveError("");
+              const failure = await onSave(form);
+              if (failure) setSaveError(failure);
+            }}>
+            {saving ? "Saving…" : form.id ? "Save changes" : "Add record"}
+          </button>
+          <button type="button" className="ps-btn" onClick={onClose}>Cancel</button>
+          {onDelete && (
+            <span style={{ marginLeft: "auto" }}>
+              <button type="button" className="ps-btn" style={{ color: "#E5536E" }} onClick={onDelete}>Delete</button>
+            </span>
+          )}
+        </div>
+        {saveError && <p className="savefail">{saveError}</p>}
+      </div>
+    </div>
+  );
+}
+
+function ListManager({ options, mode, list, error, notes, onAdd, onRename, onNote, onRemove }) {
+  const [draft, setDraft] = useState("");
+  const commitOnEnter = (e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } };
+
+  return (
+    <div className="mgr open">
+      {options.map((name) => (
+        <div className={`opt${notes ? " withnote" : ""}`} key={name}>
+          <div className="fields">
+            <input defaultValue={name} onKeyDown={commitOnEnter}
+              onBlur={(e) => {
+                const now = e.target.value.trim();
+                if (!now || now === name) { e.target.value = name; return; }
+                onRename(name, now);
+              }} />
+            {notes && (
+              <input className="note" defaultValue={notes[name] || ""} placeholder="Short description"
+                onKeyDown={commitOnEnter}
+                onBlur={(e) => {
+                  const now = e.target.value.trim();
+                  if (now === (notes[name] || "")) return;
+                  onNote(name, now);
+                }} />
+            )}
+          </div>
+          <button type="button" onClick={() => onRemove(name)} title="Remove">×</button>
+        </div>
+      ))}
+      <div className="add">
+        <input value={draft} placeholder={list === "layouts" ? `New ${mode.toLowerCase()} option` : "New option"}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (draft.trim()) { onAdd(draft.trim()); setDraft(""); } } }} />
+        <button type="button" onClick={() => { if (draft.trim()) { onAdd(draft.trim()); setDraft(""); } }}>Add</button>
+      </div>
+      <div className="hintline">
+        {error || (notes
+          ? "The second line is the description shown on the card. Renaming updates every record using that option."
+          : "Renaming updates every record using that option. An option in use cannot be removed.")}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- small pieces ---------------- */
+
+function Stat({ icon: Icon, tint: t, soft, label, value, note }) {
+  return (
+    <div className="rounded-2xl p-4 shadow-sm" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="h-8 w-8 rounded-xl flex items-center justify-center" style={{ background: soft }}>
+          <Icon size={16} style={{ color: t }} />
+        </span>
+        <span className="text-sm font-medium" style={{ color: "var(--text-2)" }}>{label}</span>
+      </div>
+      <div className="text-3xl font-semibold" style={{ color: "var(--text)" }}>{value}</div>
+      <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>{note}</div>
+    </div>
+  );
+}
+
+function Chip({ on, onClick, label, count, dot }) {
+  return (
+    <button onClick={onClick} className={`ps-chip${on ? " on" : ""}`}>
+      {dot && !on && <span style={{ height: 7, width: 7, borderRadius: 999, background: dot }} />}
+      {label}<span className="n">{count}</span>
+    </button>
+  );
+}
+
+function Select({ value, onChange, all, options }) {
+  return (
+    <select className="ps-select" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="all">{all}</option>
+      {(options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+}
+
+function Empty({ text }) {
+  return (
+    <div className="rounded-2xl py-16 text-center shadow-sm"
+      style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted)" }}>
+      <Printer size={28} className="mx-auto mb-3" style={{ opacity: 0.5 }} />
+      <p className="text-sm">{text}</p>
+    </div>
+  );
+}
+
+/* ---------------- page styles ----------------
+   Scoped under #ps-root so nothing leaks into the rest of the app. */
+
+const CHEVRON = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238C8398' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")";
+
+const PAGE_CSS = `
+#ps-root{--r-card:18px;--r-block:12px;--r-field:12px}
+
+#ps-root .ps-btn{border:1px solid var(--border);background:var(--card);color:var(--text-2);
+  border-radius:999px;padding:8px 14px;font-size:13px;font-weight:500;line-height:1.4;
+  cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+#ps-root .ps-btn:hover{background:var(--dim);color:var(--text)}
+#ps-root .ps-btn:disabled{opacity:.6;cursor:not-allowed}
+#ps-root .ps-btn.primary{background:${ACCENT_GRAD};color:var(--on-accent);border:none;font-weight:600;
+  box-shadow:0 2px 10px rgba(229,62,48,.25)}
+
+#ps-root .ps-search{position:relative;display:flex;align-items:center}
+#ps-root .ps-search svg{position:absolute;left:12px;color:var(--muted)}
+#ps-root .ps-search input{background:var(--card);border:1px solid var(--border);color:var(--text);
+  border-radius:999px;padding:8px 14px 8px 34px;font-size:13px;width:230px;line-height:1.4;outline:none}
+
+#ps-root .ps-chip{border:1px solid var(--border);background:var(--card);color:var(--text-2);
+  border-radius:999px;padding:8px 14px;font-size:13px;font-weight:500;line-height:1.4;
+  cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+#ps-root .ps-chip:hover{background:var(--dim)}
+#ps-root .ps-chip.on{background:${ACCENT_GRAD};color:var(--on-accent);border-color:transparent;font-weight:600}
+#ps-root .ps-chip .n{font-size:11.5px;opacity:.72;font-weight:600}
+
+#ps-root .ps-select{background-color:var(--card);border:1px solid var(--border);color:var(--text);
+  border-radius:999px;padding:8px 36px 8px 14px;font-size:13px;line-height:1.4;outline:none;cursor:pointer;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+  background-image:${CHEVRON};background-repeat:no-repeat;background-position:right 14px center}
+
+#ps-root .ps-lane{margin-bottom:22px}
+#ps-root .ps-lane-head{display:flex;align-items:center;gap:9px;margin-bottom:9px;padding:0 2px}
+#ps-root .ps-lane-head h2{margin:0;font-size:14px;font-weight:600;letter-spacing:-.01em;color:var(--text)}
+#ps-root .ps-lane-head .n{border-radius:999px;padding:0 10px 1px;height:22px;font-size:11.5px;font-weight:600;
+  background:var(--col);color:var(--text-2);display:inline-flex;align-items:center;justify-content:center;line-height:1}
+#ps-root .ps-lane-head .more{margin-left:auto;font-size:11.5px;color:var(--faint)}
+
+#ps-root .ps-grid{display:flex;gap:14px;overflow-x:auto;overflow-y:hidden;padding-bottom:10px;
+  scroll-snap-type:x proximity;align-items:stretch;scrollbar-width:thin}
+#ps-root .ps-grid > .ps-rec{flex:0 0 calc((100% - 28px) / 3);min-width:300px;scroll-snap-align:start}
+#ps-root .ps-grid::-webkit-scrollbar{height:9px}
+#ps-root .ps-grid::-webkit-scrollbar-track{background:var(--col);border-radius:999px}
+#ps-root .ps-grid::-webkit-scrollbar-thumb{background:var(--border);border-radius:999px}
+
+#ps-root .ps-rec{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:16px;
+  display:flex;flex-direction:column;gap:13px;align-content:start}
+#ps-root .ps-rec > *{flex:0 0 auto}
+#ps-root .rec-top{display:flex;align-items:flex-start;gap:9px}
+#ps-root .rec-top .t{min-width:0;flex:1}
+#ps-root .rec-top .acts{display:flex;gap:6px;margin-left:auto}
+#ps-root .iconbtn:disabled{opacity:.5;cursor:wait}
+#ps-root .ps-rec h3{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--text)}
+#ps-root .brandline{font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;line-height:1.2;margin-bottom:3px}
+#ps-root .sub{font-size:12px;color:var(--muted);margin-top:2px;display:flex;gap:7px;flex-wrap:wrap}
+#ps-root .sub code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--text-2)}
+#ps-root .mode{border-radius:999px;padding:0 11px 1px;height:24px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;
+  width:fit-content;line-height:1;margin-bottom:8px}
+#ps-root .pill{border-radius:999px;padding:0 11px 1px;height:24px;font-size:11.5px;font-weight:600;white-space:nowrap;
+  display:inline-flex;align-items:center;justify-content:center;line-height:1}
+#ps-root .iconbtn{height:30px;width:30px;flex:none;border-radius:999px;border:1px solid var(--border);
+  background:var(--card);color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+#ps-root .iconbtn:hover{background:var(--dim);color:var(--text)}
+
+#ps-root .design{background:var(--col);border-radius:var(--r-block);padding:10px 12px;display:flex;
+  align-items:center;gap:10px;flex-wrap:wrap}
+#ps-root .design .nm{font-weight:600;font-size:13.5px;color:var(--text)}
+#ps-root .dot{height:5px;width:5px;border-radius:999px;background:var(--faint);flex:none}
+
+#ps-root .shot{position:relative;width:150px;max-width:100%;aspect-ratio:1/1;border-radius:var(--r-block);
+  overflow:hidden;background:var(--col);border:1px solid var(--border);align-self:flex-start}
+#ps-root .shot img{width:100%;height:100%;object-fit:cover;display:block}
+#ps-root .shot.empty{border-style:dashed;color:var(--faint);cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:6px;font-size:11.5px}
+#ps-root .shot.empty:hover{background:var(--dim);color:var(--text-2)}
+
+#ps-root .speeds{display:flex;gap:7px}
+#ps-root .sp{flex:1;border:1px solid var(--border);background:var(--col);border-radius:var(--r-block);
+  padding:9px 6px;text-align:center;cursor:pointer;color:var(--text-2);transition:transform .08s ease}
+#ps-root .sp:hover{background:var(--dim)}
+#ps-root .sp:active{transform:scale(.97)}
+#ps-root .sp .k{font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;color:var(--muted);line-height:1.2}
+#ps-root .sp .v{font-size:16px;font-weight:600;color:var(--text);margin-top:4px;line-height:.95}
+#ps-root .sp .u{font-size:11.5px;color:var(--muted);font-weight:500;margin-top:2px;line-height:1}
+#ps-root .sp.on{border-color:transparent;background:${ACCENT_GRAD};box-shadow:0 2px 10px rgba(229,62,48,.22)}
+#ps-root .sp.on .k,#ps-root .sp.on .v,#ps-root .sp.on .u{color:var(--on-accent)}
+#ps-root .sp.empty{opacity:.45;cursor:default}
+#ps-root .sp.empty:hover{background:var(--col)}
+
+#ps-root .out{display:flex;gap:7px}
+#ps-root .out > div{flex:1;background:var(--col);border:1px solid var(--border);border-radius:var(--r-block);
+  padding:9px 6px 10px;text-align:center}
+#ps-root .out .k{font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;color:var(--muted);line-height:1.2}
+#ps-root .out .v{font-size:16px;font-weight:600;color:var(--text);margin-top:4px;line-height:1.1}
+
+#ps-root .specs{border:1px solid var(--border);border-radius:var(--r-block);overflow:hidden;align-self:flex-start;width:100%}
+#ps-root .specs .row{display:grid;grid-template-columns:repeat(4,1fr);align-items:start}
+#ps-root .specs .row + .row{border-top:1px solid var(--border)}
+#ps-root .specs .row.one{grid-template-columns:1fr}
+#ps-root .specs .row.one .cell{padding:9px 13px 10px}
+#ps-root .specs .cell{padding:11px 13px;min-width:0;overflow:hidden}
+#ps-root .specs .cell + .cell{border-left:1px solid var(--border)}
+#ps-root .specs .cell.span2{grid-column:span 2}
+#ps-root .specs .k{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;
+  line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ps-root .specs .v{font-size:13.5px;font-weight:600;color:var(--text);margin-top:3px;line-height:1.25;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ps-root .specs .v.wrap{white-space:normal;overflow:visible}
+#ps-root .specs .v span{font-size:11.5px;font-weight:500;color:var(--muted);margin-left:3px}
+#ps-root .specs .v.none{color:var(--faint);font-weight:500}
+#ps-root .specs .v span.lnote{display:block;font-size:11.5px;font-weight:500;color:var(--muted);
+  margin:1px 0 0 0;line-height:1.25}
+#ps-root .specs .cell.group{padding:0;display:flex;flex-direction:column}
+#ps-root .specs .group > .k{padding:9px 13px 7px;border-bottom:1px solid var(--border);text-align:center}
+#ps-root .specs .group .pair{display:grid;grid-template-columns:1fr 1fr;flex:1}
+#ps-root .specs .group .pair > div{padding:8px 13px 10px;min-width:0}
+#ps-root .specs .group .pair > div + div{border-left:1px solid var(--border)}
+#ps-root .specs .group .sk{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);
+  font-weight:600;line-height:1.2}
+
+#ps-root .inkrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px}
+#ps-root .layer{border-radius:999px;padding:0 11px 1px;height:24px;font-size:11.5px;font-weight:600;
+  white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+#ps-root .plus{color:var(--faint);font-size:12px;font-weight:600}
+#ps-root .cnt{font-size:11.5px;color:var(--muted);font-weight:500}
+
+#ps-root .rem{font-size:12.5px;color:var(--text-2);background:var(--col);border-left:2px solid var(--faint);
+  border-radius:0 var(--r-block) var(--r-block) 0;padding:10px 12px;line-height:1.5}
+
+#ps-root .ps-scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;
+  justify-content:center;padding:20px;z-index:60}
+#ps-root .ps-sheet{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);
+  width:100%;max-width:580px;max-height:86vh;overflow-y:auto;padding:20px}
+#ps-root .ps-sheet h2{margin:0 0 2px;font-size:17px;font-weight:600;color:var(--text)}
+#ps-root .ps-sheet .cap{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+#ps-root .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+#ps-root .fgrid .wide{grid-column:span 2}
+#ps-root .f label{display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+  font-weight:600;line-height:1.2;margin-bottom:5px}
+#ps-root .f input,#ps-root .f textarea,#ps-root .f .ps-select{width:100%;background-color:var(--col);
+  border:1px solid var(--border);color:var(--text);border-radius:var(--r-field);padding:9px 11px;font-size:13px;outline:none}
+#ps-root .f .ps-select{padding-right:36px;background-position:right 13px center}
+#ps-root .f input:focus,#ps-root .f textarea:focus,#ps-root .f .ps-select:focus{border-color:#F0784B}
+#ps-root .f textarea{resize:vertical;min-height:62px;line-height:1.5}
+#ps-root .seph{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:600;
+  line-height:1.2;margin:16px 0 9px;grid-column:span 2}
+#ps-root .sheet-foot{display:flex;gap:9px;margin-top:18px;align-items:center;flex-wrap:wrap}
+#ps-root .savefail{margin:10px 0 0;font-size:12.5px;color:#E5536E;line-height:1.45}
+
+#ps-root .managed{position:relative}
+#ps-root .managed .row1{display:flex;gap:6px;align-items:center}
+#ps-root .managed .row1 .ps-select{flex:1;min-width:0}
+#ps-root .gear{height:34px;width:34px;flex:none;border-radius:var(--r-field);border:1px solid var(--border);
+  background:var(--col);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+#ps-root .gear:hover{background:var(--dim);color:var(--text)}
+#ps-root .gear.on{background:${ACCENT_GRAD};color:var(--on-accent);border-color:transparent}
+#ps-root .mgr{margin-top:7px;border:1px solid var(--border);border-radius:var(--r-field);background:var(--col);padding:8px}
+#ps-root .mgr .opt{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+#ps-root .mgr .opt.withnote{align-items:flex-start}
+#ps-root .mgr .opt .fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+#ps-root .mgr .opt .note{font-size:12px;color:var(--text-2)}
+#ps-root .mgr .opt input{width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);
+  border-radius:9px;padding:6px 9px;font-size:12.5px;outline:none}
+#ps-root .mgr .opt button{height:28px;width:28px;flex:none;border-radius:9px;border:1px solid var(--border);
+  background:var(--card);color:var(--muted);cursor:pointer;font-size:13px;line-height:1}
+#ps-root .mgr .opt button:hover{color:#E5536E;border-color:#E5536E55}
+#ps-root .mgr .add{display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+#ps-root .mgr .add input{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);color:var(--text);
+  border-radius:9px;padding:6px 9px;font-size:12.5px;outline:none}
+#ps-root .mgr .add button{border-radius:9px;border:none;background:${ACCENT_GRAD};color:var(--on-accent);
+  padding:0 13px;font-size:12.5px;font-weight:600;cursor:pointer}
+#ps-root .mgr .hintline{font-size:11px;color:var(--faint);margin-top:7px;line-height:1.4}
+
+#ps-root .addrow{display:flex;gap:7px;flex-wrap:wrap}
+#ps-root .addbtn{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:7px 13px;
+  font-size:12.5px;font-weight:600;cursor:pointer;line-height:1.3}
+#ps-root .addbtn.ghost{color:var(--muted);font-weight:500}
+#ps-root .inkbuild .seq{min-height:42px;background:var(--col);border:1px solid var(--border);
+  border-radius:var(--r-field);padding:8px 10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+#ps-root .inkbuild .seq .ph{color:var(--faint);font-size:12.5px}
+#ps-root .inkbuild .seq .layer{gap:6px;cursor:pointer;padding:0 10px 1px}
+#ps-root .inkbuild .seq .layer .x{opacity:.6;font-weight:700}
+#ps-root .inkbuild .seq .layer:hover .x{opacity:1}
+
+#ps-root .imgfield{display:flex;gap:12px;align-items:flex-start}
+#ps-root .imgfield .prev{width:104px;height:104px;flex:none;border-radius:var(--r-block);overflow:hidden;
+  background:var(--col);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+  color:var(--faint);font-size:11px}
+#ps-root .imgfield .prev img{width:100%;height:100%;object-fit:cover;display:block}
+#ps-root .imgfield .side{flex:1;min-width:0}
+#ps-root .imgfield .btnrow{display:flex;gap:8px;flex-wrap:wrap}
+#ps-root .imgfield .hint{font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.45}
+
+@media (max-width:980px){#ps-root .ps-grid > .ps-rec{flex:0 0 calc((100% - 14px) / 2)}}
+@media (max-width:760px){
+  #ps-root .ps-grid > .ps-rec{flex:0 0 86%;min-width:0}
+  #ps-root .ps-search input{width:100%}
+  #ps-root .fgrid{grid-template-columns:1fr}
+  #ps-root .fgrid .wide,#ps-root .seph{grid-column:span 1}
+}
+`;
+
+
+export default function PrintHubPage(props) {
+  return (
+    <PageAccess page="print">
+      <PrintHubPageInner {...props} />
+    </PageAccess>
+  );
 }
