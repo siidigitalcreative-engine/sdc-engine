@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveWebhook } from "../../../lib/lark-target-store";
 import { ImageResponse } from "next/og";
 import { interFonts } from "../../../lib/print-fonts";
-import { buildProjectsImage } from "../../../lib/projects-image";
+import { buildCalendarImage } from "../../../lib/calendar-image";
 
 export const runtime = "nodejs";
 const LARK = "https://open.larksuite.com";
@@ -21,7 +21,7 @@ async function getToken() {
 export async function POST(request) {
   try {
     const requested = await request.clone().json().catch(() => ({}));
-    const webhook = await resolveWebhook(requested.target, "projects");
+    const webhook = await resolveWebhook(requested.target, "calendar");
     if (!process.env.LARK_APP_ID || !process.env.LARK_APP_SECRET) {
       return NextResponse.json({ error: "Missing LARK_APP_ID / LARK_APP_SECRET (needed only to upload the image)." }, { status: 500 });
     }
@@ -30,16 +30,16 @@ export async function POST(request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const projects = Array.isArray(body.projects) ? body.projects : [];
+    const events = Array.isArray(body.events) ? body.events : [];
 
-    const { element, width, height } = buildProjectsImage(projects);
+    const { element, width, height } = buildCalendarImage(events, { month: body.month });
     const image = new ImageResponse(element, { width, height, fonts: await interFonts() });
     const png = new Uint8Array(await image.arrayBuffer());
 
     const token = await getToken();
     const form = new FormData();
     form.append("image_type", "message");
-    form.append("image", new Blob([png], { type: "image/png" }), "projects.png");
+    form.append("image", new Blob([png], { type: "image/png" }), "calendar.png");
     const uploadRes = await fetch(`${LARK}/open-apis/im/v1/images`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
     const uploadData = await uploadRes.json().catch(() => ({}));
     if (uploadData.code !== 0 || !uploadData.data?.image_key) {
@@ -59,6 +59,6 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: error.message || "Unable to send projects image to Lark." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unable to send calendar image to Lark." }, { status: 500 });
   }
 }
