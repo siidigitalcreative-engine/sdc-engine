@@ -3,8 +3,9 @@
 import PageAccess from "../PageAccess";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, GripVertical, ChevronDown, ChevronUp, Copy, Trash2, Save, Wallet, BookOpen, Pencil, CalendarDays, ArrowRight } from "lucide-react";
+import { Plus, GripVertical, ChevronDown, ChevronUp, Copy, Trash2, Save, Wallet, BookOpen, Pencil, CalendarDays, ArrowRight, Download, Send } from "lucide-react";
 import BrandInformationPanel from "./BrandInformationPanel";
+import { useLarkSend } from "../LarkSend";
 
 const PILLARS = [
   { id: "story", name: "Storytelling", color: "#F0A5B9", focus: "Emotional stories and everyday moments", seconds: 30 },
@@ -158,6 +159,8 @@ function AdsPageInner() {
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [pillarValues, setPillarValues] = useState(DEFAULT_BUDGETS);
   const [presetValues, setPresetValues] = useState([]);
+  const [exporting, setExporting] = useState(false);
+  const { openLarkSend, larkPicker } = useLarkSend({ onSent: () => setMessage("Campaign image sent to Lark.") });
 
   const reload = async () => {
     const response = await fetch("/api/ads", { cache: "no-store" });
@@ -187,6 +190,27 @@ function AdsPageInner() {
   const choose = item => { setDraft(structuredClone(item)); setActiveId(item.id); setMessage(""); };
   const addPillar = id => { if (!draft) return; update({ rows: [...draft.rows, { id: crypto.randomUUID(), pillar: id, budget: Number(data.pillarBudgets[id] || 0), prompt: "", open: true, concept: blankConcept(PILLARS.find(p => p.id === id)) }] }); };
   const duplicateRow = row => update({ rows: [...draft.rows, { ...structuredClone(row), id: crypto.randomUUID(), open: true }] });
+  const imagePayload = () => ({ campaign: draft, brandName: brand?.name || "", preset, pillars: PILLARS.map(({ id, name, color }) => ({ id, name, color })) });
+  const exportPng = async () => {
+    if (!draft || exporting) return;
+    setExporting(true); setMessage("");
+    try {
+      const response = await fetch("/api/ads-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(imagePayload()) });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || "Unable to export PNG."); }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${(draft.name || "ads-campaign").replace(/[^a-z0-9_-]+/gi, "-").slice(0, 70)}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage("Campaign PNG downloaded.");
+    } catch (error) { setMessage(error.message || "Unable to export PNG."); }
+    finally { setExporting(false); }
+  };
+  const sendToLark = () => {
+    if (!draft) return;
+    openLarkSend("/api/lark/ads-image", imagePayload(), { label: `Ads campaign: ${draft.name || "Untitled"}`, kind: "projects" });
+  };
   const saveAction = async (action, payload, success) => {
     if (data.storageMissing) { setMessage("Shared Ads storage is missing. Saving is blocked; check Brand Information for recovery guidance."); return; }
     setBusy(true); setMessage("");
@@ -250,6 +274,7 @@ function AdsPageInner() {
           {libraryOpen && PILLARS.map(p => <button key={p.id} draggable onDragStart={e => e.dataTransfer.setData("text/plain", JSON.stringify({ type: "pillar", id: p.id }))} onClick={() => addPillar(p.id)} className="w-full text-left rounded-xl p-3 space-y-2 cursor-grab active:cursor-grabbing" style={{ background: "var(--col)", border: "1px solid var(--border)" }}><div className="flex gap-2 items-center"><GripVertical size={15} style={{ color: "var(--muted)" }}/><Pill color={p.color}>{p.name}</Pill><Plus size={14} className="ml-auto"/></div><p className="text-xs pl-6" style={{ color: "var(--text-2)" }}>{p.focus}</p></button>)}
         </Box>
         <Box className="space-y-3"><div className="flex justify-between gap-2 items-center"><h2 className="font-semibold text-sm">Campaign Creative Board</h2><Pill>{draft.status}</Pill></div>
+          <div className="flex flex-wrap gap-2"><button type="button" disabled={exporting} onClick={exportPng} className="rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2 disabled:opacity-50" style={{ border: "1px solid var(--border)" }}><Download size={15}/>{exporting ? "Exporting..." : "Export PNG"}</button><button type="button" onClick={sendToLark} className="rounded-xl px-3 py-2 text-xs font-semibold flex items-center gap-2" style={{ border: "1px solid var(--border)" }}><Send size={15}/> Send to Lark</button></div>
           <div className="grid grid-cols-2 gap-2">{[["Budget", money(total)], ["Daily Estimate", money(total / duration)], ["Duration", `${duration} days`], ["Platform", draft.platform]].map(([a, b]) => <div key={a} className="p-2 rounded-xl" style={{ background: "var(--col)" }}><p className="text-[10px]" style={{ color: "var(--muted)" }}>{a}</p><strong className="text-xs break-words">{b}</strong></div>)}</div>
           <div className="text-xs flex items-center justify-between" style={{ color: "var(--muted)" }}><span>Pillar Allocation: {money(pillarTotal)}</span><span>{total ? Math.round(pillarTotal / total * 100) : 0}% of budget</span></div>
           {draft.rows.map(r => { const pillar = PILLARS.find(p => p.id === r.pillar); const c = r.concept || blankConcept(pillar); return <div key={r.id} onDragOver={e => e.preventDefault()} onDrop={e => dropped(e, r.id)} className="rounded-xl p-3 space-y-3" style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
@@ -275,6 +300,7 @@ function AdsPageInner() {
     {tab === "pillars" && <Box className="space-y-4 max-w-3xl"><h2 className="text-lg font-semibold">Content Pillar Budget Settings</h2><p className="text-sm" style={{ color: "var(--muted)" }}>Default allocation per new content row. Campaign-specific changes do not change these defaults.</p>{PILLARS.map(p => <div className="flex gap-2 items-center justify-between" key={p.id}><Pill color={p.color}>{p.name}</Pill><input aria-label={`${p.name} default budget`} type="number" min="0" className={INPUT + " max-w-36"} style={PANEL} value={pillarValues[p.id] ?? 0} onChange={e => setPillarValues(v => ({ ...v, [p.id]: e.target.value }))}/></div>)}<button onClick={() => saveAction("savePillarBudgets", pillarValues, "Pillar budgets saved.")} disabled={busy} className="rounded-xl px-4 py-2 text-white text-sm" style={{ background: "#E7614C" }}><Save size={15} className="inline mr-2"/> Save Defaults</button></Box>}
     {tab === "presets" && <Box className="space-y-4 max-w-3xl"><h2 className="text-lg font-semibold">Standard Ad Budget Settings</h2><p className="text-sm" style={{ color: "var(--muted)" }}>Reusable budgets, separate from content pillar allocation. Set either a Daily Budget or a Lifetime Campaign Budget.</p>{presetValues.map(p => <div key={p.id} className="grid sm:grid-cols-[1fr_130px_140px_auto] gap-2 items-end rounded-xl p-3" style={{ background: "var(--col)" }}><Field label="Preset Name"><input className={INPUT} style={PANEL} value={p.name} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))}/></Field><Field label="Budget Type"><select className={INPUT} style={PANEL} value={p.type} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, type: e.target.value } : x))}><option value="daily">Daily</option><option value="lifetime">Lifetime</option></select></Field><Field label="Amount (₱)"><input type="number" min="0" className={INPUT} style={PANEL} value={p.amount} onChange={e => setPresetValues(a => a.map(x => x.id === p.id ? { ...x, amount: e.target.value } : x))}/></Field><IconButton danger onClick={() => setPresetValues(a => a.filter(x => x.id !== p.id))}><Trash2 size={16}/></IconButton></div>)}<div className="flex flex-wrap gap-2"><IconButton onClick={() => setPresetValues(a => [...a, { id: crypto.randomUUID(), name: "New Preset", type: "daily", amount: 1000 }])}><Plus size={15}/> Add Preset</IconButton><button disabled={busy} onClick={() => saveAction("savePresets", presetValues.map(p => ({ ...p, amount: Math.max(0, Number(p.amount) || 0) })), "Standard Ad Budgets saved.")} className="rounded-xl px-4 py-2 text-white text-sm flex gap-2 items-center" style={{ background: "#E7614C" }}><Save size={15}/> Save Presets</button></div></Box>}
     {message && <div role="status" className="rounded-xl px-3 py-2 text-sm" style={{ background: "var(--col)", color: "var(--text-2)" }}>{message}</div>}
+    {larkPicker}
   </main>;
 }
 
