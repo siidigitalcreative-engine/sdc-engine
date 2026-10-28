@@ -1,5 +1,7 @@
 "use client";
 
+import PageAccess from "../PageAccess";
+
 import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { upload as uploadToBlob } from "@vercel/blob/client";
@@ -77,7 +79,7 @@ const NAV = [
 
 
 
-export default function TasksPage() {
+function TasksPageInner() {
   const { members, currentMember: authCurrentMember, member } = useAuth();
   const currentMember = authCurrentMember || member || members.find((m) => m.id === "cn" || m.i === "CN") || null;
   const memberByRef = useMemo(() => {
@@ -1020,5 +1022,14 @@ function Labeled({ label, children }) {
       <p className="text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--muted)" }}>{label}</p>
       {children}
     </div>
+  );
+}
+
+
+export default function TasksPage(props) {
+  return (
+    <PageAccess page="tasks">
+      <TasksPageInner {...props} />
+    </PageAccess>
   );
 }
