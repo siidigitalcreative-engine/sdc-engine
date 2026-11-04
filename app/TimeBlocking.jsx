@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Download, Send, Trash2, X, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Send, Trash2, X, Plus, Globe2, Copy, ExternalLink } from "lucide-react";
 import { useAuth } from "./auth";
 import { useLarkSend } from "./LarkSend";
 
@@ -31,6 +31,10 @@ export default function TimeBlocking({ day, onDayChange }) {
   const [busy, setBusy] = useState(false);
   const dragRef = useRef(null);
   const suppressBlockClick = useRef(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareSettings, setShareSettings] = useState({ enabled: false, view: "all", token: "" });
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareNotice, setShareNotice] = useState("");
   const [dialog, setDialog] = useState(null); // { mode: "add" | "edit", start, end, ... }
   const dragSrcRef = useRef(null);                   // the card being dragged onto the timeline
 
@@ -62,6 +66,40 @@ export default function TimeBlocking({ day, onDayChange }) {
   }, [key]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch("/api/time-block-public", { cache: "no-store" })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Unable to load share settings.");
+        setShareSettings(result);
+      })
+      .catch(error => setShareNotice(error.message));
+  }, []);
+
+  const saveShareSettings = async (patch) => {
+    setShareBusy(true);
+    setShareNotice("");
+    try {
+      const response = await fetch("/api/time-block-public", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to save public link settings.");
+      setShareSettings(result);
+      setShareNotice(result.enabled ? "Public view updated. Anyone with the link can view the selected timeline." : "Public access is off. The shared link is disabled.");
+    } catch (error) { setShareNotice(error.message); }
+    finally { setShareBusy(false); }
+  };
+  const shareUrl = shareSettings.token && typeof window !== "undefined"
+    ? `${window.location.origin}/public/time-blocking/${shareSettings.token}` : "";
+  const copyShareUrl = async () => {
+    if (!shareUrl) return;
+    try { await navigator.clipboard.writeText(shareUrl); setShareNotice("Link copied."); }
+    catch { setShareNotice("Copy the URL from the field."); }
+  };
+
 
   // Refresh linked task names when returning from the Tasks page or another tab.
   useEffect(() => {
@@ -498,6 +536,11 @@ export default function TimeBlocking({ day, onDayChange }) {
           Everyone here can see these. Only you can change yours.
         </span>
         <div className="flex gap-2 ml-auto flex-wrap">
+          <button type="button" onClick={() => setShareOpen(v => !v)}
+            className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+            style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+            <Globe2 size={15}/> Public Link {shareSettings.enabled ? "· On" : "· Off"}
+          </button>
           <button onClick={exportPng} disabled={busy} className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
             style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
             <Download size={15} /> {view === "all" ? "Export everyone" : "Export this day"}
@@ -517,6 +560,41 @@ export default function TimeBlocking({ day, onDayChange }) {
           )}
         </div>
       </div>
+
+      {shareOpen && <div className="rounded-2xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="text-sm font-semibold flex items-center gap-2"><Globe2 size={16}/> Public Time Blocking Link</h3>
+            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+              Share a read-only timeline without login. Choose Everyone or one team member below.
+            </p>
+          </div>
+          <button type="button" role="switch" aria-checked={shareSettings.enabled} disabled={shareBusy}
+            onClick={() => saveShareSettings({ enabled: !shareSettings.enabled })}
+            className="rounded-full px-4 py-2 text-xs font-semibold"
+            style={{ background: shareSettings.enabled ? "#287A56" : "var(--col)", color: shareSettings.enabled ? "white" : "var(--text)", border: "1px solid var(--border)" }}>
+            {shareBusy ? "Saving…" : shareSettings.enabled ? "Public On · Turn Off" : "Public Off · Turn On"}
+          </button>
+        </div>
+        <label className="block max-w-sm space-y-1.5">
+          <span className="text-xs font-medium" style={{ color: "var(--text-2)" }}>Public Link View</span>
+          <select value={shareSettings.view || "all"} disabled={shareBusy}
+            onChange={e => saveShareSettings({ view: e.target.value })}
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+            style={{ background: "var(--col)", borderColor: "var(--border)", color: "var(--text)" }}>
+            <option value="all">Everyone · All team timelines</option>
+            {members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
+          </select>
+        </label>
+        {shareSettings.enabled && shareUrl && <div className="flex gap-2 min-w-0 flex-wrap">
+          <input readOnly aria-label="Public Time Blocking URL" value={shareUrl}
+            className="min-w-0 flex-1 rounded-xl px-3 py-2 text-xs border"
+            style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}/>
+          <button type="button" onClick={copyShareUrl} className="rounded-xl border px-3 py-2 text-xs font-semibold inline-flex items-center gap-1" style={{ borderColor: "var(--border)" }}><Copy size={14}/> Copy</button>
+          <a href={shareUrl} target="_blank" rel="noreferrer" className="rounded-xl border px-3 py-2 text-xs font-semibold inline-flex items-center gap-1" style={{ borderColor: "var(--border)" }}><ExternalLink size={14}/> Preview</a>
+        </div>}
+        {shareNotice && <p role="status" className="text-xs" style={{ color: "var(--text-2)" }}>{shareNotice}</p>}
+      </div>}
 
       {/* the week */}
       <div className="flex gap-2 flex-wrap">
