@@ -315,10 +315,10 @@ function TasksPageInner() {
 
   const blank = (status = "todo") => ({
     id: null, title: "", project: projects[0] || "", desc: "", notes: "", status, priority: "medium",
-    assignees: [], start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [], subtasks: [],
+    assignees: [], start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [], subtasks: [], doneDate: "",
   });
   const openCreate = (status) => setModal({ mode: "create", form: blank(status) });
-  const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), tags: [...t.tags], attachments: [...t.attachments], subtasks: (t.subtasks || []).map((s) => ({ ...s })) } });
+  const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), doneDate: t.doneAt ? toDateInput(new Date(Number(t.doneAt))) : "", tags: [...t.tags], attachments: [...t.attachments], subtasks: (t.subtasks || []).map((s) => ({ ...s })) } });
   const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
   const patchForm = (fn) => setModal((m) => (m ? { ...m, form: { ...m.form, ...fn(m.form) } } : m));
 
@@ -352,6 +352,13 @@ function TasksPageInner() {
       subtasks: [...(f.subtasks || [])],
       progress: f.progress,
     };
+    // A completion date typed in by hand. Only sent when it was actually
+    // changed, so saving a done task doesn't overwrite its recorded time.
+    if (f.status === "done" && f.doneDate && f.doneDate !== (f.doneAt ? toDateInput(new Date(Number(f.doneAt))) : "")) {
+      const when = fromDateInput(f.doneDate);
+      when.setHours(12, 0, 0, 0);
+      base.doneAt = when.getTime();
+    }
 
     const isEdit = !!f.id;
     setSavingTask(true);
@@ -549,7 +556,7 @@ function TasksPageInner() {
           {/* body */}
           {view === "board" ? (
             <div className="px-4 sm:px-7 pb-6">
-              <div className="flex flex-col md:flex-row gap-4 items-start">
+              <div className="flex flex-col md:flex-row gap-4 items-stretch">
                 {statuses.map((s) => {
                   const items = filtered.filter((t) => t.status === s.id);
                   const isOver = overCol === s.id;
@@ -924,6 +931,13 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
             <Labeled label="Due"><input type="date" value={f.due} onChange={(e) => setForm({ due: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} /></Labeled>
             <Labeled label="Time"><input type="time" value={f.time} onChange={(e) => setForm({ time: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} /></Labeled>
           </div>
+
+          {f.status === "done" && (
+            <Labeled label="Date completed">
+              <input type="date" value={f.doneDate || ""} max={toDateInput(new Date())} onChange={(e) => setForm({ doneDate: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} />
+              <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Forgot to mark it done on the day? Set the actual date. Leave blank to use today.</p>
+            </Labeled>
+          )}
 
           <Labeled label="Assignees">
             <div className="flex flex-wrap gap-1.5">
