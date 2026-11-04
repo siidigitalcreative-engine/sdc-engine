@@ -110,12 +110,6 @@ async function mutate(mutator, maxAttempts = 12) {
 
 const newId = () => `tb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-// A person's own day cannot overlap itself; two people at the same hour is fine.
-function clashes(blocks, { member, date, start, end, ignoreId }) {
-  return blocks.some((b) =>
-    b.member === member && b.date === date && b.id !== ignoreId && start < b.end && end > b.start);
-}
-
 export async function listBlocks(date) {
   const { state } = await readTimeBlocksState();
   return isDate(date) ? state.blocks.filter((b) => b.date === date) : state.blocks;
@@ -126,7 +120,6 @@ export async function addBlock(memberId, data) {
   if (!draft.date) throw new Error("A date is required.");
   if (!draft.title) throw new Error("Nothing was chosen to block.");
   return mutate((blocks) => {
-    if (clashes(blocks, draft)) throw new Error("That time already has a block. Pick a free slot.");
     return [...blocks, draft];
   });
 }
@@ -144,7 +137,6 @@ export async function moveBlock(memberId, id, { start, end, note }) {
       end: end === undefined ? found.end : end,
       note: note === undefined ? found.note : note,
     });
-    if (clashes(blocks, { ...next, ignoreId: target })) throw new Error("That would overlap another block.");
     return blocks.map((b) => (b.id === target ? next : b));
   });
 }
