@@ -188,11 +188,10 @@ export function buildTimeBlockImage(payload = {}) {
                 const height = Math.max(10, ((b.end - b.start) / 60) * ROW_H - 4);
                 const width = Math.max(24, columnWidth - 8);
                 const innerWidth = Math.max(20, width - 16);
-                const narrow = innerWidth < 125;
-                // Slightly smaller text leaves room for the time range on
-                // narrow side-by-side cards without changing their geometry.
-                const fontSize = narrow ? 9.5 : 11.5;
-                const lineHeight = narrow ? 12 : 15;
+                // Use the same task-title typography for every member and card
+                // width. Only wrapping/truncation varies with available space.
+                const fontSize = 9.5;
+                const lineHeight = 12;
                 const charsPerLine = Math.max(5, Math.floor(innerWidth / (fontSize * 0.56)));
                 // Very short events are only one text line high: do not apply
                 // the normal 5px top/bottom padding, which clipped the glyphs.
@@ -200,7 +199,7 @@ export function buildTimeBlockImage(payload = {}) {
                 const availableHeight = Math.max(0, height - (compactCard ? 2 : 12));
                 const rangeLabel = displayRange(b.start, b.end);
                 const fullTimeLabel = `${rangeLabel} · ${hours(workingMinutes(b.start, b.end))}`;
-                const timeFontSize = narrow ? 9 : 9.5;
+                const timeFontSize = 9;
                 // Reserve a line for the time first. A compact range fits
                 // more reliably than a range with duration in narrow cards.
                 const fitsText = text => text.length * timeFontSize * 0.54 <= innerWidth;
