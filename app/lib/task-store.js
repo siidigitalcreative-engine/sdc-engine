@@ -206,9 +206,17 @@ export async function mutateTasks(mutator, maxAttempts = 12) {
   }
 }
 
+// A completion date typed in by hand: must be a real past (or today) time.
+function validDoneAt(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 946684800000 && n <= Date.now() + 86400000 ? n : null;
+}
+
 export function createTask(data = {}) {
   const task = { ...data, id: `task-${randomUUID()}` };
-  if (task.status === "done" && !task.doneAt) task.doneAt = Date.now();
+  const chosen = validDoneAt(task.doneAt);
+  if (task.status === "done") task.doneAt = chosen ?? Date.now();
+  else delete task.doneAt;
   return normalizeTask(task);
 }
 
@@ -217,8 +225,10 @@ export function updateTask(existing, data = {}) {
   const merged = { ...existing, ...data, id: existing.id };
   const wasDone = existing.status === "done";
   const isDone = merged.status === "done";
-  if (isDone && !wasDone) merged.doneAt = Date.now();   // just completed → stamp now
-  else if (!isDone) delete merged.doneAt;               // reopened → clear
+  const chosen = validDoneAt(data.doneAt);              // a date set by hand wins
+  if (!isDone) delete merged.doneAt;                    // reopened → clear
+  else if (chosen != null) merged.doneAt = chosen;
+  else if (!wasDone) merged.doneAt = Date.now();        // just completed → stamp now
   // if it was and still is done, keep the original doneAt
   return normalizeTask(merged);
 }
