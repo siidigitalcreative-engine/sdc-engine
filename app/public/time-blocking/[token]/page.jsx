@@ -107,17 +107,26 @@ export default function PublicTimeBlocking() {
                   const columns = Math.max(1, position.columns);
                   const top = (b.start - start) / 60 * ROW_H + 2;
                   const height = Math.max(18, (b.end - b.start) / 60 * ROW_H - 4);
+                  const showTime = height >= 35;
+                  const titleLines = showTime ? Math.max(1, Math.min(3, Math.floor((height - 24) / 12)))
+                    : Math.max(1, Math.min(3, Math.floor((height - 9) / 12)));
                   return <button key={b.id} type="button" onClick={() => setSelected({ ...b, memberName: member.name })}
                     aria-label={`View details for ${b.title}`} title={`View details: ${b.title}`}
                     className="text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
                     style={{
                       position: "absolute", top, height, left: `calc(${position.column * 100 / columns}% + 3px)`, width: `calc(${100 / columns}% - 6px)`,
                       border: `1.5px solid ${b.color || "#3E8ED0"}`, borderLeftWidth: 3, borderRadius: 10,
-                      background: "#1B1B22", padding: "7px 9px", overflow: "hidden", boxSizing: "border-box",
-                      pointerEvents: "auto", cursor: "pointer", color: "inherit",
+                      background: "#1B1B22", padding: "5px 7px", overflow: "hidden", boxSizing: "border-box",
+                      pointerEvents: "auto", cursor: "pointer", color: "inherit", display: "flex", flexDirection: "column",
                     }}>
-                    <div className="font-semibold text-[11px] leading-tight" style={{ color: b.color || "#8FC1FF", overflowWrap: "anywhere" }}>{b.title}</div>
-                    {height > 32 && <div className="text-[10px] mt-1" style={{ color: b.color || "#8FC1FF" }}>{humanTime(b.start)}–{humanTime(b.end)} · {hours(b.end - b.start)}</div>}
+                    <div title={b.title} style={{ color: b.color || "#8FC1FF", fontSize: 10.5, fontWeight: 700,
+                      lineHeight: "12px", display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: titleLines,
+                      overflow: "hidden", overflowWrap: "anywhere", flexShrink: 0 }}>{b.title}</div>
+                    {showTime && <div style={{ display: "flex", minWidth: 0, marginTop: "auto", fontSize: 9.5,
+                      lineHeight: "12px", color: b.color || "#8FC1FF", opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden" }}>
+                      <span style={{ flexShrink: 0 }}>{humanTime(b.start)}–{humanTime(b.end)}</span>
+                      <span style={{ minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" }}> · {hours(b.end - b.start)}</span>
+                    </div>}
                   </button>;
                 })}
               </div>)}
