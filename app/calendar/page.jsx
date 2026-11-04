@@ -376,7 +376,7 @@ function TeamCalendarInner() {
           </header>
 
           <div className="flex-1 min-h-0 flex">
-            <div className="w-52 shrink-0 hidden md:flex flex-col gap-4 p-4 overflow-y-auto" style={{ borderRight: "1px solid var(--border)" }}>
+            {view !== "blocking" && <div className="w-52 shrink-0 hidden md:flex flex-col gap-4 p-4 overflow-y-auto" style={{ borderRight: "1px solid var(--border)" }}>
               <button onClick={() => { const d = new Date(cursor); d.setHours(9, 0, 0, 0); openCreateAt(d); }}
                 className="tc-pill flex items-center justify-center gap-2 rounded-full py-2.5 font-medium shadow-md shrink-0"
                 style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
@@ -400,7 +400,7 @@ function TeamCalendarInner() {
                   ))}
                 </ul>
               </div>
-            </div>
+            </div>}
             <div className="flex-1 min-w-0 flex flex-col">
               {view === "blocking" ? (
                 <div className="px-4 sm:px-5 pb-6">
