@@ -124,7 +124,7 @@ export async function addBlock(memberId, data) {
   });
 }
 
-export async function moveBlock(memberId, id, { start, end, note }) {
+export async function moveBlock(memberId, id, { start, end, note, title }) {
   const target = clean(id);
   return mutate((blocks) => {
     const found = blocks.find((b) => b.id === target);
@@ -136,6 +136,7 @@ export async function moveBlock(memberId, id, { start, end, note }) {
       start: start === undefined ? found.start : start,
       end: end === undefined ? found.end : end,
       note: note === undefined ? found.note : note,
+      title: title === undefined ? found.title : title,
     });
     return blocks.map((b) => (b.id === target ? next : b));
   });
