@@ -21,6 +21,7 @@ export default function TimeBlocking({ day, onDayChange }) {
   const { currentMember } = useAuth();
   const [data, setData] = useState({ blocks: [], members: [], departments: [], day: { start: 420, end: 1200, slot: 30 } });
   const [tasks, setTasks] = useState([]);
+  const [statusNames, setStatusNames] = useState({});   // status id → display name
   const [view, setView] = useState("all");          // "all" or a member id
   const [tab, setTab] = useState("tasks");
   const [expanded, setExpanded] = useState(new Set());
@@ -28,6 +29,7 @@ export default function TimeBlocking({ day, onDayChange }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const dragRef = useRef(null);
+  const dragSrcRef = useRef(null);                   // the card being dragged onto the timeline
 
   const { openLarkSend, larkPicker } = useLarkSend();
   const key = dateKey(day);
@@ -36,15 +38,20 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   const load = useCallback(async () => {
     try {
-      const [blockRes, taskRes] = await Promise.all([
+      const [blockRes, taskRes, statusRes] = await Promise.all([
         fetch(`/api/time-blocks?date=${key}`, { cache: "no-store" }),
         fetch("/api/tasks", { cache: "no-store" }),
+        fetch("/api/statuses", { cache: "no-store" }).catch(() => null),
       ]);
       const body = await blockRes.json();
       if (!blockRes.ok) throw new Error(body.error || "Unable to load the time blocks.");
       setData((d) => ({ ...d, ...body }));
       const taskBody = await taskRes.json().catch(() => ({}));
       setTasks(Array.isArray(taskBody.tasks) ? taskBody.tasks.filter((t) => !t.archived) : []);
+      const statusBody = statusRes ? await statusRes.json().catch(() => ({})) : {};
+      if (Array.isArray(statusBody.statuses)) {
+        setStatusNames(Object.fromEntries(statusBody.statuses.map((s) => [s.id, s.name])));
+      }
       setError("");
     } catch (e) {
       setError(e.message);
@@ -66,6 +73,13 @@ export default function TimeBlocking({ day, onDayChange }) {
     return (myId && assignees.includes(myId)) || (myInitials && assignees.includes(myInitials));
   }), [tasks, myId, myInitials]);
 
+  // "inprogress" → "In Progress", "on-hold" → "On Hold" (real names win when known).
+  const statusLabel = useCallback((id) => {
+    const known = { todo: "To Do", inprogress: "In Progress", inreview: "In Review", done: "Done" };
+    return statusNames[id] || known[id]
+      || String(id || "").replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }, [statusNames]);
+
   const sources = useMemo(() => {
     if (tab === "projects") {
       const names = [...new Set(mine.map((t) => t.project).filter(Boolean))];
@@ -75,14 +89,14 @@ export default function TimeBlocking({ day, onDayChange }) {
       }));
     }
     return mine.map((t) => ({
-      id: t.id, kind: "task", title: t.title, meta: `${t.project || "No project"} · ${t.status}`,
+      id: t.id, kind: "task", title: t.title, meta: `${t.project || "No project"} · ${statusLabel(t.status)}`,
       project: t.project, color: colorFor(t.project), est: 60,
       subtasks: (t.subtasks || []).map((st) => ({
         id: st.id, kind: "subtask", title: st.title, parentTitle: t.title, done: st.done,
         meta: `part of ${t.title}`, project: t.project, color: colorFor(t.project), est: 60,
       })),
     }));
-  }, [mine, tab]);
+  }, [mine, tab, statusLabel]);
 
   /* ---- writing ---- */
   const send = async (method, payload) => {
@@ -106,17 +120,23 @@ export default function TimeBlocking({ day, onDayChange }) {
     }
   };
 
+  const startCardDrag = (src) => { dragSrcRef.current = src; setPicked(src); };
+  const stopCardDrag = () => { dragSrcRef.current = null; };
+
   const place = (start, event) => {
     if (event) event.preventDefault();
-    if (!picked || !editable) { setError(picked ? "" : "Pick a task, subtask or project first."); return; }
-    let end = Math.min(DAY_END, start + picked.est);
+    // A card dropped here is used straight from the drag, without waiting for state.
+    const chosen = (event && dragSrcRef.current) || picked;
+    dragSrcRef.current = null;
+    if (!chosen || !editable) { setError(chosen ? "" : "Pick a task, subtask or project first."); return; }
+    let end = Math.min(DAY_END, start + chosen.est);
     blocksOf(me).forEach((b) => { if (b.start >= start && b.start < end) end = Math.min(end, b.start); });
     if (end - start < SLOT) { setError("No room there. Try a free slot."); return; }
     send("POST", {
       block: {
-        date: key, kind: picked.kind, refId: picked.id, title: picked.title,
-        parentTitle: picked.parentTitle || "", project: picked.project || "",
-        color: picked.color, start, end,
+        date: key, kind: chosen.kind, refId: chosen.id, title: chosen.title,
+        parentTitle: chosen.parentTitle || "", project: chosen.project || "",
+        color: chosen.color, start, end,
       },
     });
     setPicked(null);
@@ -231,7 +251,7 @@ export default function TimeBlocking({ day, onDayChange }) {
           position: "absolute", left: 4, right: 4, top, height, overflow: "hidden",
           borderRadius: 10, padding: "7px 10px 7px 11px", background: "var(--card)",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
-          cursor: interactive ? "grab" : "default",
+          cursor: interactive ? "grab" : "default", pointerEvents: "auto",
         }}>
         {interactive && (
           <span onMouseDown={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); send("DELETE", { id: b.id }); }}
@@ -340,7 +360,7 @@ export default function TimeBlocking({ day, onDayChange }) {
             <div className="flex flex-col gap-1.5" style={{ maxHeight: 520, overflowY: "auto" }}>
               {sources.map((s) => (
                 <div key={s.id}>
-                  <SourceRow s={s} picked={picked} onPick={setPicked} onDragPick={setPicked} />
+                  <SourceRow s={s} picked={picked} onPick={setPicked} onDragPick={startCardDrag} onDragStop={stopCardDrag} />
                   {s.subtasks?.length > 0 && (
                     <button onClick={() => setExpanded((prev) => {
                         const next = new Set(prev);
@@ -354,7 +374,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                     </button>
                   )}
                   {expanded.has(s.id) && s.subtasks.map((st) => (
-                    <div key={st.id} className="ml-4 mt-1.5"><SourceRow s={st} picked={picked} onPick={setPicked} onDragPick={setPicked} sub /></div>
+                    <div key={st.id} className="ml-4 mt-1.5"><SourceRow s={st} picked={picked} onPick={setPicked} onDragPick={startCardDrag} onDragStop={stopCardDrag} sub /></div>
                   ))}
                 </div>
               ))}
@@ -422,7 +442,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                   left: `calc(${i} * (100% / ${lanes.length}))`, width: `calc(100% / ${lanes.length})`,
                   background: i % 2 ? "rgba(127,127,127,.035)" : "transparent", pointerEvents: "none",
                 }}>
-                  <div style={{ position: "relative", height: "100%", pointerEvents: "auto" }}>
+                  <div style={{ position: "relative", height: "100%", pointerEvents: "none" }}>
                     {blocksOf(m.id).map((b) => block(b, m.id === me))}
                   </div>
                 </div>
@@ -475,11 +495,12 @@ function Chip({ on, onClick, label, note, avatar, color }) {
   );
 }
 
-function SourceRow({ s, picked, onPick, sub, onDragPick }) {
+function SourceRow({ s, picked, onPick, sub, onDragPick, onDragStop }) {
   const on = picked?.id === s.id;
   return (
     <button onClick={() => onPick(on ? null : s)}
       draggable
+      onDragEnd={onDragStop}
       onDragStart={(e) => {
         // Picking on drag start means the drop handler already knows what to place.
         onDragPick(s);
