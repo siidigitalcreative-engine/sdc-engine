@@ -63,10 +63,57 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Refresh linked task names when returning from the Tasks page or another tab.
+  useEffect(() => {
+    const onFocus = () => { if (document.visibilityState === "visible") load(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [load]);
+
+  // Linked time blocks reflect edits to their original Tasks-page record.
+  // An explicitly renamed timeline block keeps its own custom title.
+  const visibleBlocks = useMemo(() => {
+    const taskById = new Map(tasks.map(t => [String(t.id), t]));
+    const subtaskById = new Map();
+    for (const task of tasks) {
+      for (const subtask of task.subtasks || []) {
+        subtaskById.set(String(subtask.id), { subtask, task });
+      }
+    }
+    return (data.blocks || []).map(block => {
+      if (block.kind === "task") {
+        const task = taskById.get(String(block.refId));
+        if (!task) return block;
+        return {
+          ...block,
+          title: block.titleEdited ? block.title : task.title || block.title,
+          project: task.project || block.project,
+          color: colorFor(task.project || block.project),
+        };
+      }
+      if (block.kind === "subtask") {
+        const match = subtaskById.get(String(block.refId));
+        if (!match) return block;
+        return {
+          ...block,
+          title: block.titleEdited ? block.title : match.subtask.title || block.title,
+          parentTitle: match.task.title || block.parentTitle,
+          project: match.task.project || block.project,
+          color: colorFor(match.task.project || block.project),
+        };
+      }
+      return block;
+    });
+  }, [data.blocks, tasks]);
+
   const members = data.members || [];
-  const blocksOf = (memberId) => (data.blocks || []).filter((b) => b.member === memberId);
+  const blocksOf = (memberId) => visibleBlocks.filter((b) => b.member === memberId);
   const minutesOf = (memberId) => blocksOf(memberId).reduce((t, b) => t + (b.end - b.start), 0);
-  const totalMinutes = (data.blocks || []).reduce((t, b) => t + (b.end - b.start), 0);
+  const totalMinutes = visibleBlocks.reduce((t, b) => t + (b.end - b.start), 0);
   const editable = view !== "all" && view === me;
 
   /* ---- what can be blocked ---- */
@@ -137,7 +184,7 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   const openEdit = (b) => {
     if (!editable || b.member !== me) return;
-    setDialog({ mode: "edit", id: b.id, title: b.title, start: b.start,
+    setDialog({ mode: "edit", id: b.id, title: b.title, originalTitle: b.title, start: b.start,
       end: b.end, note: b.note || "", block: b });
   };
 
@@ -155,7 +202,8 @@ export default function TimeBlocking({ day, onDayChange }) {
     let ok;
     if (dialog.mode === "edit") {
       ok = await send("PATCH", { id: dialog.id, start, end,
-        title: dialog.title.trim(), note: dialog.note || "" });
+        ...(dialog.title.trim() !== dialog.originalTitle ? { title: dialog.title.trim() } : {}),
+        note: dialog.note || "" });
     } else {
       ok = await send("POST", { block: {
         kind: selectedSource?.kind || "task", refId: selectedSource?.id || "",
@@ -250,7 +298,7 @@ export default function TimeBlocking({ day, onDayChange }) {
     label: day.toLocaleDateString("default", { weekday: "long", day: "numeric", month: "long" }),
     members: (view === "all" ? members : members.filter((m) => m.id === view))
       .map((m) => ({ id: m.id, name: m.name, initials: m.i, color: m.c, minutes: minutesOf(m.id) })),
-    blocks: (view === "all" ? data.blocks : blocksOf(view)),
+    blocks: (view === "all" ? visibleBlocks : blocksOf(view)),
     day: data.day,
   });
 
