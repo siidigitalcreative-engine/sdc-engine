@@ -451,6 +451,20 @@ function TasksPageInner() {
     }
   };
 
+  // Which column a drag is over. Resolved from the pointer's position across the
+  // whole board, so letting go in the empty space beside or below a short column
+  // (e.g. when scrolled to the bottom of a long one) still lands in that column.
+  const columnAt = (e) => {
+    let best = null, bestDistance = Infinity;
+    e.currentTarget.querySelectorAll("[data-status-col]").forEach((el) => {
+      const r = el.getBoundingClientRect();
+      const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right);
+      const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
+      if (dx + dy < bestDistance) { bestDistance = dx + dy; best = el.getAttribute("data-status-col"); }
+    });
+    return best;
+  };
+
   const drop = async (statusId) => {
     const id = dragId;
     setDragId(null);
@@ -556,13 +570,15 @@ function TasksPageInner() {
           {/* body */}
           {view === "board" ? (
             <div className="px-4 sm:px-7 pb-6">
-              <div className="flex flex-col md:flex-row gap-4 items-stretch">
+              <div className="flex flex-col md:flex-row gap-4 items-stretch"
+                onDragOver={(e) => { e.preventDefault(); setOverCol(columnAt(e)); }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOverCol(null); }}
+                onDrop={(e) => { e.preventDefault(); const col = columnAt(e); if (col) drop(col); else { setDragId(null); setOverCol(null); } }}>
                 {statuses.map((s) => {
                   const items = filtered.filter((t) => t.status === s.id);
                   const isOver = overCol === s.id;
                   return (
-                    <div key={s.id} className="flex flex-col rounded-2xl w-full md:flex-1 md:min-w-0" style={{ background: isOver ? "var(--grid)" : "var(--col)", outline: isOver ? `2px dashed ${ACCENT}` : "none" }}
-                      onDragOver={(e) => { e.preventDefault(); setOverCol(s.id); }} onDragLeave={() => setOverCol((c) => (c === s.id ? null : c))} onDrop={(e) => { e.preventDefault(); drop(s.id); }}>
+                    <div key={s.id} data-status-col={s.id} className="flex flex-col rounded-2xl w-full md:flex-1 md:min-w-0" style={{ background: isOver ? "var(--grid)" : "var(--col)", outline: isOver ? `2px dashed ${ACCENT}` : "none" }}>
                       <div className="flex items-center gap-2 px-3 py-3 shrink-0">
                         <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
                         <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>{s.name}</span>
