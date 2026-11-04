@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Clock3, CalendarDays, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, CalendarDays, Users, X, FileText } from "lucide-react";
 import { useParams } from "next/navigation";
 
 const ROW_H = 48;
@@ -41,6 +41,7 @@ export default function PublicTimeBlocking() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -51,7 +52,13 @@ export default function PublicTimeBlocking() {
     } catch (e) { setData(null); setError(e.message); }
     finally { setLoading(false); }
   }, [token, date]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setSelected(null); load(); }, [load]);
+  useEffect(() => {
+    if (!selected) return;
+    const onKeyDown = e => { if (e.key === "Escape") setSelected(null); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [selected]);
   const move = offset => { const d = dateFromKey(date); d.setDate(d.getDate() + offset); setDate(key(d)); };
   const start = data?.day?.start ?? 420;
   const end = data?.day?.end ?? 1200;
@@ -100,21 +107,57 @@ export default function PublicTimeBlocking() {
                   const columns = Math.max(1, position.columns);
                   const top = (b.start - start) / 60 * ROW_H + 2;
                   const height = Math.max(18, (b.end - b.start) / 60 * ROW_H - 4);
-                  return <div key={b.id} title={`${b.title} · ${humanTime(b.start)}–${humanTime(b.end)}`} style={{
-                    position: "absolute", top, height, left: `calc(${position.column * 100 / columns}% + 3px)`, width: `calc(${100 / columns}% - 6px)`,
-                    border: `1.5px solid ${b.color || "#3E8ED0"}`, borderLeftWidth: 3, borderRadius: 10,
-                    background: "#1B1B22", padding: "7px 9px", overflow: "hidden", boxSizing: "border-box",
-                  }}>
+                  return <button key={b.id} type="button" onClick={() => setSelected({ ...b, memberName: member.name })}
+                    aria-label={`View details for ${b.title}`} title={`View details: ${b.title}`}
+                    className="text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+                    style={{
+                      position: "absolute", top, height, left: `calc(${position.column * 100 / columns}% + 3px)`, width: `calc(${100 / columns}% - 6px)`,
+                      border: `1.5px solid ${b.color || "#3E8ED0"}`, borderLeftWidth: 3, borderRadius: 10,
+                      background: "#1B1B22", padding: "7px 9px", overflow: "hidden", boxSizing: "border-box",
+                      pointerEvents: "auto", cursor: "pointer", color: "inherit",
+                    }}>
                     <div className="font-semibold text-[11px] leading-tight" style={{ color: b.color || "#8FC1FF", overflowWrap: "anywhere" }}>{b.title}</div>
                     {height > 32 && <div className="text-[10px] mt-1" style={{ color: b.color || "#8FC1FF" }}>{humanTime(b.start)}–{humanTime(b.end)} · {hours(b.end - b.start)}</div>}
-                  </div>;
+                  </button>;
                 })}
               </div>)}
             </div>
           </div>
         </div>
       </div>}
-      <p className="text-[11px]" style={{ color: "#77717E" }}><Clock3 size={12} className="inline mr-1"/> Updates reflect the current shared timeline. Only authorized SDC team members can edit time blocks.</p>
+      <p className="text-[11px]" style={{ color: "#77717E" }}><Clock3 size={12} className="inline mr-1"/> Click any task card to see its details. Only authorized SDC team members can edit time blocks.</p>
+      {selected && <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: "rgba(0,0,0,.75)" }} onMouseDown={e => { if (e.target === e.currentTarget) setSelected(null); }}>
+        <section role="dialog" aria-modal="true" aria-label={`Task details: ${selected.title}`}
+          className="w-full max-w-lg rounded-2xl p-5 sm:p-6 space-y-4 overflow-y-auto"
+          style={{ background: "#202027", border: "1px solid #484150", maxHeight: "90vh", color: "#F2F1F5" }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <p className="text-[11px] uppercase tracking-wide font-semibold" style={{ color: selected.color || "#F0784B" }}>{selected.kind === "subtask" ? "Subtask" : selected.kind === "project" ? "Project" : "Task"} details</p>
+              <h2 className="text-lg font-bold break-words">{selected.title}</h2>
+            </div>
+            <button type="button" onClick={() => setSelected(null)} aria-label="Close task details" className="rounded-lg p-2 flex-shrink-0" style={{ border: "1px solid #484150" }}><X size={18}/></button>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-xl p-3" style={{ background: "#2C2932" }}><div className="text-[11px] mb-1" style={{ color: "#AAA4B3" }}>Start</div><strong>{humanTime(selected.start)}</strong></div>
+            <div className="rounded-xl p-3" style={{ background: "#2C2932" }}><div className="text-[11px] mb-1" style={{ color: "#AAA4B3" }}>End</div><strong>{humanTime(selected.end)}</strong></div>
+          </div>
+          <p className="text-xs" style={{ color: "#BDB7C5" }}>{titleDate} · {hours(selected.end - selected.start)} · {selected.memberName}</p>
+          {selected.project && <div className="text-sm"><span style={{ color: "#AAA4B3" }}>Project: </span>{selected.project}</div>}
+          {selected.parentTitle && <div className="text-sm"><span style={{ color: "#AAA4B3" }}>Parent task: </span>{selected.parentTitle}</div>}
+          {(selected.status || selected.priority || selected.due || selected.progress != null) && <div className="flex flex-wrap gap-2 text-xs">
+            {selected.status && <span className="rounded-full px-3 py-1" style={{ background: "#36313F" }}>Status: {selected.status}</span>}
+            {selected.priority && <span className="rounded-full px-3 py-1" style={{ background: "#36313F" }}>Priority: {selected.priority}</span>}
+            {selected.due && <span className="rounded-full px-3 py-1" style={{ background: "#36313F" }}>Due: {selected.due}</span>}
+            {selected.progress != null && <span className="rounded-full px-3 py-1" style={{ background: "#36313F" }}>Progress: {selected.progress}%</span>}
+          </div>}
+          {selected.description && <div className="space-y-1"><h3 className="font-semibold text-sm flex gap-2 items-center"><FileText size={15}/> Task Description</h3><p className="text-sm whitespace-pre-wrap break-words" style={{ color: "#CBC5D1" }}>{selected.description}</p></div>}
+          {selected.taskNotes && <div className="space-y-1"><h3 className="font-semibold text-sm">Task Notes</h3><p className="text-sm whitespace-pre-wrap break-words" style={{ color: "#CBC5D1" }}>{selected.taskNotes}</p></div>}
+          {selected.note && <div className="space-y-1"><h3 className="font-semibold text-sm">Time Block Notes</h3><p className="text-sm whitespace-pre-wrap break-words" style={{ color: "#CBC5D1" }}>{selected.note}</p></div>}
+          {!selected.description && !selected.taskNotes && !selected.note && <p className="text-sm" style={{ color: "#AAA4B3" }}>No additional notes or description for this task.</p>}
+          <div className="flex justify-end pt-2"><button type="button" onClick={() => setSelected(null)} className="rounded-xl px-4 py-2 text-sm font-semibold" style={{ background: "#F0784B", color: "#151317" }}>Close</button></div>
+        </section>
+      </div>}
     </div>
   </main>;
 }
