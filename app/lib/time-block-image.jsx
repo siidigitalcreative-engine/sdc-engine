@@ -18,6 +18,38 @@ const hhmm = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 const gutter = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
 const hours = (m) => ((m / 60) % 1 === 0 ? m / 60 : (m / 60).toFixed(1)) + "h";
 
+// ImageResponse/Satori cannot reliably line-clamp a flex text element.
+// Wrap by characters explicitly, and cap the number of lines to the space
+// actually available in a timeline card. This prevents text from spilling
+// into overlapping neighbors or outside the scheduled time slot.
+function boundedLines(value, maxChars, maxLines) {
+  const raw = String(value || "").trim().replace(/\s+/g, " ");
+  if (!raw || maxLines <= 0) return [];
+  const chunks = raw.split(" ");
+  const lines = [];
+  let current = "";
+  let clipped = false;
+  while (chunks.length && lines.length < maxLines) {
+    const word = chunks.shift();
+    if (!current && word.length > maxChars) {
+      current = word.slice(0, maxChars);
+      chunks.unshift(word.slice(maxChars));
+    } else if (!current || (current.length + 1 + word.length <= maxChars)) {
+      current = current ? `${current} ${word}` : word;
+    } else {
+      lines.push(current);
+      current = "";
+      chunks.unshift(word);
+    }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  clipped = chunks.length > 0 || (current && lines[lines.length - 1] !== current);
+  if (clipped && lines.length) {
+    lines[lines.length - 1] = lines[lines.length - 1].slice(0, Math.max(1, maxChars - 1)).trimEnd() + "…";
+  }
+  return lines;
+}
+
 export function buildTimeBlockImage(payload = {}) {
   const members = Array.isArray(payload.members) && payload.members.length ? payload.members : [];
   const blocks = Array.isArray(payload.blocks) ? payload.blocks : [];
@@ -128,25 +160,45 @@ export function buildTimeBlockImage(payload = {}) {
                 const position = positionsByMember.get(m.id)?.get(b.id) || { column: 0, count: 1 };
                 const columnWidth = laneWidth / position.count;
                 const top = ((b.start - dayStart) / 60) * ROW_H + 2;
-                const tight = b.end - b.start < 45;
-                // Never grow outside the scheduled time: doing so hides later tasks.
-                const height = Math.max(18, ((b.end - b.start) / 60) * ROW_H - 4);
+                const height = Math.max(10, ((b.end - b.start) / 60) * ROW_H - 4);
+                const width = Math.max(24, columnWidth - 8);
+                const innerWidth = Math.max(20, width - 16);
+                const narrow = innerWidth < 125;
+                const fontSize = narrow ? 10.5 : 12.5;
+                const lineHeight = narrow ? 13 : 16;
+                const charsPerLine = Math.max(5, Math.floor(innerWidth / (fontSize * 0.56)));
+                const availableHeight = Math.max(0, height - 12);
+                const canShowTime = availableHeight >= (lineHeight + 14) && innerWidth >= 90;
+                const showParent = Boolean(b.parentTitle) && availableHeight >= 75 && innerWidth >= 130;
+                const reserved = (canShowTime ? 13 : 0) + (showParent ? 12 : 0);
+                const titleLineCount = Math.min(3, Math.max(1, Math.floor((availableHeight - reserved) / lineHeight)));
+                const titleLines = boundedLines(b.title, charsPerLine, titleLineCount);
+                const parentLines = showParent ? boundedLines(b.parentTitle, Math.max(5, Math.floor(innerWidth / 5.4)), 1) : [];
+                const timeLabel = `${hhmm(b.start)}–${hhmm(b.end)} · ${hours(b.end - b.start)}`;
+                // In narrow columns, show the time only if it fits. No text
+                // is allowed to extend beyond the card's scheduled height.
+                const displayTime = canShowTime && timeLabel.length * 5.4 <= innerWidth;
                 return (
                   <div key={b.id} style={{
                     display: "flex", flexDirection: "column", position: "absolute", top, height,
-                    left: position.column * columnWidth + 4,
-                    width: Math.max(24, columnWidth - 8), overflow: "hidden",
-                    borderRadius: 10, padding: "6px 10px", backgroundColor: C.card,
+                    left: position.column * columnWidth + 4, width, overflow: "hidden",
+                    borderRadius: 10, padding: "5px 7px", backgroundColor: C.card,
                     border: `1px solid ${b.color}`, color: b.color,
                   }}>
-                    {b.parentTitle ? (
-                      <div style={{ display: "flex", fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5,
-                        textTransform: "uppercase", opacity: 0.75, wordBreak: "break-word" }}>{b.parentTitle}</div>
-                    ) : null}
-                    <div style={{ display: "flex", fontSize: 12.5, fontWeight: 700, lineHeight: 1.3, wordBreak: "break-word" }}>{b.title}</div>
-                    {!tight ? (
-                      <div style={{ display: "flex", fontSize: 10.5, opacity: 0.8, marginTop: 1 }}>
-                        {hhmm(b.start)} to {hhmm(b.end)} · {hours(b.end - b.start)}
+                    {parentLines.map((line, index) => (
+                      <div key={`parent-${index}`} style={{ display: "flex", fontSize: 9, fontWeight: 700,
+                        lineHeight: "12px", height: 12, flexShrink: 0, opacity: 0.8,
+                        textTransform: "uppercase", whiteSpace: "nowrap" }}>{line}</div>
+                    ))}
+                    {titleLines.map((line, index) => (
+                      <div key={`title-${index}`} style={{ display: "flex", fontSize, fontWeight: 700,
+                        lineHeight: `${lineHeight}px`, height: lineHeight, flexShrink: 0,
+                        whiteSpace: "nowrap" }}>{line}</div>
+                    ))}
+                    {displayTime ? (
+                      <div style={{ display: "flex", fontSize: 10, opacity: 0.8,
+                        height: 13, lineHeight: "13px", flexShrink: 0, whiteSpace: "nowrap" }}>
+                        {timeLabel}
                       </div>
                     ) : null}
                   </div>
