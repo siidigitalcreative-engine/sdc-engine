@@ -100,7 +100,8 @@ export default function TimeBlocking({ day, onDayChange }) {
     }
   };
 
-  const place = (start) => {
+  const place = (start, event) => {
+    if (event) event.preventDefault();
     if (!picked || !editable) { setError(picked ? "" : "Pick a task, subtask or project first."); return; }
     let end = Math.min(DAY_END, start + picked.est);
     blocksOf(me).forEach((b) => { if (b.start >= start && b.start < end) end = Math.min(end, b.start); });
@@ -359,7 +360,7 @@ export default function TimeBlocking({ day, onDayChange }) {
             <div className="flex flex-col gap-1.5" style={{ maxHeight: 520, overflowY: "auto" }}>
               {sources.map((s) => (
                 <div key={s.id}>
-                  <SourceRow s={s} picked={picked} onPick={setPicked} />
+                  <SourceRow s={s} picked={picked} onPick={setPicked} onDragPick={setPicked} />
                   {s.subtasks?.length > 0 && (
                     <button onClick={() => setExpanded((prev) => {
                         const next = new Set(prev);
@@ -373,7 +374,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                     </button>
                   )}
                   {expanded.has(s.id) && s.subtasks.map((st) => (
-                    <div key={st.id} className="ml-4 mt-1.5"><SourceRow s={st} picked={picked} onPick={setPicked} sub /></div>
+                    <div key={st.id} className="ml-4 mt-1.5"><SourceRow s={st} picked={picked} onPick={setPicked} onDragPick={setPicked} sub /></div>
                   ))}
                 </div>
               ))}
@@ -411,14 +412,21 @@ export default function TimeBlocking({ day, onDayChange }) {
             {hoursList.map((h) => (
               <div key={h} className="flex" style={{ height: ROW_H, borderBottom: "1px solid var(--border)" }}>
                 <div className="text-right text-[11px] pt-1 pr-2"
-                  style={{ width: 66, flex: "none", borderRight: "1px solid var(--border)", color: "var(--muted)" }}>
+                  style={{
+                    width: 66, flex: "none", borderRight: "1px solid var(--border)", color: "var(--muted)",
+                    // the red pill replaces the hour it lands on
+                    opacity: showNow && Math.abs(nowMin - h * 60) < 18 ? 0 : 1,
+                  }}>
                   {gutter(h)}
                 </div>
                 {lanes.map((m) => (
                   <div key={m.id} className="flex-1 flex" style={{ borderRight: "1px solid var(--border)" }}>
                     {editable && m.id === me
                       ? Array.from({ length: 60 / SLOT }, (_, i) => (
-                          <div key={i} onClick={() => place(h * 60 + i * SLOT)} className="flex-1 tp-slot"
+                          <div key={i} className="flex-1 tp-slot"
+                            onClick={() => place(h * 60 + i * SLOT)}
+                            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+                            onDrop={(e) => { e.preventDefault(); place(h * 60 + i * SLOT, e); }}
                             style={{ borderRight: i === 0 ? "1px dashed var(--border)" : "none", cursor: "pointer" }} />
                         ))
                       : <div className="flex-1" />}
@@ -441,9 +449,23 @@ export default function TimeBlocking({ day, onDayChange }) {
               ))}
               {showNow && (
                 <div style={{ position: "absolute", left: 0, right: 0, top: ((nowMin - DAY_START) / 60) * ROW_H,
-                  borderTop: "1.5px solid #E5536E", zIndex: 2 }}>
-                  <span style={{ position: "absolute", left: -60, top: -8, fontSize: 10, fontWeight: 700,
-                    color: "#E5536E", background: "var(--card)", padding: "0 4px" }}>{hhmm(nowMin)}</span>
+                  height: 0, zIndex: 2, pointerEvents: "none" }}>
+                  {/* a pill in the gutter rather than text over the hour label,
+                      a dot where the line starts, then the line itself */}
+                  <span style={{
+                    position: "absolute", right: "100%", marginRight: 6, top: -9,
+                    fontSize: 10, fontWeight: 700, lineHeight: "18px", height: 18,
+                    color: "#fff", background: "#E5536E", borderRadius: 999, padding: "0 6px",
+                    whiteSpace: "nowrap",
+                  }}>{hhmm(nowMin)}</span>
+                  <span style={{
+                    position: "absolute", left: -3.5, top: -3.5, height: 7, width: 7,
+                    borderRadius: 999, background: "#E5536E",
+                  }} />
+                  <span style={{
+                    position: "absolute", left: 0, right: 0, top: 0,
+                    borderTop: "1.5px solid #E5536E", opacity: 0.85,
+                  }} />
                 </div>
               )}
             </div>
@@ -473,10 +495,17 @@ function Chip({ on, onClick, label, note, avatar, color }) {
   );
 }
 
-function SourceRow({ s, picked, onPick, sub }) {
+function SourceRow({ s, picked, onPick, sub, onDragPick }) {
   const on = picked?.id === s.id;
   return (
     <button onClick={() => onPick(on ? null : s)}
+      draggable
+      onDragStart={(e) => {
+        // Picking on drag start means the drop handler already knows what to place.
+        onDragPick(s);
+        e.dataTransfer.effectAllowed = "copy";
+        e.dataTransfer.setData("text/plain", s.id);
+      }}
       className="w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-left"
       style={{
         background: sub ? "var(--surface)" : "var(--col)",
