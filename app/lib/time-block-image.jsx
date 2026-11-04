@@ -221,7 +221,7 @@ export function buildTimeBlockImage(payload = {}) {
                   <div key={b.id} style={{
                     display: "flex", flexDirection: "column", position: "absolute", top, height,
                     left: position.column * columnWidth + 4, width, overflow: "hidden",
-                    borderRadius: 10, padding: compactCard ? "0px 5px" : "5px 7px", backgroundColor: C.card,
+                    borderRadius: 5, padding: compactCard ? "0px 5px" : "5px 7px", backgroundColor: C.card,
                     justifyContent: compactCard ? "center" : "flex-start", boxSizing: "border-box",
                     border: `1px solid ${b.color}`, color: b.color,
                   }}>
