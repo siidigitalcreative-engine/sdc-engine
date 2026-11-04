@@ -6,7 +6,7 @@ const PATHNAME = "sdc/time-blocks.json";
 
 export const DAY_START_MIN = 7 * 60;    // the board runs 07:00 to 20:00
 export const DAY_END_MIN = 20 * 60;
-export const SLOT_MIN = 30;
+export const SLOT_MIN = 5;
 
 const KINDS = ["task", "subtask", "project"];
 const clean = (v) => String(v ?? "").trim();
