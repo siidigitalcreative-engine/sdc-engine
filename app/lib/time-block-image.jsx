@@ -8,6 +8,10 @@ const C = {
 
 const PAD = 26;
 const ROW_H = 46;
+const STANDARD_BREAKS = [
+  { start: 12 * 60, end: 12 * 60 + 45, label: "Lunch Break" },
+  { start: 15 * 60, end: 15 * 60 + 15, label: "Other Break" },
+];
 const GUTTER = 74;
 const SINGLE_LANE_W = 960;
 const MULTI_LANE_W = 410;
@@ -156,6 +160,14 @@ export function buildTimeBlockImage(payload = {}) {
           {members.map((m, i) => (
             <div key={m.id} style={{ display: "flex", flexDirection: "column", position: "absolute",
               top: 0, bottom: 0, left: GUTTER + i * laneWidth, width: laneWidth }}>
+              {STANDARD_BREAKS.filter(b => b.end > dayStart && b.start < dayEnd).map(b => (
+                <div key={b.label} style={{ display: "flex", position: "absolute", left: 0, right: 0,
+                  top: (Math.max(b.start, dayStart) - dayStart) / 60 * ROW_H,
+                  height: (Math.min(b.end, dayEnd) - Math.max(b.start, dayStart)) / 60 * ROW_H,
+                  backgroundColor: "rgba(148, 153, 163, 0.18)",
+                  borderTop: "1px solid rgba(163, 168, 176, 0.15)",
+                  borderBottom: "1px solid rgba(163, 168, 176, 0.15)" }} />
+              ))}
               {blocksFor(m.id).map((b) => {
                 const position = positionsByMember.get(m.id)?.get(b.id) || { column: 0, count: 1 };
                 const columnWidth = laneWidth / position.count;
