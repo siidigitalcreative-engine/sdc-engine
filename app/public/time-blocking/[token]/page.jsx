@@ -5,6 +5,10 @@ import { ChevronLeft, ChevronRight, Clock3, CalendarDays, Users, X, FileText } f
 import { useParams } from "next/navigation";
 
 const ROW_H = 48;
+const STANDARD_BREAKS = [
+  { start: 12 * 60, end: 12 * 60 + 45, label: "Lunch Break" },
+  { start: 15 * 60, end: 15 * 60 + 15, label: "Other Break" },
+];
 const pad = n => String(n).padStart(2, "0");
 const key = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const humanTime = minutes => `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
@@ -102,6 +106,15 @@ export default function PublicTimeBlocking() {
               {members.map(member => <div key={member.id} className="flex-1" style={{ borderRight: "1px solid #32303B" }}/>)}</div>)}
             <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 66, pointerEvents: "none" }}>
               {members.map((member, index) => <div key={member.id} style={{ position: "absolute", top: 0, bottom: 0, left: `${index / members.length * 100}%`, width: `${100 / members.length}%`, borderRight: "1px solid #32303B" }}>
+                {STANDARD_BREAKS.filter(b => b.end > start && b.start < end).map(b => (
+                  <div key={b.label} aria-label={`${b.label}: ${humanTime(b.start)}–${humanTime(b.end)}`}
+                    style={{ position: "absolute", left: 0, right: 0,
+                      top: (Math.max(start, b.start) - start) / 60 * ROW_H,
+                      height: (Math.min(end, b.end) - Math.max(start, b.start)) / 60 * ROW_H,
+                      background: "rgba(148, 153, 163, 0.18)", pointerEvents: "none",
+                      borderTop: "1px solid rgba(163, 168, 176, 0.15)",
+                      borderBottom: "1px solid rgba(163, 168, 176, 0.15)" }} />
+                ))}
                 {(groups[member.id]?.blocks || []).map(b => {
                   const position = groups[member.id].positions.get(b.id) || { column: 0, columns: 1 };
                   const columns = Math.max(1, position.columns);
