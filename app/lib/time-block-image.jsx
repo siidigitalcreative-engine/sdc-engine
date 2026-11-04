@@ -91,8 +91,12 @@ export function buildTimeBlockImage(payload = {}) {
               top: 0, bottom: 0, left: GUTTER + i * LANE_W, width: LANE_W }}>
               {blocksFor(m.id).map((b) => {
                 const top = ((b.start - dayStart) / 60) * ROW_H + 3;
-                const height = ((b.end - b.start) / 60) * ROW_H - 6;
                 const tight = b.end - b.start < 45;
+                // The card is as tall as its time slot, unless the full name needs more room.
+                const titleLines = Math.max(1, Math.ceil(String(b.title || "").length / 34));
+                const parentLines = b.parentTitle ? Math.ceil(String(b.parentTitle).length / 32) : 0;
+                const needed = 12 + parentLines * 12 + titleLines * 16 + (tight ? 0 : 15) + 2;
+                const height = Math.max(((b.end - b.start) / 60) * ROW_H - 6, needed);
                 return (
                   <div key={b.id} style={{
                     display: "flex", flexDirection: "column", position: "absolute", top, height,
@@ -102,9 +106,9 @@ export function buildTimeBlockImage(payload = {}) {
                   }}>
                     {b.parentTitle ? (
                       <div style={{ display: "flex", fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5,
-                        textTransform: "uppercase", opacity: 0.75 }}>{b.parentTitle.slice(0, 34)}</div>
+                        textTransform: "uppercase", opacity: 0.75, wordBreak: "break-word" }}>{b.parentTitle}</div>
                     ) : null}
-                    <div style={{ display: "flex", fontSize: 12.5, fontWeight: 700 }}>{b.title.slice(0, 38)}</div>
+                    <div style={{ display: "flex", fontSize: 12.5, fontWeight: 700, lineHeight: 1.3, wordBreak: "break-word" }}>{b.title}</div>
                     {!tight ? (
                       <div style={{ display: "flex", fontSize: 10.5, opacity: 0.8, marginTop: 1 }}>
                         {hhmm(b.start)} to {hhmm(b.end)} · {hours(b.end - b.start)}
