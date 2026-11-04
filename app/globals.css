@@ -56,3 +56,7 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 .tm-pill:hover{filter:brightness(1.05)}
 .tm-card{transition:box-shadow .15s ease, transform .15s ease}
 .tm-card:hover{box-shadow:0 10px 30px rgba(20,15,40,0.10); transform:translateY(-2px)}
+
+/* Time Blocking: a slot lights up on hover and while something is dragged over it. */
+.tp-slot:hover { background: var(--dim); }
+.tp-slot { transition: background .08s ease; }
