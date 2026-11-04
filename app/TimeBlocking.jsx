@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Download, Send, Trash2, Wand2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Send, Trash2 } from "lucide-react";
 import { useAuth } from "./auth";
 import { useLarkSend } from "./LarkSend";
 
@@ -60,15 +60,21 @@ export default function TimeBlocking({ day, onDayChange }) {
   const editable = view !== "all" && view === me;
 
   /* ---- what can be blocked ---- */
+  const myId = currentMember?.id, myInitials = currentMember?.i;
+  const mine = useMemo(() => tasks.filter((t) => {
+    const assignees = Array.isArray(t.assignees) ? t.assignees : [];
+    return (myId && assignees.includes(myId)) || (myInitials && assignees.includes(myInitials));
+  }), [tasks, myId, myInitials]);
+
   const sources = useMemo(() => {
     if (tab === "projects") {
-      const names = [...new Set(tasks.map((t) => t.project).filter(Boolean))];
+      const names = [...new Set(mine.map((t) => t.project).filter(Boolean))];
       return names.map((name) => ({
         id: name, kind: "project", title: name, meta: "Project", project: name,
         color: colorFor(name), est: 60,
       }));
     }
-    return tasks.map((t) => ({
+    return mine.map((t) => ({
       id: t.id, kind: "task", title: t.title, meta: `${t.project || "No project"} · ${t.status}`,
       project: t.project, color: colorFor(t.project), est: 60,
       subtasks: (t.subtasks || []).map((st) => ({
@@ -76,7 +82,7 @@ export default function TimeBlocking({ day, onDayChange }) {
         meta: `part of ${t.title}`, project: t.project, color: colorFor(t.project), est: 60,
       })),
     }));
-  }, [tasks, tab]);
+  }, [mine, tab]);
 
   /* ---- writing ---- */
   const send = async (method, payload) => {
@@ -114,27 +120,6 @@ export default function TimeBlocking({ day, onDayChange }) {
       },
     });
     setPicked(null);
-  };
-
-  const autoFill = async () => {
-    const taken = new Set(blocksOf(me).map((b) => b.refId));
-    const open = tasks.filter((t) => t.status !== "done" && !taken.has(t.id)).slice(0, 8);
-    for (const t of open) {
-      const mine = blocksOf(me);
-      let slot = DAY_START;
-      while (slot < DAY_END) {
-        const end = Math.min(slot + 60, DAY_END);
-        const clash = mine.some((b) => slot < b.end && end > b.start);
-        if (!clash && end - slot >= SLOT) {
-          // eslint-disable-next-line no-await-in-loop
-          await send("POST", { block: {
-            date: key, kind: "task", refId: t.id, title: t.title, project: t.project || "",
-            color: colorFor(t.project), start: slot, end } });
-          break;
-        }
-        slot += SLOT;
-      }
-    }
   };
 
   /* ---- dragging: body moves, bottom edge resizes ---- */
@@ -305,11 +290,6 @@ export default function TimeBlocking({ day, onDayChange }) {
                 className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
                 style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
                 <Trash2 size={15} /> Clear my day
-              </button>
-              <button onClick={autoFill} disabled={busy}
-                className="rounded-full px-3.5 py-2 text-sm font-semibold inline-flex items-center gap-1.5"
-                style={{ background: ACCENT, color: "var(--on-accent)" }}>
-                <Wand2 size={15} /> Auto-fill
               </button>
             </>
           )}
