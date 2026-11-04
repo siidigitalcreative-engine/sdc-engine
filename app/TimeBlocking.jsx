@@ -130,9 +130,8 @@ export default function TimeBlocking({ day, onDayChange }) {
     const chosen = (event && dragSrcRef.current) || picked;
     dragSrcRef.current = null;
     if (!chosen || !editable) { setError(chosen ? "" : "Pick a task, subtask or project first."); return; }
-    let end = Math.min(DAY_END, start + chosen.est);
-    blocksOf(me).forEach((b) => { if (b.start >= start && b.start < end) end = Math.min(end, b.start); });
-    if (end - start < SLOT) { setError("No room there. Try a free slot."); return; }
+    // Blocks may overlap: an occupied timeslot can hold multiple tasks.
+    const end = Math.min(DAY_END, start + Math.max(SLOT, chosen.est));
     send("POST", {
       block: {
         date: key, kind: chosen.kind, refId: chosen.id, title: chosen.title,
@@ -158,16 +157,13 @@ export default function TimeBlocking({ day, onDayChange }) {
       if (!drag) return;
       const clientY = event.clientY ?? event.touches?.[0]?.clientY;
       const delta = Math.round(((clientY - drag.startY) / ROW_H) * 60 / SLOT) * SLOT;
-      const mine = blocksOf(me).filter((b) => b.id !== drag.id);
-      const clash = (s, e) => mine.some((b) => s < b.end && e > b.start);
-
       if (drag.mode === "resize") {
         const end = Math.min(DAY_END, Math.max(drag.start + SLOT, drag.end + delta));
-        if (!clash(drag.start, end)) drag.live = { start: drag.start, end };
+        drag.live = { start: drag.start, end };
       } else {
         const length = drag.end - drag.start;
         const start = Math.max(DAY_START, Math.min(DAY_END - length, drag.start + delta));
-        if (!clash(start, start + length)) drag.live = { start, end: start + length };
+        drag.live = { start, end: start + length };
       }
       if (drag.live) {
         setData((d) => ({
@@ -240,16 +236,56 @@ export default function TimeBlocking({ day, onDayChange }) {
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const showNow = dateKey(now) === key && nowMin >= DAY_START && nowMin <= DAY_END;
 
-  const block = (b, interactive) => {
+  // Lay simultaneous blocks out in adjacent columns so none covers another.
+  const layoutFor = (memberId) => {
+    const sorted = [...blocksOf(memberId)].sort((a, b) => a.start - b.start || a.end - b.end);
+    const positions = new Map();
+    const flush = (group) => {
+      if (!group.length) return;
+      const ends = [];
+      for (const entry of group) {
+        let column = ends.findIndex((end) => end <= entry.start);
+        if (column === -1) column = ends.length;
+        ends[column] = entry.end;
+        positions.set(entry.id, column);
+      }
+      const count = ends.length;
+      for (const entry of group) positions.set(entry.id, { column: positions.get(entry.id), count });
+    };
+    let group = [], groupEnd = -1;
+    for (const entry of sorted) {
+      if (group.length && entry.start >= groupEnd) { flush(group); group = []; groupEnd = -1; }
+      group.push(entry);
+      groupEnd = Math.max(groupEnd, entry.end);
+    }
+    flush(group);
+    return positions;
+  };
+
+  // When a source is dropped over an existing block, use the pointer's time.
+  const pointerTime = (event, b) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    const minute = b.start + (event.clientY - box.top) * (60 / ROW_H);
+    return Math.max(DAY_START, Math.min(DAY_END - SLOT, Math.floor(minute / SLOT) * SLOT));
+  };
+
+  const block = (b, interactive, position) => {
     const top = ((b.start - DAY_START) / 60) * ROW_H + 2;
     const height = Math.max(18, ((b.end - b.start) / 60) * ROW_H - 4);
     const tight = b.end - b.start < 45;
     return (
       <div key={b.id}
-        onMouseDown={interactive ? (e) => beginDrag(e, b, "move") : undefined}
-        onTouchStart={interactive ? (e) => beginDrag(e, b, "move") : undefined}
+        onMouseDown={interactive ? (e) => { if (!picked && !dragSrcRef.current) beginDrag(e, b, "move"); } : undefined}
+        onTouchStart={interactive ? (e) => { if (!picked && !dragSrcRef.current) beginDrag(e, b, "move"); } : undefined}
+        onClick={interactive && picked ? (e) => { e.stopPropagation(); place(pointerTime(e, b)); } : undefined}
+        onDragOver={interactive ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } : undefined}
+        onDrop={interactive ? (e) => { e.preventDefault(); e.stopPropagation(); place(pointerTime(e, b), e); } : undefined}
         style={{
-          position: "absolute", left: 4, right: 4, top, height, overflow: "hidden",
+          position: "absolute",
+          left: position ? `calc(${position.column} * (100% / ${position.count}) + 4px)` : 4,
+          width: position ? `calc(100% / ${position.count} - 8px)` : undefined,
+          right: position ? undefined : 4,
+          top, height, overflow: "hidden",
           borderRadius: 10, padding: "7px 10px 7px 11px", background: "var(--card)",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
           cursor: interactive ? "grab" : "default", pointerEvents: "auto",
@@ -445,7 +481,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                   background: i % 2 ? "rgba(127,127,127,.035)" : "transparent", pointerEvents: "none",
                 }}>
                   <div style={{ position: "relative", height: "100%", pointerEvents: "none" }}>
-                    {blocksOf(m.id).map((b) => block(b, m.id === me))}
+                    {(() => { const positions = layoutFor(m.id); return blocksOf(m.id).map((b) => block(b, m.id === me, positions.get(b.id))); })()}
                   </div>
                 </div>
               ))}
