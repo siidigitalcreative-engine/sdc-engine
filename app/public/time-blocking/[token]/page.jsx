@@ -20,7 +20,11 @@ const workingMinutes = (start, end) => {
 };
 const pad = n => String(n).padStart(2, "0");
 const key = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const humanTime = minutes => `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+const humanTime = minutes => `${Math.floor(minutes / 60) % 12 || 12}:${pad(minutes % 60)} ${minutes % 1440 < 720 ? "AM" : "PM"}`;
+const displayRange = (start, end) => {
+  const a = humanTime(start), b = humanTime(end);
+  return a.slice(-2) === b.slice(-2) ? `${a.slice(0, -3)}–${b}` : `${a}–${b}`;
+};
 const hourLabel = h => `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
 const hours = mins => `${(mins / 60).toFixed(1)}h`;
 const dateFromKey = str => new Date(`${str}T12:00:00`);
@@ -154,7 +158,7 @@ export default function PublicTimeBlocking() {
                           overflow: "hidden", textOverflow: "ellipsis" }}>{b.title}</span>
                         <span style={{ fontSize: 9, lineHeight: "12px", color: b.color || "#8FC1FF",
                           opacity: 0.8, whiteSpace: "nowrap", flexShrink: 0 }}>
-                          {humanTime(b.start)}–{humanTime(b.end)}
+                          {displayRange(b.start, b.end)}
                         </span>
                       </div>
                     ) : (
@@ -164,7 +168,7 @@ export default function PublicTimeBlocking() {
                     )}
                     {showTime && <div style={{ display: "flex", minWidth: 0, marginTop: "auto", fontSize: 9.5,
                       lineHeight: "12px", color: b.color || "#8FC1FF", opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden" }}>
-                      <span style={{ flexShrink: 0 }}>{humanTime(b.start)}–{humanTime(b.end)}</span>
+                      <span style={{ flexShrink: 0 }}>{displayRange(b.start, b.end)}</span>
                       <span style={{ minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" }}> · {hours(workingMinutes(b.start, b.end))}</span>
                     </div>}
                   </button>;
