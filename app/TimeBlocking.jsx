@@ -27,7 +27,13 @@ const colorFor = (name) => PROJECT_COLORS[hash(name || "x") % PROJECT_COLORS.len
 const pad = (n) => String(n).padStart(2, "0");
 const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const clock = (m) => `${Math.floor(m / 60) % 12 === 0 ? 12 : Math.floor(m / 60) % 12}:${pad(m % 60)} ${m < 720 ? "AM" : "PM"}`;
-const hhmm = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+const hhmm = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`; // Native time-input value only
+const displayTime = (m) => `${Math.floor(m / 60) % 12 || 12}:${pad(m % 60)} ${m % 1440 < 720 ? "AM" : "PM"}`;
+const displayRange = (start, end) => {
+  const a = displayTime(start), b = displayTime(end);
+  const suffixA = a.slice(-2), suffixB = b.slice(-2);
+  return suffixA === suffixB ? `${a.slice(0, -3)}–${b}` : `${a}–${b}`;
+};
 const gutter = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
 const hours = (m) => ((m / 60) % 1 === 0 ? m / 60 : (m / 60).toFixed(1)) + "h";
 
@@ -325,7 +331,9 @@ export default function TimeBlocking({ day, onDayChange }) {
     if (ok) { setDialog(null); setPicked(null); }
   };
 
-  const startCardDrag = (src) => { dragSrcRef.current = src; setPicked(src); };
+  // Keep drag selection in a ref: a React re-render on drag start makes the
+  // browser's native drag noticeably sluggish on a busy multi-member timeline.
+  const startCardDrag = (src) => { dragSrcRef.current = src; };
   const stopCardDrag = () => { dragSrcRef.current = null; };
 
   const place = (start, event) => {
@@ -336,14 +344,20 @@ export default function TimeBlocking({ day, onDayChange }) {
     if (!chosen || !editable) { setError(chosen ? "" : "Pick a task, subtask or project first."); return; }
     // Blocks may overlap: an occupied timeslot can hold multiple tasks.
     const end = Math.min(DAY_END, start + Math.max(SLOT, chosen.est));
-    send("POST", {
-      block: {
-        date: key, kind: chosen.kind, refId: chosen.id, title: chosen.title,
-        parentTitle: chosen.parentTitle || "", project: chosen.project || "",
-        color: chosen.color, start, end,
-      },
-    });
+    const nextBlock = {
+      date: key, kind: chosen.kind, refId: chosen.id, title: chosen.title,
+      parentTitle: chosen.parentTitle || "", project: chosen.project || "",
+      color: chosen.color, start, end,
+    };
+    // Show the dropped task straight away. The existing POST and reload remain
+    // authoritative; an unsuccessful save removes this temporary block.
+    const pendingId = `pending-${crypto.randomUUID()}`;
+    setData((current) => ({
+      ...current,
+      blocks: [...current.blocks, { ...nextBlock, id: pendingId, member: me }],
+    }));
     setPicked(null);
+    send("POST", { block: nextBlock });
   };
 
   /* ---- dragging: body moves, bottom edge resizes ---- */
@@ -529,7 +543,7 @@ export default function TimeBlocking({ day, onDayChange }) {
             <span title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
               flex: "1 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.title}</span>
             <span style={{ fontSize: 9, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", flexShrink: 0 }}>
-              {hhmm(b.start)}–{hhmm(b.end)}
+              {displayRange(b.start, b.end)}
             </span>
             {interactive && (
               <BlockRemoveButton onRemove={() => send("DELETE", { id: b.id })} />
@@ -544,7 +558,7 @@ export default function TimeBlocking({ day, onDayChange }) {
         {showTime && (
           <div style={{ display: "flex", alignItems: "center", minWidth: 0, marginTop: "auto", paddingBottom: interactive ? 4 : 0,
             fontSize: 9.5, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden" }}>
-            <span style={{ flexShrink: 0 }}>{hhmm(b.start)}–{hhmm(b.end)}</span>
+            <span style={{ flexShrink: 0 }}>{displayRange(b.start, b.end)}</span>
             <span style={{ overflow: "hidden", textOverflow: "clip", whiteSpace: "nowrap", minWidth: 0 }}> · {hours(workingMinutes(b.start, b.end))}</span>
           </div>
         )}
@@ -900,7 +914,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                     fontSize: 10, fontWeight: 700, lineHeight: "18px", height: 18,
                     color: "#fff", background: "#E5536E", borderRadius: 999, padding: "0 6px",
                     whiteSpace: "nowrap",
-                  }}>{hhmm(nowMin)}</span>
+                  }}>{displayTime(nowMin)}</span>
                   <span style={{
                     position: "absolute", left: -3.5, top: -3.5, height: 7, width: 7,
                     borderRadius: 999, background: "#E5536E",
