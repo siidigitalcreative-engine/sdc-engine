@@ -278,7 +278,10 @@ export default function TimeBlocking({ day, onDayChange }) {
   /* ---- dragging: body moves, bottom edge resizes ---- */
   const beginDrag = (event, block, mode) => {
     if (block.member !== me) return;
-    event.preventDefault();
+    // Do not cancel the browser's normal click for a move gesture.
+    // A simple click must still open the block editor; actual pointer
+    // movement is handled by the drag listeners below.
+    if (mode === "resize") event.preventDefault();
     event.stopPropagation();
     const clientY = event.clientY ?? event.touches?.[0]?.clientY;
     dragRef.current = { id: block.id, mode, startY: clientY, start: block.start, end: block.end, live: null, moved: false };
