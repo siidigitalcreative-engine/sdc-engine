@@ -27,7 +27,11 @@ const MULTI_LANE_W = 410;
 const HEAD_H = 72;
 
 const pad = (n) => String(n).padStart(2, "0");
-const hhmm = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+const hhmm = (m) => `${Math.floor(m / 60) % 12 || 12}:${pad(m % 60)} ${m % 1440 < 720 ? "AM" : "PM"}`;
+const displayRange = (start, end) => {
+  const a = hhmm(start), b = hhmm(end);
+  return a.slice(-2) === b.slice(-2) ? `${a.slice(0, -3)}–${b}` : `${a}–${b}`;
+};
 const gutter = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
 const hours = (m) => ((m / 60) % 1 === 0 ? m / 60 : (m / 60).toFixed(1)) + "h";
 
@@ -194,7 +198,7 @@ export function buildTimeBlockImage(payload = {}) {
                 // the normal 5px top/bottom padding, which clipped the glyphs.
                 const compactCard = height < 35;
                 const availableHeight = Math.max(0, height - (compactCard ? 2 : 12));
-                const rangeLabel = `${hhmm(b.start)}–${hhmm(b.end)}`;
+                const rangeLabel = displayRange(b.start, b.end);
                 const fullTimeLabel = `${rangeLabel} · ${hours(workingMinutes(b.start, b.end))}`;
                 const timeFontSize = narrow ? 9 : 9.5;
                 // Reserve a line for the time first. A compact range fits
