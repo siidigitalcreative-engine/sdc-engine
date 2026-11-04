@@ -13,6 +13,7 @@ const colorFor = (name) => PROJECT_COLORS[hash(name || "x") % PROJECT_COLORS.len
 
 const pad = (n) => String(n).padStart(2, "0");
 const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const clock = (m) => `${Math.floor(m / 60) % 12 === 0 ? 12 : Math.floor(m / 60) % 12}:${pad(m % 60)} ${m < 720 ? "AM" : "PM"}`;
 const hhmm = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 const gutter = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
 const hours = (m) => ((m / 60) % 1 === 0 ? m / 60 : (m / 60).toFixed(1)) + "h";
@@ -241,7 +242,7 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   const block = (b, interactive) => {
     const top = ((b.start - DAY_START) / 60) * ROW_H + 2;
-    const height = ((b.end - b.start) / 60) * ROW_H - 4;
+    const height = Math.max(18, ((b.end - b.start) / 60) * ROW_H - 4);
     const tight = b.end - b.start < 45;
     return (
       <div key={b.id}
@@ -424,10 +425,11 @@ export default function TimeBlocking({ day, onDayChange }) {
                     {editable && m.id === me
                       ? Array.from({ length: 60 / SLOT }, (_, i) => (
                           <div key={i} className="flex-1 tp-slot"
+                            title={clock(h * 60 + i * SLOT)}
                             onClick={() => place(h * 60 + i * SLOT)}
                             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
                             onDrop={(e) => { e.preventDefault(); place(h * 60 + i * SLOT, e); }}
-                            style={{ borderRight: i === 0 ? "1px dashed var(--border)" : "none", cursor: "pointer" }} />
+                            style={{ borderRight: ((i + 1) * SLOT) % 15 === 0 && i < 60 / SLOT - 1 ? "1px dashed var(--border)" : "none", cursor: "pointer" }} />
                         ))
                       : <div className="flex-1" />}
                   </div>
