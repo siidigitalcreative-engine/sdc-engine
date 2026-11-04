@@ -31,6 +31,29 @@ const hhmm = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 const gutter = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
 const hours = (m) => ((m / 60) % 1 === 0 ? m / 60 : (m / 60).toFixed(1)) + "h";
 
+// A single remove control for both compact and tall timeline cards.
+// One SVG size, stroke, hit area and alignment across all time blocks.
+function BlockRemoveButton({ onRemove, floating = false }) {
+  return (
+    <button
+      type="button"
+      aria-label="Remove time block"
+      onMouseDown={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
+      onClick={(event) => { event.stopPropagation(); onRemove(); }}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        width: 16, height: 16, minWidth: 16, flex: "0 0 16px",
+        padding: 0, margin: 0, border: 0, background: "transparent",
+        color: "inherit", opacity: 0.75, cursor: "pointer", lineHeight: 0,
+        ...(floating ? { position: "absolute", top: 2, right: 3, zIndex: 2 } : {}),
+      }}
+    >
+      <X size={11} strokeWidth={2.5} aria-hidden="true" style={{ display: "block", flexShrink: 0 }} />
+    </button>
+  );
+}
+
 export default function TimeBlocking({ day, onDayChange }) {
   const { currentMember } = useAuth();
   const [data, setData] = useState({ blocks: [], members: [], departments: [], day: { start: 420, end: 1200, slot: 30 } });
@@ -457,8 +480,7 @@ export default function TimeBlocking({ day, onDayChange }) {
           cursor: interactive ? "grab" : "default", pointerEvents: "auto",
         }}>
         {interactive && showTime && (
-          <span onMouseDown={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); send("DELETE", { id: b.id }); }}
-            style={{ position: "absolute", top: 3, right: 7, fontSize: 13, fontWeight: 700, opacity: 0.6, cursor: "pointer" }}>×</span>
+          <BlockRemoveButton floating onRemove={() => send("DELETE", { id: b.id })} />
         )}
         {showParent && (
           <div style={{ fontSize: 9, fontWeight: 700, lineHeight: "12px", letterSpacing: ".03em",
@@ -475,13 +497,7 @@ export default function TimeBlocking({ day, onDayChange }) {
               {hhmm(b.start)}–{hhmm(b.end)}
             </span>
             {interactive && (
-              <span role="button" tabIndex={0} aria-label="Remove time block"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); send("DELETE", { id: b.id }); }}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); send("DELETE", { id: b.id }); } }}
-                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  width: 14, height: 14, flex: "0 0 14px", padding: 0, margin: 0,
-                  lineHeight: 0, opacity: 0.7, cursor: "pointer" }}><X size={11} strokeWidth={2.5} style={{ display: "block", flexShrink: 0 }}/></span>
+              <BlockRemoveButton onRemove={() => send("DELETE", { id: b.id })} />
             )}
           </div>
         ) : (
