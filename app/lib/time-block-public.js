@@ -80,12 +80,25 @@ export async function getPublicTimeline(shareToken, date) {
   const { state: taskState } = await readTasksState();
   const taskById = new Map(taskState.tasks.map(t => [String(t.id), t]));
   const subtaskById = new Map();
-  for (const task of taskState.tasks) for (const subtask of task.subtasks || []) subtaskById.set(String(subtask.id), subtask);
-  const blocks = (await listBlocks(date)).filter(b => ids.has(b.member)).map(b => ({
-    id: b.id, member: b.member, start: b.start, end: b.end,
-    title: !b.titleEdited && b.kind === "task" ? taskById.get(String(b.refId))?.title || b.title
-      : !b.titleEdited && b.kind === "subtask" ? subtaskById.get(String(b.refId))?.title || b.title : b.title,
-    project: b.project || "", color: b.color,
-  }));
+  for (const task of taskState.tasks) {
+    for (const subtask of task.subtasks || []) subtaskById.set(String(subtask.id), { subtask, task });
+  }
+  const blocks = (await listBlocks(date)).filter(b => ids.has(b.member)).map(b => {
+    const task = b.kind === "task" ? taskById.get(String(b.refId)) :
+      b.kind === "subtask" ? subtaskById.get(String(b.refId))?.task : null;
+    const subtask = b.kind === "subtask" ? subtaskById.get(String(b.refId))?.subtask : null;
+    const linkedTitle = subtask?.title || (b.kind === "task" ? task?.title : null);
+    return {
+      id: b.id, member: b.member, start: b.start, end: b.end,
+      title: !b.titleEdited && linkedTitle ? linkedTitle : b.title,
+      kind: b.kind, parentTitle: subtask ? task?.title || b.parentTitle || "" : b.parentTitle || "",
+      project: task?.project || b.project || "", color: b.color,
+      note: b.note || "",
+      // Only public-facing task text is projected; no attachments, member credentials or internal IDs.
+      description: task?.desc || "", taskNotes: task?.notes || "",
+      status: task?.status || "", priority: task?.priority || "",
+      due: task?.due || "", progress: task?.progress ?? null,
+    };
+  });
   return { date, view: share.view, members: selected, blocks, day: { start: DAY_START_MIN, end: DAY_END_MIN, slot: SLOT_MIN } };
 }
