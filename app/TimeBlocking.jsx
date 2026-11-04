@@ -473,8 +473,8 @@ export default function TimeBlocking({ day, onDayChange }) {
           left: position ? `calc(${position.column} * (100% / ${position.count}) + 4px)` : 4,
           width: position ? `calc(100% / ${position.count} - 8px)` : undefined,
           right: position ? undefined : 4,
-          top, height, overflow: "hidden", containerType: "inline-size",
-          borderRadius: 5, padding: showTime ? "5px 7px" : "2px 7px", background: "var(--card)",
+          top, height, overflow: "hidden",
+          borderRadius: 10, padding: showTime ? "5px 7px" : "2px 7px", background: "var(--card)",
           boxSizing: "border-box", display: "flex", flexDirection: "column",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
           cursor: interactive ? "grab" : "default", pointerEvents: "auto",
@@ -484,7 +484,7 @@ export default function TimeBlocking({ day, onDayChange }) {
         )}
         {showParent && (
           <div style={{ fontSize: 9, fontWeight: 700, lineHeight: "12px", letterSpacing: ".03em",
-            textTransform: "uppercase", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0, paddingRight: interactive ? 24 : 0 }}>
+            textTransform: "uppercase", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>
             {b.parentTitle}
           </div>
         )}
@@ -493,7 +493,7 @@ export default function TimeBlocking({ day, onDayChange }) {
             width: "100%", height: "100%" }}>
             <span title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
               flex: "1 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.title}</span>
-            <span className="tb-inline-time" style={{ fontSize: 9, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", flexShrink: 0 }}>
+            <span style={{ fontSize: 9, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", flexShrink: 0 }}>
               {hhmm(b.start)}–{hhmm(b.end)}
             </span>
             {interactive && (
@@ -504,7 +504,7 @@ export default function TimeBlocking({ day, onDayChange }) {
           <div title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
             display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: titleLines,
             overflow: "hidden", overflowWrap: "anywhere", flexShrink: 0,
-            paddingRight: interactive ? 24 : 0, boxSizing: "border-box" }}>{b.title}</div>
+            paddingRight: interactive ? 10 : 0 }}>{b.title}</div>
         )}
         {showTime && (
           <div style={{ display: "flex", alignItems: "center", minWidth: 0, marginTop: "auto", paddingBottom: interactive ? 4 : 0,
@@ -526,7 +526,6 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <style>{`@container (max-width: 175px) { .tb-inline-time { display: none !important; } }`}</style>
       {larkPicker}
       {dialog && editable && (
         <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setDialog(null); }}
@@ -541,14 +540,17 @@ export default function TimeBlocking({ day, onDayChange }) {
             </div>
             {dialog.mode === "add" && <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
               <span>Task or project</span>
-              <select className="w-full rounded-xl px-3 py-2 text-sm border" style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                value={dialog.sourceId} onChange={e => {
-                  const src = allSources.find(s => `${s.kind}:${s.id}` === e.target.value);
-                  setDialog(d => ({ ...d, sourceId: e.target.value, title: src?.title || "", project: src?.project || "" }));
-                }}>
-                <option value="custom">Custom time block (not added to Tasks page)</option>
-                {allSources.map(s => <option key={`${s.kind}:${s.id}`} value={`${s.kind}:${s.id}`}>{s.kind === "subtask" ? "↳ " : ""}{s.title}</option>)}
-              </select>
+              <div className="relative">
+                <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border" style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                  value={dialog.sourceId} onChange={e => {
+                    const src = allSources.find(s => `${s.kind}:${s.id}` === e.target.value);
+                    setDialog(d => ({ ...d, sourceId: e.target.value, title: src?.title || "", project: src?.project || "" }));
+                  }}>
+                  <option value="custom">Custom time block (not added to Tasks page)</option>
+                  {allSources.map(s => <option key={`${s.kind}:${s.id}`} value={`${s.kind}:${s.id}`}>{s.kind === "subtask" ? "↳ " : ""}{s.title}</option>)}
+                </select>
+                <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+              </div>
             </label>}
             <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
               <span>Title</span>
