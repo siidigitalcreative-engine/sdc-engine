@@ -456,7 +456,7 @@ export default function TimeBlocking({ day, onDayChange }) {
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
           cursor: interactive ? "grab" : "default", pointerEvents: "auto",
         }}>
-        {interactive && (
+        {interactive && showTime && (
           <span onMouseDown={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); send("DELETE", { id: b.id }); }}
             style={{ position: "absolute", top: 3, right: 7, fontSize: 13, fontWeight: 700, opacity: 0.6, cursor: "pointer" }}>×</span>
         )}
@@ -467,13 +467,22 @@ export default function TimeBlocking({ day, onDayChange }) {
           </div>
         )}
         {!showTime ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0,
-            paddingRight: interactive ? 20 : 0, height: "100%" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0,
+            width: "100%", height: "100%" }}>
             <span title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
-              flex: "1 1 auto", minWidth: 30, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.title}</span>
+              flex: "1 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.title}</span>
             <span style={{ fontSize: 9, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", flexShrink: 0 }}>
               {hhmm(b.start)}–{hhmm(b.end)}
             </span>
+            {interactive && (
+              <span role="button" tabIndex={0} aria-label="Remove time block"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); send("DELETE", { id: b.id }); }}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); send("DELETE", { id: b.id }); } }}
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: 12, height: 14, flexShrink: 0, fontSize: 13, lineHeight: "14px",
+                  fontWeight: 700, opacity: 0.7, cursor: "pointer" }}>×</span>
+            )}
           </div>
         ) : (
           <div title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
