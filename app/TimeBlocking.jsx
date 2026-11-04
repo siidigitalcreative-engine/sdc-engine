@@ -7,6 +7,10 @@ import { useLarkSend } from "./LarkSend";
 
 const ACCENT = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 const ROW_H = 44;
+const STANDARD_BREAKS = [
+  { start: 12 * 60, end: 12 * 60 + 45, label: "Lunch Break" },
+  { start: 15 * 60, end: 15 * 60 + 15, label: "Other Break" },
+];
 const PROJECT_COLORS = ["#3E8ED0", "#7C5CD8", "#3FA37A", "#E0A93C", "#F0784B", "#E5536E", "#2E9B8F", "#8E8A96"];
 const hash = (s) => { let h = 0; for (let i = 0; i < String(s).length; i++) h = (h * 31 + String(s).charCodeAt(i)) >>> 0; return h; };
 const colorFor = (name) => PROJECT_COLORS[hash(name || "x") % PROJECT_COLORS.length];
@@ -738,6 +742,15 @@ export default function TimeBlocking({ day, onDayChange }) {
                   background: i % 2 ? "rgba(127,127,127,.035)" : "transparent", pointerEvents: "none",
                 }}>
                   <div style={{ position: "relative", height: "100%", pointerEvents: "none" }}>
+                    {STANDARD_BREAKS.filter(b => b.end > DAY_START && b.start < DAY_END).map(b => (
+                      <div key={b.label} aria-label={`${b.label}: ${clock(b.start)} to ${clock(b.end)}`}
+                        style={{ position: "absolute", left: 0, right: 0,
+                          top: (Math.max(b.start, DAY_START) - DAY_START) / 60 * ROW_H,
+                          height: (Math.min(b.end, DAY_END) - Math.max(b.start, DAY_START)) / 60 * ROW_H,
+                          background: "rgba(148, 153, 163, 0.18)", pointerEvents: "none",
+                          zIndex: 0, borderTop: "1px solid rgba(163, 168, 176, 0.15)",
+                          borderBottom: "1px solid rgba(163, 168, 176, 0.15)" }} />
+                    ))}
                     {(() => { const positions = layoutFor(m.id); return blocksOf(m.id).map((b) => block(b, m.id === me, positions.get(b.id))); })()}
                   </div>
                 </div>
