@@ -164,20 +164,27 @@ export function buildTimeBlockImage(payload = {}) {
                 const width = Math.max(24, columnWidth - 8);
                 const innerWidth = Math.max(20, width - 16);
                 const narrow = innerWidth < 125;
-                const fontSize = narrow ? 10.5 : 12.5;
-                const lineHeight = narrow ? 13 : 16;
+                // Slightly smaller text leaves room for the time range on
+                // narrow side-by-side cards without changing their geometry.
+                const fontSize = narrow ? 9.5 : 11.5;
+                const lineHeight = narrow ? 12 : 15;
                 const charsPerLine = Math.max(5, Math.floor(innerWidth / (fontSize * 0.56)));
                 const availableHeight = Math.max(0, height - 12);
-                const canShowTime = availableHeight >= (lineHeight + 14) && innerWidth >= 90;
-                const showParent = Boolean(b.parentTitle) && availableHeight >= 75 && innerWidth >= 130;
-                const reserved = (canShowTime ? 13 : 0) + (showParent ? 12 : 0);
+                const rangeLabel = `${hhmm(b.start)}–${hhmm(b.end)}`;
+                const fullTimeLabel = `${rangeLabel} · ${hours(b.end - b.start)}`;
+                const timeFontSize = narrow ? 9 : 9.5;
+                // Reserve a line for the time first. A compact range fits
+                // more reliably than a range with duration in narrow cards.
+                const fitsText = text => text.length * timeFontSize * 0.54 <= innerWidth;
+                const displayTime = availableHeight >= lineHeight + 11 && fitsText(rangeLabel);
+                const timeLabel = displayTime
+                  ? (fitsText(fullTimeLabel) ? fullTimeLabel : rangeLabel)
+                  : "";
+                const showParent = Boolean(b.parentTitle) && availableHeight >= 85 && innerWidth >= 155;
+                const reserved = (displayTime ? 12 : 0) + (showParent ? 12 : 0);
                 const titleLineCount = Math.min(3, Math.max(1, Math.floor((availableHeight - reserved) / lineHeight)));
                 const titleLines = boundedLines(b.title, charsPerLine, titleLineCount);
                 const parentLines = showParent ? boundedLines(b.parentTitle, Math.max(5, Math.floor(innerWidth / 5.4)), 1) : [];
-                const timeLabel = `${hhmm(b.start)}–${hhmm(b.end)} · ${hours(b.end - b.start)}`;
-                // In narrow columns, show the time only if it fits. No text
-                // is allowed to extend beyond the card's scheduled height.
-                const displayTime = canShowTime && timeLabel.length * 5.4 <= innerWidth;
                 return (
                   <div key={b.id} style={{
                     display: "flex", flexDirection: "column", position: "absolute", top, height,
@@ -196,8 +203,9 @@ export function buildTimeBlockImage(payload = {}) {
                         whiteSpace: "nowrap" }}>{line}</div>
                     ))}
                     {displayTime ? (
-                      <div style={{ display: "flex", fontSize: 10, opacity: 0.8,
-                        height: 13, lineHeight: "13px", flexShrink: 0, whiteSpace: "nowrap" }}>
+                      <div style={{ display: "flex", fontSize: timeFontSize, opacity: 0.8,
+                        height: 12, lineHeight: "12px", flexShrink: 0, whiteSpace: "nowrap",
+                        marginTop: "auto" }}>
                         {timeLabel}
                       </div>
                     ) : null}
