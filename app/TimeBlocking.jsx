@@ -414,9 +414,12 @@ export default function TimeBlocking({ day, onDayChange }) {
   const block = (b, interactive, position) => {
     const top = ((b.start - DAY_START) / 60) * ROW_H + 2;
     const height = Math.max(18, ((b.end - b.start) / 60) * ROW_H - 4);
-    // Display times whenever this block has enough vertical room.
-    // Overlapping blocks retain their existing column positions and dimensions.
-    const showTime = height >= (b.parentTitle ? 64 : 48);
+    // Match the compact PNG card format: prioritize the time range at the
+    // bottom, allow the title to wrap, and hide secondary text if space is tight.
+    const showTime = height >= 35;
+    const showParent = Boolean(b.parentTitle) && height >= 88 && (position?.count || 1) <= 2;
+    const titleLines = showTime ? Math.max(1, Math.min(3, Math.floor((height - (showParent ? 38 : 24)) / 12)))
+      : Math.max(1, Math.min(3, Math.floor((height - (showParent ? 20 : 9)) / 12)));
     return (
       <div key={b.id}
         onMouseDown={interactive ? (e) => { if (!picked && !dragSrcRef.current) beginDrag(e, b, "move"); } : undefined}
@@ -435,7 +438,8 @@ export default function TimeBlocking({ day, onDayChange }) {
           width: position ? `calc(100% / ${position.count} - 8px)` : undefined,
           right: position ? undefined : 4,
           top, height, overflow: "hidden",
-          borderRadius: 10, padding: "7px 10px 7px 11px", background: "var(--card)",
+          borderRadius: 10, padding: "5px 7px", background: "var(--card)",
+          boxSizing: "border-box", display: "flex", flexDirection: "column",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
           cursor: interactive ? "grab" : "default", pointerEvents: "auto",
         }}>
@@ -443,20 +447,21 @@ export default function TimeBlocking({ day, onDayChange }) {
           <span onMouseDown={(e) => { e.stopPropagation(); }} onClick={(e) => { e.stopPropagation(); send("DELETE", { id: b.id }); }}
             style={{ position: "absolute", top: 3, right: 7, fontSize: 13, fontWeight: 700, opacity: 0.6, cursor: "pointer" }}>×</span>
         )}
-        {b.parentTitle && (
-          <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase",
-            opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {showParent && (
+          <div style={{ fontSize: 9, fontWeight: 700, lineHeight: "12px", letterSpacing: ".03em",
+            textTransform: "uppercase", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>
             {b.parentTitle}
           </div>
         )}
-        <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25,
-          display: "-webkit-box", WebkitBoxOrient: "vertical",
-          WebkitLineClamp: showTime ? (b.parentTitle ? 1 : Math.max(1, Math.floor((height - 38) / 15))) : Math.max(1, Math.floor((height - (b.parentTitle ? 24 : 14)) / 15)),
-          overflow: "hidden", overflowWrap: "anywhere" }}>{b.title}</div>
+        <div title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
+          display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: titleLines,
+          overflow: "hidden", overflowWrap: "anywhere", flexShrink: 0,
+          paddingRight: interactive ? 10 : 0 }}>{b.title}</div>
         {showTime && (
-          <div style={{ position: "absolute", bottom: 7, left: 11, right: 9,
-            fontSize: 10.5, opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {hhmm(b.start)} to {hhmm(b.end)} · {hours(b.end - b.start)}
+          <div style={{ display: "flex", alignItems: "center", minWidth: 0, marginTop: "auto", paddingBottom: interactive ? 4 : 0,
+            fontSize: 9.5, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden" }}>
+            <span style={{ flexShrink: 0 }}>{hhmm(b.start)}–{hhmm(b.end)}</span>
+            <span style={{ overflow: "hidden", textOverflow: "clip", whiteSpace: "nowrap", minWidth: 0 }}> · {hours(b.end - b.start)}</span>
           </div>
         )}
         {interactive && (
