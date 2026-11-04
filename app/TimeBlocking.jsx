@@ -480,8 +480,8 @@ export default function TimeBlocking({ day, onDayChange }) {
                 onClick={(e) => { e.stopPropagation(); send("DELETE", { id: b.id }); }}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); send("DELETE", { id: b.id }); } }}
                 style={{ display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  width: 12, height: 14, flexShrink: 0, fontSize: 13, lineHeight: "14px",
-                  fontWeight: 700, opacity: 0.7, cursor: "pointer" }}>×</span>
+                  width: 14, height: 14, flex: "0 0 14px", padding: 0, margin: 0,
+                  lineHeight: 0, opacity: 0.7, cursor: "pointer" }}><X size={11} strokeWidth={2.5} style={{ display: "block", flexShrink: 0 }}/></span>
             )}
           </div>
         ) : (
