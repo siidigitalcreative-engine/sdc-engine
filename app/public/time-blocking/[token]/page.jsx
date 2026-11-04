@@ -138,7 +138,7 @@ export default function PublicTimeBlocking() {
                     className="text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
                     style={{
                       position: "absolute", top, height, left: `calc(${position.column * 100 / columns}% + 3px)`, width: `calc(${100 / columns}% - 6px)`,
-                      border: `1.5px solid ${b.color || "#3E8ED0"}`, borderLeftWidth: 3, borderRadius: 10,
+                      border: `1.5px solid ${b.color || "#3E8ED0"}`, borderLeftWidth: 3, borderRadius: 5,
                       background: "#1B1B22", padding: showTime ? "5px 7px" : "2px 7px", overflow: "hidden", boxSizing: "border-box",
                       pointerEvents: "auto", cursor: "pointer", color: "inherit", display: "flex", flexDirection: "column",
                     }}>
