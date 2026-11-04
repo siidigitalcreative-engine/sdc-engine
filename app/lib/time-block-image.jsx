@@ -12,6 +12,15 @@ const STANDARD_BREAKS = [
   { start: 12 * 60, end: 12 * 60 + 45, label: "Lunch Break" },
   { start: 15 * 60, end: 15 * 60 + 15, label: "Other Break" },
 ];
+// Breaks are visual guides, but minutes inside them are not working time.
+// Preserve each block's original start/end time and on-screen height.
+const workingMinutes = (start, end) => {
+  const from = Number(start), to = Number(end);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 0;
+  const breakMinutes = STANDARD_BREAKS.reduce((total, period) =>
+    total + Math.max(0, Math.min(to, period.end) - Math.max(from, period.start)), 0);
+  return Math.max(0, to - from - breakMinutes);
+};
 const GUTTER = 74;
 const SINGLE_LANE_W = 960;
 const MULTI_LANE_W = 410;
@@ -69,7 +78,7 @@ export function buildTimeBlockImage(payload = {}) {
   const H = PAD * 2 + 56 + HEAD_H + rows.length * ROW_H + 30;
 
   const blocksFor = (id) => blocks.filter((b) => b.member === id);
-  const minutesFor = (id) => blocksFor(id).reduce((t, b) => t + (b.end - b.start), 0);
+  const minutesFor = (id) => blocksFor(id).reduce((t, b) => t + workingMinutes(b.start, b.end), 0);
 
   // Match the main Time Blocking timeline: overlapping cards share the
   // available lane width in side-by-side columns rather than covering each other.
@@ -116,7 +125,7 @@ export function buildTimeBlockImage(payload = {}) {
         <div style={{ display: "flex", marginLeft: "auto", fontSize: 13.5, color: C.muted }}>
           {members.length === 1
             ? hours(minutesFor(members[0].id)) + " blocked"
-            : hours(blocks.reduce((t, b) => t + (b.end - b.start), 0)) + " across " + members.length + " people"}
+            : hours(blocks.reduce((t, b) => t + workingMinutes(b.start, b.end), 0)) + " across " + members.length + " people"}
         </div>
       </div>
 
@@ -183,7 +192,7 @@ export function buildTimeBlockImage(payload = {}) {
                 const charsPerLine = Math.max(5, Math.floor(innerWidth / (fontSize * 0.56)));
                 const availableHeight = Math.max(0, height - 12);
                 const rangeLabel = `${hhmm(b.start)}–${hhmm(b.end)}`;
-                const fullTimeLabel = `${rangeLabel} · ${hours(b.end - b.start)}`;
+                const fullTimeLabel = `${rangeLabel} · ${hours(workingMinutes(b.start, b.end))}`;
                 const timeFontSize = narrow ? 9 : 9.5;
                 // Reserve a line for the time first. A compact range fits
                 // more reliably than a range with duration in narrow cards.
@@ -192,16 +201,21 @@ export function buildTimeBlockImage(payload = {}) {
                 const timeLabel = displayTime
                   ? (fitsText(fullTimeLabel) ? fullTimeLabel : rangeLabel)
                   : "";
-                const showParent = Boolean(b.parentTitle) && availableHeight >= 85 && innerWidth >= 155;
+                // Short blocks have one line only: title first, then a compact time range.
+                const inlineTime = !displayTime && height >= 18 && fitsText(rangeLabel) && innerWidth >= 112;
+                const inlineTimeWidth = rangeLabel.length * timeFontSize * 0.54 + 7;
+                const showParent = Boolean(String(b.parentTitle || "").trim()) && availableHeight >= 42 && innerWidth >= 60;
                 const reserved = (displayTime ? 12 : 0) + (showParent ? 12 : 0);
                 const titleLineCount = Math.min(3, Math.max(1, Math.floor((availableHeight - reserved) / lineHeight)));
-                const titleLines = boundedLines(b.title, charsPerLine, titleLineCount);
+                const titleLines = inlineTime
+                  ? boundedLines(b.title, Math.max(3, Math.floor((innerWidth - inlineTimeWidth) / (fontSize * 0.56))), 1)
+                  : boundedLines(b.title, charsPerLine, titleLineCount);
                 const parentLines = showParent ? boundedLines(b.parentTitle, Math.max(5, Math.floor(innerWidth / 5.4)), 1) : [];
                 return (
                   <div key={b.id} style={{
                     display: "flex", flexDirection: "column", position: "absolute", top, height,
                     left: position.column * columnWidth + 4, width, overflow: "hidden",
-                    borderRadius: 10, padding: "5px 7px", backgroundColor: C.card,
+                    borderRadius: 10, padding: inlineTime ? "2px 7px" : "5px 7px", backgroundColor: C.card,
                     border: `1px solid ${b.color}`, color: b.color,
                   }}>
                     {parentLines.map((line, index) => (
@@ -209,7 +223,15 @@ export function buildTimeBlockImage(payload = {}) {
                         lineHeight: "12px", height: 12, flexShrink: 0, opacity: 0.8,
                         textTransform: "uppercase", whiteSpace: "nowrap" }}>{line}</div>
                     ))}
-                    {titleLines.map((line, index) => (
+                    {inlineTime ? (
+                      <div style={{ display: "flex", alignItems: "center", width: "100%", height: 14,
+                        overflow: "hidden", whiteSpace: "nowrap" }}>
+                        <div style={{ display: "flex", flex: 1, minWidth: 0, fontSize, fontWeight: 700,
+                          whiteSpace: "nowrap", overflow: "hidden" }}>{titleLines[0] || ""}</div>
+                        <div style={{ display: "flex", flexShrink: 0, fontSize: timeFontSize,
+                          opacity: 0.8, whiteSpace: "nowrap", marginLeft: 5 }}>{rangeLabel}</div>
+                      </div>
+                    ) : titleLines.map((line, index) => (
                       <div key={`title-${index}`} style={{ display: "flex", fontSize, fontWeight: 700,
                         lineHeight: `${lineHeight}px`, height: lineHeight, flexShrink: 0,
                         whiteSpace: "nowrap" }}>{line}</div>
