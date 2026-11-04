@@ -2,6 +2,7 @@
 
 import PageAccess from "../PageAccess";
 import TimeBlocking from "../TimeBlocking";
+import { usePathname, useRouter } from "next/navigation";
 
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -103,6 +104,8 @@ function packEvents(items) {
 
 
 function TeamCalendarInner() {
+  const pathname = usePathname();
+  const router = useRouter();
   const { members } = useAuth();
   const memberByRef = useMemo(() => {
     const map = {};
@@ -114,7 +117,16 @@ function TeamCalendarInner() {
   }, [members]);
   const normalizeMemberRefs = (refs = []) => [...new Set(refs.map((ref) => memberByRef[ref]?.id).filter(Boolean))];
 
-  const [view, setView] = useState("month");
+  const [view, setView] = useState(() => pathname === "/calendar/timeblock" ? "blocking" : "month");
+  useEffect(() => {
+    if (pathname === "/calendar/timeblock") setView("blocking");
+    else setView(current => current === "blocking" ? "month" : current);
+  }, [pathname]);
+  const changeView = next => {
+    setView(next);
+    if (next === "blocking" && pathname !== "/calendar/timeblock") router.push("/calendar/timeblock");
+    else if (next !== "blocking" && pathname === "/calendar/timeblock") router.push("/calendar");
+  };
   const [cursor, setCursor] = useState(new Date());
   const [events, setEvents] = useState([]);
   const [calendarError, setCalendarError] = useState("");
@@ -360,7 +372,7 @@ function TeamCalendarInner() {
               </div>
               <div className="flex items-center gap-1 rounded-full p-1 shadow-sm" style={{ background: "var(--card)" }}>
                 {["month", "week", "day", "blocking"].map((v) => (
-                  <button key={v} onClick={() => setView(v)}
+                  <button key={v} onClick={() => changeView(v)}
                     className="rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors whitespace-nowrap"
                     style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
                     {v === "blocking" ? "Time Blocking" : v.charAt(0).toUpperCase() + v.slice(1)}
