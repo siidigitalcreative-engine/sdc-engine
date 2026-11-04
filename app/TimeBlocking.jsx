@@ -474,7 +474,7 @@ export default function TimeBlocking({ day, onDayChange }) {
           width: position ? `calc(100% / ${position.count} - 8px)` : undefined,
           right: position ? undefined : 4,
           top, height, overflow: "hidden", containerType: "inline-size",
-          borderRadius: 10, padding: showTime ? "5px 7px" : "2px 7px", background: "var(--card)",
+          borderRadius: 5, padding: showTime ? "5px 7px" : "2px 7px", background: "var(--card)",
           boxSizing: "border-box", display: "flex", flexDirection: "column",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
           cursor: interactive ? "grab" : "default", pointerEvents: "auto",
