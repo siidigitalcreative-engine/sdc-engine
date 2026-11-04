@@ -190,7 +190,10 @@ export function buildTimeBlockImage(payload = {}) {
                 const fontSize = narrow ? 9.5 : 11.5;
                 const lineHeight = narrow ? 12 : 15;
                 const charsPerLine = Math.max(5, Math.floor(innerWidth / (fontSize * 0.56)));
-                const availableHeight = Math.max(0, height - 12);
+                // Very short events are only one text line high: do not apply
+                // the normal 5px top/bottom padding, which clipped the glyphs.
+                const compactCard = height < 35;
+                const availableHeight = Math.max(0, height - (compactCard ? 2 : 12));
                 const rangeLabel = `${hhmm(b.start)}–${hhmm(b.end)}`;
                 const fullTimeLabel = `${rangeLabel} · ${hours(workingMinutes(b.start, b.end))}`;
                 const timeFontSize = narrow ? 9 : 9.5;
@@ -202,11 +205,14 @@ export function buildTimeBlockImage(payload = {}) {
                   ? (fitsText(fullTimeLabel) ? fullTimeLabel : rangeLabel)
                   : "";
                 // Short blocks have one line only: title first, then a compact time range.
-                const inlineTime = !displayTime && height >= 18 && fitsText(rangeLabel) && innerWidth >= 112;
+                // Preserve at least 56px for the title before showing inline time.
+                // A 15-minute card must never sacrifice its title to a time range.
+                const inlineTime = compactCard && height >= 16 &&
+                  innerWidth >= (rangeLabel.length * timeFontSize * 0.54 + 65);
                 const inlineTimeWidth = rangeLabel.length * timeFontSize * 0.54 + 7;
-                const showParent = Boolean(String(b.parentTitle || "").trim()) && availableHeight >= 42 && innerWidth >= 60;
+                const showParent = !compactCard && Boolean(String(b.parentTitle || "").trim()) && availableHeight >= 42 && innerWidth >= 60;
                 const reserved = (displayTime ? 12 : 0) + (showParent ? 12 : 0);
-                const titleLineCount = Math.min(3, Math.max(1, Math.floor((availableHeight - reserved) / lineHeight)));
+                const titleLineCount = compactCard ? 1 : Math.min(3, Math.max(1, Math.floor((availableHeight - reserved) / lineHeight)));
                 const titleLines = inlineTime
                   ? boundedLines(b.title, Math.max(3, Math.floor((innerWidth - inlineTimeWidth) / (fontSize * 0.56))), 1)
                   : boundedLines(b.title, charsPerLine, titleLineCount);
@@ -215,7 +221,8 @@ export function buildTimeBlockImage(payload = {}) {
                   <div key={b.id} style={{
                     display: "flex", flexDirection: "column", position: "absolute", top, height,
                     left: position.column * columnWidth + 4, width, overflow: "hidden",
-                    borderRadius: 10, padding: inlineTime ? "2px 7px" : "5px 7px", backgroundColor: C.card,
+                    borderRadius: 10, padding: compactCard ? "0px 5px" : "5px 7px", backgroundColor: C.card,
+                    justifyContent: compactCard ? "center" : "flex-start", boxSizing: "border-box",
                     border: `1px solid ${b.color}`, color: b.color,
                   }}>
                     {parentLines.map((line, index) => (
@@ -224,7 +231,7 @@ export function buildTimeBlockImage(payload = {}) {
                         textTransform: "uppercase", whiteSpace: "nowrap" }}>{line}</div>
                     ))}
                     {inlineTime ? (
-                      <div style={{ display: "flex", alignItems: "center", width: "100%", height: 14,
+                      <div style={{ display: "flex", alignItems: "center", width: "100%", height: 12,
                         overflow: "hidden", whiteSpace: "nowrap" }}>
                         <div style={{ display: "flex", flex: 1, minWidth: 0, fontSize, fontWeight: 700,
                           whiteSpace: "nowrap", overflow: "hidden" }}>{titleLines[0] || ""}</div>
@@ -233,8 +240,8 @@ export function buildTimeBlockImage(payload = {}) {
                       </div>
                     ) : titleLines.map((line, index) => (
                       <div key={`title-${index}`} style={{ display: "flex", fontSize, fontWeight: 700,
-                        lineHeight: `${lineHeight}px`, height: lineHeight, flexShrink: 0,
-                        whiteSpace: "nowrap" }}>{line}</div>
+                        lineHeight: `${compactCard ? 11 : lineHeight}px`, height: compactCard ? 11 : lineHeight, flexShrink: 0,
+                        overflow: "hidden", whiteSpace: "nowrap" }}>{line}</div>
                     ))}
                     {displayTime ? (
                       <div style={{ display: "flex", fontSize: timeFontSize, opacity: 0.8,
