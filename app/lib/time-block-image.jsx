@@ -9,7 +9,8 @@ const C = {
 const PAD = 26;
 const ROW_H = 46;
 const GUTTER = 74;
-const LANE_W = 300;
+const SINGLE_LANE_W = 960;
+const MULTI_LANE_W = 410;
 const HEAD_H = 72;
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -27,11 +28,45 @@ export function buildTimeBlockImage(payload = {}) {
   const rows = [];
   for (let h = dayStart / 60; h < dayEnd / 60; h++) rows.push(h);
 
-  const W = PAD * 2 + GUTTER + Math.max(1, members.length) * LANE_W;
+  const laneWidth = members.length === 1 ? SINGLE_LANE_W : MULTI_LANE_W;
+  const W = PAD * 2 + GUTTER + Math.max(1, members.length) * laneWidth;
   const H = PAD * 2 + 56 + HEAD_H + rows.length * ROW_H + 30;
 
   const blocksFor = (id) => blocks.filter((b) => b.member === id);
   const minutesFor = (id) => blocksFor(id).reduce((t, b) => t + (b.end - b.start), 0);
+
+  // Match the main Time Blocking timeline: overlapping cards share the
+  // available lane width in side-by-side columns rather than covering each other.
+  const layoutFor = (id) => {
+    const sorted = [...blocksFor(id)].sort((a, b) => a.start - b.start || a.end - b.end);
+    const positions = new Map();
+    const flush = (group) => {
+      if (!group.length) return;
+      const ends = [];
+      for (const entry of group) {
+        let column = ends.findIndex((end) => end <= entry.start);
+        if (column === -1) column = ends.length;
+        ends[column] = entry.end;
+        positions.set(entry.id, column);
+      }
+      const count = ends.length;
+      for (const entry of group) positions.set(entry.id, { column: positions.get(entry.id), count });
+    };
+    let group = [], groupEnd = -1;
+    for (const entry of sorted) {
+      if (group.length && entry.start >= groupEnd) {
+        flush(group);
+        group = [];
+        groupEnd = -1;
+      }
+      group.push(entry);
+      groupEnd = Math.max(groupEnd, entry.end);
+    }
+    flush(group);
+    return positions;
+  };
+
+  const positionsByMember = new Map(members.map(m => [m.id, layoutFor(m.id)]));
 
   const element = (
     <div style={{ width: W, height: H, display: "flex", flexDirection: "column",
@@ -59,7 +94,7 @@ export function buildTimeBlockImage(payload = {}) {
             fontSize: 10.5, color: C.muted }}>GMT+8</div>
           {members.map((m) => (
             <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: "center",
-              justifyContent: "center", width: LANE_W, borderRight: `1px solid ${C.border}` }}>
+              justifyContent: "center", width: laneWidth, borderRight: `1px solid ${C.border}` }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center",
                 height: 30, width: 30, borderRadius: 999, backgroundColor: m.color || "#8E8A96",
                 color: "#fff", fontSize: 11, fontWeight: 700, marginBottom: 5 }}>{m.initials}</div>
@@ -79,7 +114,7 @@ export function buildTimeBlockImage(payload = {}) {
                 padding: "5px 10px 0 0", borderRight: `1px solid ${C.border}`,
                 fontSize: 11, color: C.muted }}>{gutter(h)}</div>
               {members.map((m, i) => (
-                <div key={m.id} style={{ display: "flex", width: LANE_W, borderRight: `1px solid ${C.border}`,
+                <div key={m.id} style={{ display: "flex", width: laneWidth, borderRight: `1px solid ${C.border}`,
                   backgroundColor: i % 2 ? "rgba(127,127,127,0.03)" : "transparent" }} />
               ))}
             </div>
@@ -88,19 +123,19 @@ export function buildTimeBlockImage(payload = {}) {
           {/* the blocks, one absolute lane per member */}
           {members.map((m, i) => (
             <div key={m.id} style={{ display: "flex", flexDirection: "column", position: "absolute",
-              top: 0, bottom: 0, left: GUTTER + i * LANE_W, width: LANE_W }}>
+              top: 0, bottom: 0, left: GUTTER + i * laneWidth, width: laneWidth }}>
               {blocksFor(m.id).map((b) => {
-                const top = ((b.start - dayStart) / 60) * ROW_H + 3;
+                const position = positionsByMember.get(m.id)?.get(b.id) || { column: 0, count: 1 };
+                const columnWidth = laneWidth / position.count;
+                const top = ((b.start - dayStart) / 60) * ROW_H + 2;
                 const tight = b.end - b.start < 45;
-                // The card is as tall as its time slot, unless the full name needs more room.
-                const titleLines = Math.max(1, Math.ceil(String(b.title || "").length / 34));
-                const parentLines = b.parentTitle ? Math.ceil(String(b.parentTitle).length / 32) : 0;
-                const needed = 12 + parentLines * 12 + titleLines * 16 + (tight ? 0 : 15) + 2;
-                const height = Math.max(((b.end - b.start) / 60) * ROW_H - 6, needed);
+                // Never grow outside the scheduled time: doing so hides later tasks.
+                const height = Math.max(18, ((b.end - b.start) / 60) * ROW_H - 4);
                 return (
                   <div key={b.id} style={{
                     display: "flex", flexDirection: "column", position: "absolute", top, height,
-                    left: 6, width: LANE_W - 14, overflow: "hidden",
+                    left: position.column * columnWidth + 4,
+                    width: Math.max(24, columnWidth - 8), overflow: "hidden",
                     borderRadius: 10, padding: "6px 10px", backgroundColor: C.card,
                     border: `1px solid ${b.color}`, color: b.color,
                   }}>
