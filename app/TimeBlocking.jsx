@@ -11,6 +11,15 @@ const STANDARD_BREAKS = [
   { start: 12 * 60, end: 12 * 60 + 45, label: "Lunch Break" },
   { start: 15 * 60, end: 15 * 60 + 15, label: "Other Break" },
 ];
+// Breaks are visual guides, but minutes inside them are not working time.
+// Preserve each block's original start/end time and on-screen height.
+const workingMinutes = (start, end) => {
+  const from = Number(start), to = Number(end);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 0;
+  const breakMinutes = STANDARD_BREAKS.reduce((total, period) =>
+    total + Math.max(0, Math.min(to, period.end) - Math.max(from, period.start)), 0);
+  return Math.max(0, to - from - breakMinutes);
+};
 const PROJECT_COLORS = ["#3E8ED0", "#7C5CD8", "#3FA37A", "#E0A93C", "#F0784B", "#E5536E", "#2E9B8F", "#8E8A96"];
 const hash = (s) => { let h = 0; for (let i = 0; i < String(s).length; i++) h = (h * 31 + String(s).charCodeAt(i)) >>> 0; return h; };
 const colorFor = (name) => PROJECT_COLORS[hash(name || "x") % PROJECT_COLORS.length];
@@ -154,8 +163,8 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   const members = data.members || [];
   const blocksOf = (memberId) => visibleBlocks.filter((b) => b.member === memberId);
-  const minutesOf = (memberId) => blocksOf(memberId).reduce((t, b) => t + (b.end - b.start), 0);
-  const totalMinutes = visibleBlocks.reduce((t, b) => t + (b.end - b.start), 0);
+  const minutesOf = (memberId) => blocksOf(memberId).reduce((t, b) => t + workingMinutes(b.start, b.end), 0);
+  const totalMinutes = visibleBlocks.reduce((t, b) => t + workingMinutes(b.start, b.end), 0);
   const editable = view !== "all" && view === me;
 
   /* ---- what can be blocked ---- */
@@ -421,7 +430,7 @@ export default function TimeBlocking({ day, onDayChange }) {
     // Match the compact PNG card format: prioritize the time range at the
     // bottom, allow the title to wrap, and hide secondary text if space is tight.
     const showTime = height >= 35;
-    const showParent = Boolean(b.parentTitle) && height >= 88 && (position?.count || 1) <= 2;
+    const showParent = Boolean(b.parentTitle?.trim()) && height >= 50;
     const titleLines = showTime ? Math.max(1, Math.min(3, Math.floor((height - (showParent ? 38 : 24)) / 12)))
       : Math.max(1, Math.min(3, Math.floor((height - (showParent ? 20 : 9)) / 12)));
     return (
@@ -442,7 +451,7 @@ export default function TimeBlocking({ day, onDayChange }) {
           width: position ? `calc(100% / ${position.count} - 8px)` : undefined,
           right: position ? undefined : 4,
           top, height, overflow: "hidden",
-          borderRadius: 10, padding: "5px 7px", background: "var(--card)",
+          borderRadius: 10, padding: showTime ? "5px 7px" : "2px 7px", background: "var(--card)",
           boxSizing: "border-box", display: "flex", flexDirection: "column",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
           cursor: interactive ? "grab" : "default", pointerEvents: "auto",
@@ -457,15 +466,26 @@ export default function TimeBlocking({ day, onDayChange }) {
             {b.parentTitle}
           </div>
         )}
-        <div title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
-          display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: titleLines,
-          overflow: "hidden", overflowWrap: "anywhere", flexShrink: 0,
-          paddingRight: interactive ? 10 : 0 }}>{b.title}</div>
+        {!showTime ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0,
+            paddingRight: interactive ? 20 : 0, height: "100%" }}>
+            <span title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
+              flex: "1 1 auto", minWidth: 30, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.title}</span>
+            <span style={{ fontSize: 9, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", flexShrink: 0 }}>
+              {hhmm(b.start)}–{hhmm(b.end)}
+            </span>
+          </div>
+        ) : (
+          <div title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
+            display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: titleLines,
+            overflow: "hidden", overflowWrap: "anywhere", flexShrink: 0,
+            paddingRight: interactive ? 10 : 0 }}>{b.title}</div>
+        )}
         {showTime && (
           <div style={{ display: "flex", alignItems: "center", minWidth: 0, marginTop: "auto", paddingBottom: interactive ? 4 : 0,
             fontSize: 9.5, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden" }}>
             <span style={{ flexShrink: 0 }}>{hhmm(b.start)}–{hhmm(b.end)}</span>
-            <span style={{ overflow: "hidden", textOverflow: "clip", whiteSpace: "nowrap", minWidth: 0 }}> · {hours(b.end - b.start)}</span>
+            <span style={{ overflow: "hidden", textOverflow: "clip", whiteSpace: "nowrap", minWidth: 0 }}> · {hours(workingMinutes(b.start, b.end))}</span>
           </div>
         )}
         {interactive && (
