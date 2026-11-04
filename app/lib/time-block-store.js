@@ -27,6 +27,7 @@ function normalizeBlock(block) {
     // Carried with the block so the timeline still reads correctly if the task
     // is renamed, archived or deleted later.
     title: clean(block?.title).slice(0, 120),
+    titleEdited: block?.titleEdited === true,
     parentTitle: clean(block?.parentTitle).slice(0, 120),
     project: clean(block?.project).slice(0, 80),
     color: /^#[0-9a-f]{6}$/i.test(String(block?.color)) ? block.color : "#3E8ED0",
@@ -137,6 +138,7 @@ export async function moveBlock(memberId, id, { start, end, note, title }) {
       end: end === undefined ? found.end : end,
       note: note === undefined ? found.note : note,
       title: title === undefined ? found.title : title,
+      titleEdited: title === undefined ? found.titleEdited : (found.titleEdited || clean(title) !== found.title),
     });
     return blocks.map((b) => (b.id === target ? next : b));
   });
