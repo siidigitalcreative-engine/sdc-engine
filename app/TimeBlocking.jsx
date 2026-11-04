@@ -252,6 +252,7 @@ export default function TimeBlocking({ day, onDayChange }) {
     setDialog({
       mode: "add", sourceId: candidate ? `${candidate.kind}:${candidate.id}` : "custom",
       title: candidate?.title || "", project: candidate?.project || "",
+      taskDescription: "", taskStatus: "todo", taskPriority: "medium", createdTask: null,
       start, end: Math.min(DAY_END, start + Math.max(SLOT, candidate?.est || 60)), note: "",
     });
   };
@@ -278,6 +279,40 @@ export default function TimeBlocking({ day, onDayChange }) {
       ok = await send("PATCH", { id: dialog.id, start, end,
         ...(dialog.title.trim() !== dialog.originalTitle ? { title: dialog.title.trim() } : {}),
         note: dialog.note || "" });
+    } else if (dialog.sourceId === "new-task") {
+      // Use the existing authenticated Tasks API and the regular Time Blocks API.
+      // Remember the created task if saving its time block fails, so retrying
+      // never silently creates a duplicate task.
+      let created = dialog.createdTask;
+      if (!created) {
+        setBusy(true);
+        setError("");
+        try {
+          const response = await fetch("/api/tasks", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data: {
+              title: dialog.title.trim(), project: dialog.project.trim() || "Daily Tasks",
+              desc: dialog.taskDescription || "", status: dialog.taskStatus || "todo",
+              priority: dialog.taskPriority || "medium", assignees: [me],
+              start: key, due: "", time: "", tags: [], attachments: [], subtasks: [],
+            } }),
+          });
+          const result = await response.json();
+          if (!response.ok || !result.task?.id) throw new Error(result.error || "Unable to create the task.");
+          created = result.task;
+          setDialog(d => d ? { ...d, createdTask: created } : d);
+        } catch (err) {
+          setError(err.message || "Unable to create the task.");
+          setBusy(false);
+          return;
+        }
+        setBusy(false);
+      }
+      ok = await send("POST", { block: {
+        kind: "task", refId: created.id, title: created.title,
+        parentTitle: "", project: created.project,
+        color: colorFor(created.project), start, end, note: dialog.note || "",
+      } });
     } else {
       ok = await send("POST", { block: {
         kind: selectedSource?.kind || "task", refId: selectedSource?.id || "",
@@ -542,10 +577,13 @@ export default function TimeBlocking({ day, onDayChange }) {
               <span>Task or project</span>
               <div className="relative">
                 <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border" style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                  value={dialog.sourceId} onChange={e => {
+                  value={dialog.sourceId} disabled={!!dialog.createdTask} onChange={e => {
                     const src = allSources.find(s => `${s.kind}:${s.id}` === e.target.value);
-                    setDialog(d => ({ ...d, sourceId: e.target.value, title: src?.title || "", project: src?.project || "" }));
+                    setDialog(d => ({ ...d, sourceId: e.target.value,
+                      title: src?.title || "", project: src?.project || "",
+                      createdTask: null }));
                   }}>
+                  <option value="new-task">+ Create New Task (also add to Tasks page)</option>
                   <option value="custom">Custom time block (not added to Tasks page)</option>
                   {allSources.map(s => <option key={`${s.kind}:${s.id}`} value={`${s.kind}:${s.id}`}>{s.kind === "subtask" ? "↳ " : ""}{s.title}</option>)}
                 </select>
@@ -555,8 +593,57 @@ export default function TimeBlocking({ day, onDayChange }) {
             <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
               <span>Title</span>
               <input className="w-full rounded-xl px-3 py-2 text-sm border" style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                value={dialog.title} onChange={e => setDialog(d => ({ ...d, title: e.target.value }))} maxLength={120}/>
+                value={dialog.title} onChange={e => setDialog(d => ({ ...d, title: e.target.value }))} maxLength={120}
+                disabled={!!dialog.createdTask}/>
             </label>
+            {dialog.mode === "add" && dialog.sourceId === "new-task" && (
+              <div className="space-y-3">
+                <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+                  <span>Project</span>
+                  <input className="w-full rounded-xl px-3 py-2 text-sm border"
+                    style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                    value={dialog.project || ""} onChange={e => setDialog(d => ({ ...d, project: e.target.value }))}
+                    placeholder="Daily Tasks" disabled={!!dialog.createdTask}/>
+                </label>
+                <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+                  <span>Task description (optional)</span>
+                  <textarea rows={2} className="w-full rounded-xl px-3 py-2 text-sm border resize-y"
+                    style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                    value={dialog.taskDescription || ""} onChange={e => setDialog(d => ({ ...d, taskDescription: e.target.value }))}
+                    disabled={!!dialog.createdTask}/>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+                    <span>Task status</span>
+                    <div className="relative">
+                      <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border"
+                        style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                        value={dialog.taskStatus || "todo"} onChange={e => setDialog(d => ({ ...d, taskStatus: e.target.value }))}
+                        disabled={!!dialog.createdTask}>
+                        <option value="todo">To Do</option><option value="inprogress">In Progress</option>
+                        <option value="inreview">In Review</option><option value="done">Done</option>
+                      </select>
+                      <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }}/>
+                    </div>
+                  </label>
+                  <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+                    <span>Priority</span>
+                    <div className="relative">
+                      <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border"
+                        style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                        value={dialog.taskPriority || "medium"} onChange={e => setDialog(d => ({ ...d, taskPriority: e.target.value }))}
+                        disabled={!!dialog.createdTask}>
+                        <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                      </select>
+                      <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }}/>
+                    </div>
+                  </label>
+                </div>
+                {dialog.createdTask && <p className="text-xs" style={{ color: "#3FA37A" }}>
+                  New task saved. Complete the time block to link it; retrying will not create another task.
+                </p>}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               {["start", "end"].map(k => <label key={k} className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
                 <span>{k === "start" ? "Start time" : "End time"}</span>
@@ -583,7 +670,7 @@ export default function TimeBlocking({ day, onDayChange }) {
               <button type="button" onClick={() => setDialog(null)} className="rounded-xl px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>Cancel</button>
               <button type="button" disabled={!dialogValid || busy} onClick={saveDialog} className="rounded-xl px-4 py-2 text-sm font-semibold"
                 style={{ background: ACCENT, color: "var(--on-accent)", opacity: !dialogValid || busy ? .5 : 1 }}>
-                {busy ? "Saving…" : dialog.mode === "edit" ? "Save Changes" : "Add Block"}
+                {busy ? "Saving…" : dialog.mode === "edit" ? "Save Changes" : dialog.sourceId === "new-task" ? "Create Task & Add Block" : "Add Block"}
               </button>
             </div>
           </div>
