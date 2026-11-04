@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Download, Send, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Send, Trash2, X, Plus } from "lucide-react";
 import { useAuth } from "./auth";
 import { useLarkSend } from "./LarkSend";
 
@@ -30,6 +30,8 @@ export default function TimeBlocking({ day, onDayChange }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const dragRef = useRef(null);
+  const suppressBlockClick = useRef(false);
+  const [dialog, setDialog] = useState(null); // { mode: "add" | "edit", start, end, ... }
   const dragSrcRef = useRef(null);                   // the card being dragged onto the timeline
 
   const { openLarkSend, larkPicker } = useLarkSend();
@@ -121,6 +123,51 @@ export default function TimeBlocking({ day, onDayChange }) {
     }
   };
 
+  // Clicking a time slot or existing block opens an editor. Dropping a task
+  // from the left still places it directly, just as before.
+  const openAdd = (start, chosen = picked) => {
+    if (!editable) return;
+    const candidate = chosen || sources[0] || null;
+    setDialog({
+      mode: "add", sourceId: candidate ? `${candidate.kind}:${candidate.id}` : "custom",
+      title: candidate?.title || "", project: candidate?.project || "",
+      start, end: Math.min(DAY_END, start + Math.max(SLOT, candidate?.est || 60)), note: "",
+    });
+  };
+
+  const openEdit = (b) => {
+    if (!editable || b.member !== me) return;
+    setDialog({ mode: "edit", id: b.id, title: b.title, start: b.start,
+      end: b.end, note: b.note || "", block: b });
+  };
+
+  const allSources = sources.flatMap(s => [s, ...(s.subtasks || [])]);
+  const selectedSource = dialog?.mode === "add"
+    ? allSources.find(s => `${s.kind}:${s.id}` === dialog.sourceId) : null;
+  const dialogValid = !!dialog && String(dialog.title || "").trim() &&
+    Number.isFinite(Number(dialog.start)) && Number.isFinite(Number(dialog.end)) &&
+    Number(dialog.start) >= DAY_START && Number(dialog.end) <= DAY_END &&
+    Number(dialog.end) > Number(dialog.start);
+
+  const saveDialog = async () => {
+    if (!dialogValid || busy) return;
+    const start = Number(dialog.start), end = Number(dialog.end);
+    let ok;
+    if (dialog.mode === "edit") {
+      ok = await send("PATCH", { id: dialog.id, start, end,
+        title: dialog.title.trim(), note: dialog.note || "" });
+    } else {
+      ok = await send("POST", { block: {
+        kind: selectedSource?.kind || "task", refId: selectedSource?.id || "",
+        title: dialog.title.trim(), parentTitle: selectedSource?.parentTitle || "",
+        project: selectedSource?.project || dialog.project || "",
+        color: selectedSource?.color || colorFor(dialog.project || dialog.title),
+        start, end, note: dialog.note || "",
+      } });
+    }
+    if (ok) { setDialog(null); setPicked(null); }
+  };
+
   const startCardDrag = (src) => { dragSrcRef.current = src; setPicked(src); };
   const stopCardDrag = () => { dragSrcRef.current = null; };
 
@@ -148,7 +195,7 @@ export default function TimeBlocking({ day, onDayChange }) {
     event.preventDefault();
     event.stopPropagation();
     const clientY = event.clientY ?? event.touches?.[0]?.clientY;
-    dragRef.current = { id: block.id, mode, startY: clientY, start: block.start, end: block.end, live: null };
+    dragRef.current = { id: block.id, mode, startY: clientY, start: block.start, end: block.end, live: null, moved: false };
   };
 
   useEffect(() => {
@@ -156,6 +203,8 @@ export default function TimeBlocking({ day, onDayChange }) {
       const drag = dragRef.current;
       if (!drag) return;
       const clientY = event.clientY ?? event.touches?.[0]?.clientY;
+      if (Math.abs(clientY - drag.startY) < 4 && !drag.moved) return;
+      drag.moved = true;
       const delta = Math.round(((clientY - drag.startY) / ROW_H) * 60 / SLOT) * SLOT;
       if (drag.mode === "resize") {
         const end = Math.min(DAY_END, Math.max(drag.start + SLOT, drag.end + delta));
@@ -176,6 +225,10 @@ export default function TimeBlocking({ day, onDayChange }) {
     const end = () => {
       const drag = dragRef.current;
       dragRef.current = null;
+      if (drag?.moved) {
+        suppressBlockClick.current = true;
+        setTimeout(() => { suppressBlockClick.current = false; }, 0);
+      }
       if (drag?.live) send("PATCH", { id: drag.id, start: drag.live.start, end: drag.live.end });
     };
 
@@ -277,7 +330,12 @@ export default function TimeBlocking({ day, onDayChange }) {
       <div key={b.id}
         onMouseDown={interactive ? (e) => { if (!picked && !dragSrcRef.current) beginDrag(e, b, "move"); } : undefined}
         onTouchStart={interactive ? (e) => { if (!picked && !dragSrcRef.current) beginDrag(e, b, "move"); } : undefined}
-        onClick={interactive && picked ? (e) => { e.stopPropagation(); place(pointerTime(e, b)); } : undefined}
+        onClick={interactive ? (e) => {
+          e.stopPropagation();
+          if (suppressBlockClick.current) return;
+          if (picked) openAdd(pointerTime(e, b));
+          else openEdit(b);
+        } : undefined}
         onDragOver={interactive ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } : undefined}
         onDrop={interactive ? (e) => { e.preventDefault(); e.stopPropagation(); place(pointerTime(e, b), e); } : undefined}
         style={{
@@ -320,6 +378,65 @@ export default function TimeBlocking({ day, onDayChange }) {
   return (
     <div className="flex flex-col gap-3">
       {larkPicker}
+      {dialog && editable && (
+        <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setDialog(null); }}
+          style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.64)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div role="dialog" aria-modal="true" aria-label={dialog.mode === "edit" ? "Edit time block" : "Add time block"}
+            className="rounded-2xl p-5 w-full max-w-md space-y-3"
+            style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)", maxHeight: "90vh", overflowY: "auto" }}>
+            <div className="flex justify-between items-center gap-2">
+              <h3 className="text-lg font-semibold">{dialog.mode === "edit" ? "Edit Time Block" : "Add Time Block"}</h3>
+              <button type="button" aria-label="Close" onClick={() => setDialog(null)}><X size={18}/></button>
+            </div>
+            {dialog.mode === "add" && <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+              <span>Task or project</span>
+              <select className="w-full rounded-xl px-3 py-2 text-sm border" style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                value={dialog.sourceId} onChange={e => {
+                  const src = allSources.find(s => `${s.kind}:${s.id}` === e.target.value);
+                  setDialog(d => ({ ...d, sourceId: e.target.value, title: src?.title || "", project: src?.project || "" }));
+                }}>
+                <option value="custom">Custom time block (not added to Tasks page)</option>
+                {allSources.map(s => <option key={`${s.kind}:${s.id}`} value={`${s.kind}:${s.id}`}>{s.kind === "subtask" ? "↳ " : ""}{s.title}</option>)}
+              </select>
+            </label>}
+            <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+              <span>Title</span>
+              <input className="w-full rounded-xl px-3 py-2 text-sm border" style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                value={dialog.title} onChange={e => setDialog(d => ({ ...d, title: e.target.value }))} maxLength={120}/>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {["start", "end"].map(k => <label key={k} className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+                <span>{k === "start" ? "Start time" : "End time"}</span>
+                <input type="time" step={SLOT * 60} className="w-full rounded-xl px-3 py-2 text-sm border"
+                  style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                  value={hhmm(dialog[k])} onChange={e => { const [h, m] = e.target.value.split(":").map(Number);
+                    if (Number.isFinite(h) && Number.isFinite(m)) setDialog(d => ({ ...d, [k]: h * 60 + m })); }}/>
+              </label>)}
+            </div>
+            <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+              <span>Notes (optional)</span>
+              <textarea rows={3} maxLength={160} className="w-full rounded-xl px-3 py-2 text-sm border resize-y"
+                style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                value={dialog.note} onChange={e => setDialog(d => ({ ...d, note: e.target.value }))}/>
+            </label>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              Multiple time blocks may overlap. Editing here changes only this timeline block, not the original task record.
+            </p>
+            {!dialogValid && <p className="text-xs" style={{ color: "#E5536E" }}>Enter a title and valid times within the workday, with end after start.</p>}
+            <div className="flex flex-wrap justify-end gap-2">
+              {dialog.mode === "edit" && <button type="button" onClick={() => openAdd(dialog.start)}
+                className="rounded-xl px-3 py-2 text-xs font-semibold inline-flex items-center gap-1"
+                style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}><Plus size={14}/> Add Another at This Time</button>}
+              <button type="button" onClick={() => setDialog(null)} className="rounded-xl px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>Cancel</button>
+              <button type="button" disabled={!dialogValid || busy} onClick={saveDialog} className="rounded-xl px-4 py-2 text-sm font-semibold"
+                style={{ background: ACCENT, color: "var(--on-accent)", opacity: !dialogValid || busy ? .5 : 1 }}>
+                {busy ? "Saving…" : dialog.mode === "edit" ? "Save Changes" : "Add Block"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* who you are looking at */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -462,7 +579,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                       ? Array.from({ length: 60 / SLOT }, (_, i) => (
                           <div key={i} className="flex-1 tp-slot"
                             title={clock(h * 60 + i * SLOT)}
-                            onClick={() => place(h * 60 + i * SLOT)}
+                            onClick={() => openAdd(h * 60 + i * SLOT)}
                             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
                             onDrop={(e) => { e.preventDefault(); place(h * 60 + i * SLOT, e); }}
                             style={{ borderRight: ((i + 1) * SLOT) % 15 === 0 && i < 60 / SLOT - 1 ? "1px dashed var(--border)" : "none", cursor: "pointer" }} />
