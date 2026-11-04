@@ -411,7 +411,9 @@ export default function TimeBlocking({ day, onDayChange }) {
   const block = (b, interactive, position) => {
     const top = ((b.start - DAY_START) / 60) * ROW_H + 2;
     const height = Math.max(18, ((b.end - b.start) / 60) * ROW_H - 4);
-    const tight = b.end - b.start < 45;
+    // Display times whenever this block has enough vertical room.
+    // Overlapping blocks retain their existing column positions and dimensions.
+    const showTime = height >= (b.parentTitle ? 64 : 48);
     return (
       <div key={b.id}
         onMouseDown={interactive ? (e) => { if (!picked && !dragSrcRef.current) beginDrag(e, b, "move"); } : undefined}
@@ -444,9 +446,13 @@ export default function TimeBlocking({ day, onDayChange }) {
             {b.parentTitle}
           </div>
         )}
-        <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25 }}>{b.title}</div>
-        {!tight && (
-          <div style={{ fontSize: 10.5, opacity: 0.8, marginTop: 1 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25,
+          display: "-webkit-box", WebkitBoxOrient: "vertical",
+          WebkitLineClamp: showTime ? (b.parentTitle ? 1 : Math.max(1, Math.floor((height - 38) / 15))) : Math.max(1, Math.floor((height - (b.parentTitle ? 24 : 14)) / 15)),
+          overflow: "hidden", overflowWrap: "anywhere" }}>{b.title}</div>
+        {showTime && (
+          <div style={{ position: "absolute", bottom: 7, left: 11, right: 9,
+            fontSize: 10.5, opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {hhmm(b.start)} to {hhmm(b.end)} · {hours(b.end - b.start)}
           </div>
         )}
