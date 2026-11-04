@@ -1,7 +1,7 @@
 "use client";
 
 import PageAccess from "../PageAccess";
-import DepartmentView from "../DepartmentView";
+import TimeBlocking from "../TimeBlocking";
 
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -103,7 +103,7 @@ function packEvents(items) {
 
 
 function TeamCalendarInner() {
-  const { members, department } = useAuth();
+  const { members } = useAuth();
   const memberByRef = useMemo(() => {
     const map = {};
     members.forEach((member) => {
@@ -168,24 +168,6 @@ function TeamCalendarInner() {
 
   const calendarEtagRef = useRef(null);
   const loadingCalendarRef = useRef(false);
-
-  const [deptView, setDeptView] = useState("all");
-  const deptTouchedRef = useRef(false);
-  const changeDeptView = (next) => {
-    deptTouchedRef.current = true;
-    calendarEtagRef.current = null;       // the cached ETag belongs to the old view
-    setDeptView(next);
-  };
-  // Open on the signed-in member's own department. Only admin departments can
-  // switch views (everyone else is already limited by the API), and a manual
-  // choice from the picker is never overridden.
-  const deptId = department?.id;
-  const deptIsAdmin = !!department?.admin;
-  useEffect(() => {
-    if (deptTouchedRef.current || !deptIsAdmin || !deptId) return;
-    calendarEtagRef.current = null;
-    setDeptView(deptId);
-  }, [deptId, deptIsAdmin]);
   const [calendars, setCalendars] = useState(SEED_CALENDARS);
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState(null);
@@ -207,7 +189,7 @@ function TeamCalendarInner() {
     try {
       const headers = {};
       if (!force && calendarEtagRef.current) headers["If-None-Match"] = calendarEtagRef.current;
-      const response = await fetch(`/api/calendar${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, { headers, cache: "no-store" });
+      const response = await fetch("/api/calendar", { headers, cache: "no-store" });
       if (response.status === 304) return;
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -223,7 +205,7 @@ function TeamCalendarInner() {
     } finally {
       loadingCalendarRef.current = false;
     }
-  }, [hydrateEvents, deptView]);
+  }, [hydrateEvents]);
 
   const applyCalendarResponse = useCallback(async (response, fallback) => {
     if (!response.ok) {
@@ -287,14 +269,12 @@ function TeamCalendarInner() {
       desc: f.desc,
       attendees: normalizeMemberRefs(f.attendees),
     };
-    // An admin looking at one department files new events under it.
-    if (modal.mode !== "edit" && deptView && deptView !== "all") base.department = deptView;
 
     setSavingEvent(true);
     setCalendarError("");
     try {
       const isEdit = modal.mode === "edit";
-      const response = await fetch(`/api/calendar${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, {
+      const response = await fetch("/api/calendar", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isEdit ? { id: f.id, data: base } : { data: base }),
@@ -313,7 +293,7 @@ function TeamCalendarInner() {
     setSavingEvent(true);
     setCalendarError("");
     try {
-      const response = await fetch(`/api/calendar${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, {
+      const response = await fetch("/api/calendar", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: modal.form.id }),
@@ -330,11 +310,12 @@ function TeamCalendarInner() {
   const nav = (dir) => {
     if (view === "month") setCursor((c) => addMonths(c, dir));
     else if (view === "week") setCursor((c) => addDays(c, dir * 7));
+    else if (view === "blocking") setCursor((c) => addDays(c, dir));
     else setCursor((c) => addDays(c, dir));
   };
   const headerLabel = () => {
     if (view === "month") return cursor.toLocaleString("default", { month: "long", year: "numeric" });
-    if (view === "day") return cursor.toLocaleDateString("default", { weekday: "long", month: "long", day: "numeric" });
+    if (view === "day" || view === "blocking") return cursor.toLocaleDateString("default", { weekday: "long", month: "long", day: "numeric" });
     const s = startOfWeek(cursor), e = addDays(s, 6);
     return s.getMonth() === e.getMonth()
       ? `${s.toLocaleString("default", { month: "long" })} ${s.getDate()}–${e.getDate()}`
@@ -378,14 +359,15 @@ function TeamCalendarInner() {
                   style={{ background: "var(--card)" }} />
               </div>
               <div className="flex items-center gap-1 rounded-full p-1 shadow-sm" style={{ background: "var(--card)" }}>
-                {["month", "week", "day"].map((v) => (
+                {["month", "week", "day", "blocking"].map((v) => (
                   <button key={v} onClick={() => setView(v)}
-                    className="rounded-full px-3.5 py-1.5 text-sm capitalize font-medium transition-colors"
-                    style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>{v}</button>
+                    className="rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors whitespace-nowrap"
+                    style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
+                    {v === "blocking" ? "Time Blocking" : v.charAt(0).toUpperCase() + v.slice(1)}
+                  </button>
                 ))}
               </div>
-              <DepartmentView value={deptView} onChange={changeDeptView} />
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0" style={{ display: view === "blocking" ? "none" : undefined }}>
                 <button onClick={exportCalendarPng} className="tc-pill rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
                 <button onClick={sendToLark} className="tc-pill rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
               </div>
@@ -420,7 +402,11 @@ function TeamCalendarInner() {
               </div>
             </div>
             <div className="flex-1 min-w-0 flex flex-col">
-              {view === "month" ? (
+              {view === "blocking" ? (
+                <div className="px-4 sm:px-5 pb-6">
+                  <TimeBlocking day={cursor} onDayChange={(d) => setCursor(new Date(d))} />
+                </div>
+              ) : view === "month" ? (
                 <MonthView cells={monthCells} cursor={cursor} today={now} eventsForDay={eventsForDay} catOf={catOf}
                   onDayCreate={(d) => { const x = new Date(d); x.setHours(9, 0, 0, 0); openCreateAt(x); }}
                   onEventClick={openEdit} onMore={(d) => { setCursor(d); setView("day"); }} />
