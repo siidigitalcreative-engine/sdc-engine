@@ -473,7 +473,7 @@ export default function TimeBlocking({ day, onDayChange }) {
           left: position ? `calc(${position.column} * (100% / ${position.count}) + 4px)` : 4,
           width: position ? `calc(100% / ${position.count} - 8px)` : undefined,
           right: position ? undefined : 4,
-          top, height, overflow: "hidden",
+          top, height, overflow: "hidden", containerType: "inline-size",
           borderRadius: 10, padding: showTime ? "5px 7px" : "2px 7px", background: "var(--card)",
           boxSizing: "border-box", display: "flex", flexDirection: "column",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
@@ -484,7 +484,7 @@ export default function TimeBlocking({ day, onDayChange }) {
         )}
         {showParent && (
           <div style={{ fontSize: 9, fontWeight: 700, lineHeight: "12px", letterSpacing: ".03em",
-            textTransform: "uppercase", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>
+            textTransform: "uppercase", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0, paddingRight: interactive ? 24 : 0 }}>
             {b.parentTitle}
           </div>
         )}
@@ -493,7 +493,7 @@ export default function TimeBlocking({ day, onDayChange }) {
             width: "100%", height: "100%" }}>
             <span title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
               flex: "1 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.title}</span>
-            <span style={{ fontSize: 9, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", flexShrink: 0 }}>
+            <span className="tb-inline-time" style={{ fontSize: 9, lineHeight: "12px", opacity: 0.8, whiteSpace: "nowrap", flexShrink: 0 }}>
               {hhmm(b.start)}–{hhmm(b.end)}
             </span>
             {interactive && (
@@ -504,7 +504,7 @@ export default function TimeBlocking({ day, onDayChange }) {
           <div title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
             display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: titleLines,
             overflow: "hidden", overflowWrap: "anywhere", flexShrink: 0,
-            paddingRight: interactive ? 10 : 0 }}>{b.title}</div>
+            paddingRight: interactive ? 24 : 0, boxSizing: "border-box" }}>{b.title}</div>
         )}
         {showTime && (
           <div style={{ display: "flex", alignItems: "center", minWidth: 0, marginTop: "auto", paddingBottom: interactive ? 4 : 0,
@@ -526,6 +526,7 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   return (
     <div className="flex flex-col gap-3">
+      <style>{`@container (max-width: 175px) { .tb-inline-time { display: none !important; } }`}</style>
       {larkPicker}
       {dialog && editable && (
         <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setDialog(null); }}
