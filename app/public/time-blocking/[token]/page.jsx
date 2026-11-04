@@ -9,6 +9,15 @@ const STANDARD_BREAKS = [
   { start: 12 * 60, end: 12 * 60 + 45, label: "Lunch Break" },
   { start: 15 * 60, end: 15 * 60 + 15, label: "Other Break" },
 ];
+// Breaks are visual guides, but minutes inside them are not working time.
+// Preserve each block's original start/end time and on-screen height.
+const workingMinutes = (start, end) => {
+  const from = Number(start), to = Number(end);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 0;
+  const breakMinutes = STANDARD_BREAKS.reduce((total, period) =>
+    total + Math.max(0, Math.min(to, period.end) - Math.max(from, period.start)), 0);
+  return Math.max(0, to - from - breakMinutes);
+};
 const pad = n => String(n).padStart(2, "0");
 const key = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const humanTime = minutes => `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
@@ -70,7 +79,7 @@ export default function PublicTimeBlocking() {
   const blocks = data?.blocks || [];
   const groups = useMemo(() => Object.fromEntries(members.map(member => {
     const group = blocks.filter(b => b.member === member.id);
-    return [member.id, { blocks: group, positions: laneLayout(group), minutes: group.reduce((s, b) => s + b.end - b.start, 0) }];
+    return [member.id, { blocks: group, positions: laneLayout(group), minutes: group.reduce((s, b) => s + workingMinutes(b.start, b.end), 0) }];
   })), [members, blocks]);
   const titleDate = dateFromKey(date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const showAll = data?.view === "all";
@@ -121,24 +130,42 @@ export default function PublicTimeBlocking() {
                   const top = (b.start - start) / 60 * ROW_H + 2;
                   const height = Math.max(18, (b.end - b.start) / 60 * ROW_H - 4);
                   const showTime = height >= 35;
-                  const titleLines = showTime ? Math.max(1, Math.min(3, Math.floor((height - 24) / 12)))
-                    : Math.max(1, Math.min(3, Math.floor((height - 9) / 12)));
+                  const showParent = Boolean(b.parentTitle?.trim()) && height >= 50;
+                  const titleLines = showTime ? Math.max(1, Math.min(3, Math.floor((height - (showParent ? 36 : 24)) / 12)))
+                    : Math.max(1, Math.min(3, Math.floor((height - (showParent ? 21 : 9)) / 12)));
                   return <button key={b.id} type="button" onClick={() => setSelected({ ...b, memberName: member.name })}
                     aria-label={`View details for ${b.title}`} title={`View details: ${b.title}`}
                     className="text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
                     style={{
                       position: "absolute", top, height, left: `calc(${position.column * 100 / columns}% + 3px)`, width: `calc(${100 / columns}% - 6px)`,
                       border: `1.5px solid ${b.color || "#3E8ED0"}`, borderLeftWidth: 3, borderRadius: 10,
-                      background: "#1B1B22", padding: "5px 7px", overflow: "hidden", boxSizing: "border-box",
+                      background: "#1B1B22", padding: showTime ? "5px 7px" : "2px 7px", overflow: "hidden", boxSizing: "border-box",
                       pointerEvents: "auto", cursor: "pointer", color: "inherit", display: "flex", flexDirection: "column",
                     }}>
-                    <div title={b.title} style={{ color: b.color || "#8FC1FF", fontSize: 10.5, fontWeight: 700,
-                      lineHeight: "12px", display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: titleLines,
-                      overflow: "hidden", overflowWrap: "anywhere", flexShrink: 0 }}>{b.title}</div>
+                    {showParent && <div title={b.parentTitle} style={{ color: b.color || "#8FC1FF", fontSize: 9,
+                      fontWeight: 700, lineHeight: "12px", flexShrink: 0, opacity: 0.75,
+                      textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {b.parentTitle}
+                    </div>}
+                    {!showTime ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0, height: "100%" }}>
+                        <span title={b.title} style={{ color: b.color || "#8FC1FF", fontSize: 10.5, fontWeight: 700,
+                          lineHeight: "12px", flex: "1 1 auto", minWidth: 30, whiteSpace: "nowrap",
+                          overflow: "hidden", textOverflow: "ellipsis" }}>{b.title}</span>
+                        <span style={{ fontSize: 9, lineHeight: "12px", color: b.color || "#8FC1FF",
+                          opacity: 0.8, whiteSpace: "nowrap", flexShrink: 0 }}>
+                          {humanTime(b.start)}–{humanTime(b.end)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div title={b.title} style={{ color: b.color || "#8FC1FF", fontSize: 10.5, fontWeight: 700,
+                        lineHeight: "12px", display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: titleLines,
+                        overflow: "hidden", overflowWrap: "anywhere", flexShrink: 0 }}>{b.title}</div>
+                    )}
                     {showTime && <div style={{ display: "flex", minWidth: 0, marginTop: "auto", fontSize: 9.5,
                       lineHeight: "12px", color: b.color || "#8FC1FF", opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden" }}>
                       <span style={{ flexShrink: 0 }}>{humanTime(b.start)}–{humanTime(b.end)}</span>
-                      <span style={{ minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" }}> · {hours(b.end - b.start)}</span>
+                      <span style={{ minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" }}> · {hours(workingMinutes(b.start, b.end))}</span>
                     </div>}
                   </button>;
                 })}
@@ -164,7 +191,7 @@ export default function PublicTimeBlocking() {
             <div className="rounded-xl p-3" style={{ background: "#2C2932" }}><div className="text-[11px] mb-1" style={{ color: "#AAA4B3" }}>Start</div><strong>{humanTime(selected.start)}</strong></div>
             <div className="rounded-xl p-3" style={{ background: "#2C2932" }}><div className="text-[11px] mb-1" style={{ color: "#AAA4B3" }}>End</div><strong>{humanTime(selected.end)}</strong></div>
           </div>
-          <p className="text-xs" style={{ color: "#BDB7C5" }}>{titleDate} · {hours(selected.end - selected.start)} · {selected.memberName}</p>
+          <p className="text-xs" style={{ color: "#BDB7C5" }}>{titleDate} · {hours(workingMinutes(selected.start, selected.end))} · {selected.memberName}</p>
           {selected.project && <div className="text-sm"><span style={{ color: "#AAA4B3" }}>Project: </span>{selected.project}</div>}
           {selected.parentTitle && <div className="text-sm"><span style={{ color: "#AAA4B3" }}>Parent task: </span>{selected.parentTitle}</div>}
           {(selected.status || selected.priority || selected.due || selected.progress != null) && <div className="flex flex-wrap gap-2 text-xs">
