@@ -67,6 +67,8 @@ export default function TimeBlocking({ day, onDayChange }) {
   const [statusNames, setStatusNames] = useState({});   // status id → display name
   const [view, setView] = useState("all");          // "all" or a member id
   const [tab, setTab] = useState("tasks");
+  const [projects, setProjects] = useState([]);
+  const [projectDialog, setProjectDialog] = useState(null);
   const [expanded, setExpanded] = useState(new Set());
   const [picked, setPicked] = useState(null);
   const [error, setError] = useState("");
@@ -87,16 +89,19 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   const load = useCallback(async () => {
     try {
-      const [blockRes, taskRes, statusRes] = await Promise.all([
+      const [blockRes, taskRes, statusRes, projectRes] = await Promise.all([
         fetch(`/api/time-blocks?date=${key}`, { cache: "no-store" }),
         fetch("/api/tasks", { cache: "no-store" }),
         fetch("/api/statuses", { cache: "no-store" }).catch(() => null),
+        fetch("/api/projects", { cache: "no-store" }).catch(() => null),
       ]);
       const body = await blockRes.json();
       if (!blockRes.ok) throw new Error(body.error || "Unable to load the time blocks.");
       setData((d) => ({ ...d, ...body }));
       const taskBody = await taskRes.json().catch(() => ({}));
       setTasks(Array.isArray(taskBody.tasks) ? taskBody.tasks.filter((t) => !t.archived) : []);
+      const projectBody = projectRes ? await projectRes.json().catch(() => ({})) : {};
+      setProjects(Array.isArray(projectBody.projects) ? projectBody.projects : []);
       const statusBody = statusRes ? await statusRes.json().catch(() => ({})) : {};
       if (Array.isArray(statusBody.statuses)) {
         setStatusNames(Object.fromEntries(statusBody.statuses.map((s) => [s.id, s.name])));
@@ -212,7 +217,9 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   const sources = useMemo(() => {
     if (tab === "projects") {
-      const names = [...new Set(mine.map((t) => t.project).filter(Boolean))];
+      // Real projects first, plus any project my tasks mention that is not in the
+      // list yet, so a newly created one shows immediately.
+      const names = [...new Set([...projects, ...mine.map((t) => t.project).filter(Boolean)])];
       return names.map((name) => ({
         id: name, kind: "project", title: name, meta: "Project", project: name,
         color: colorFor(name), est: 60,
@@ -226,7 +233,7 @@ export default function TimeBlocking({ day, onDayChange }) {
         meta: `part of ${t.title}`, project: t.project, color: colorFor(t.project), est: 60,
       })),
     }));
-  }, [mine, tab, statusLabel]);
+  }, [mine, tab, statusLabel, projects]);
 
   /* ---- writing ---- */
   const send = async (method, payload) => {
@@ -261,6 +268,53 @@ export default function TimeBlocking({ day, onDayChange }) {
       taskDescription: "", taskStatus: "todo", taskPriority: "medium", createdTask: null,
       start, end: Math.min(DAY_END, start + Math.max(SLOT, candidate?.est || 60)), note: "",
     });
+  };
+
+  // Where a new block should start: the next free half hour from now, or the
+  // start of the day when that has passed.
+  const nextFreeSlot = () => {
+    const now = new Date();
+    const sameDay = dateKey(now) === key;
+    let start = sameDay
+      ? Math.max(DAY_START, Math.ceil((now.getHours() * 60 + now.getMinutes()) / SLOT) * SLOT)
+      : DAY_START;
+    const mineToday = blocksOf(me);
+    while (start + SLOT <= DAY_END && mineToday.some((b) => start < b.end && start + SLOT > b.start)) {
+      start += SLOT;
+    }
+    return Math.min(start, DAY_END - SLOT);
+  };
+
+  const openNewTask = (start) => {
+    if (!editable) return;
+    const at = Number.isFinite(start) ? start : nextFreeSlot();
+    setDialog({
+      mode: "add", sourceId: "new-task", title: "", project: "",
+      taskDescription: "", taskStatus: "todo", taskPriority: "medium", createdTask: null,
+      start: at, end: Math.min(DAY_END, at + 60), note: "",
+    });
+  };
+
+  const saveProject = async () => {
+    const name = String(projectDialog?.name || "").trim();
+    if (!name || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Unable to create that project.");
+      setProjects(Array.isArray(body.projects) ? body.projects : (p) => [...p, name]);
+      setProjectDialog(null);
+      setTab("projects");
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const openEdit = (b) => {
@@ -587,23 +641,78 @@ export default function TimeBlocking({ day, onDayChange }) {
               <h3 className="text-lg font-semibold">{dialog.mode === "edit" ? "Edit Time Block" : "Add Time Block"}</h3>
               <button type="button" aria-label="Close" onClick={() => setDialog(null)}><X size={18}/></button>
             </div>
-            {dialog.mode === "add" && <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
-              <span>Task or project</span>
-              <div className="relative">
-                <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border" style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                  value={dialog.sourceId} disabled={!!dialog.createdTask} onChange={e => {
-                    const src = allSources.find(s => `${s.kind}:${s.id}` === e.target.value);
-                    setDialog(d => ({ ...d, sourceId: e.target.value,
-                      title: src?.title || "", project: src?.project || "",
-                      createdTask: null }));
-                  }}>
-                  <option value="new-task">+ Create New Task (also add to Tasks page)</option>
-                  <option value="custom">Custom time block (not added to Tasks page)</option>
-                  {allSources.map(s => <option key={`${s.kind}:${s.id}`} value={`${s.kind}:${s.id}`}>{s.kind === "subtask" ? "↳ " : ""}{s.title}</option>)}
-                </select>
-                <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+            {dialog.mode === "add" && (
+              <div className="space-y-2">
+                {/* an explicit choice rather than two commands hidden at the top of a long list */}
+                <div className="flex gap-1.5">
+                  {[
+                    { id: "existing", label: "Existing work" },
+                    { id: "new-task", label: "New task" },
+                    { id: "custom", label: "Custom block" },
+                  ].map((opt) => {
+                    const on = opt.id === "existing"
+                      ? dialog.sourceId !== "new-task" && dialog.sourceId !== "custom"
+                      : dialog.sourceId === opt.id;
+                    return (
+                      <button key={opt.id} type="button" disabled={!!dialog.createdTask}
+                        onClick={() => {
+                          if (opt.id === "existing") {
+                            const first = allSources[0];
+                            setDialog(d => ({ ...d, sourceId: first ? `${first.kind}:${first.id}` : "custom",
+                              title: first?.title || "", project: first?.project || "", createdTask: null }));
+                          } else {
+                            setDialog(d => ({ ...d, sourceId: opt.id, title: "", project: "", createdTask: null }));
+                          }
+                        }}
+                        className="flex-1 rounded-xl px-2 py-2 text-xs font-semibold"
+                        style={on
+                          ? { background: ACCENT, color: "var(--on-accent)" }
+                          : { background: "var(--col)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {dialog.sourceId !== "new-task" && dialog.sourceId !== "custom" && (
+                  <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+                    <span>Task or project</span>
+                    <div className="relative">
+                      <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border"
+                        style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                        value={dialog.sourceId} onChange={e => {
+                          const src = allSources.find(s => `${s.kind}:${s.id}` === e.target.value);
+                          setDialog(d => ({ ...d, sourceId: e.target.value,
+                            title: src?.title || "", project: src?.project || "", createdTask: null }));
+                        }}>
+                        {/* grouped, so a subtask is never mistaken for a task */}
+                        <optgroup label="Tasks">
+                          {allSources.filter(x => x.kind === "task").map(x =>
+                            <option key={`task:${x.id}`} value={`task:${x.id}`}>{x.title}</option>)}
+                        </optgroup>
+                        <optgroup label="Subtasks">
+                          {allSources.filter(x => x.kind === "subtask").map(x =>
+                            <option key={`subtask:${x.id}`} value={`subtask:${x.id}`}>{x.title} — {x.parentTitle}</option>)}
+                        </optgroup>
+                        <optgroup label="Projects">
+                          {allSources.filter(x => x.kind === "project").map(x =>
+                            <option key={`project:${x.id}`} value={`project:${x.id}`}>{x.title}</option>)}
+                        </optgroup>
+                      </select>
+                      <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+                    </div>
+                  </label>
+                )}
+
+                <p className="text-xs" style={{ color: "var(--muted)" }}>
+                  {dialog.sourceId === "new-task"
+                    ? "Creates the task on the Tasks page and blocks the time for it."
+                    : dialog.sourceId === "custom"
+                      ? "Blocks the time only. Nothing is added to the Tasks page."
+                      : "Blocks time against work that already exists."}
+                </p>
               </div>
-            </label>}
+            )}
             <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
               <span>Title</span>
               <input className="w-full rounded-xl px-3 py-2 text-sm border" style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
@@ -685,6 +794,42 @@ export default function TimeBlocking({ day, onDayChange }) {
               <button type="button" disabled={!dialogValid || busy} onClick={saveDialog} className="rounded-xl px-4 py-2 text-sm font-semibold"
                 style={{ background: ACCENT, color: "var(--on-accent)", opacity: !dialogValid || busy ? .5 : 1 }}>
                 {busy ? "Saving…" : dialog.mode === "edit" ? "Save Changes" : dialog.sourceId === "new-task" ? "Create Task & Add Block" : "Add Block"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {projectDialog && editable && (
+        <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setProjectDialog(null); }}
+          style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.64)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div role="dialog" aria-modal="true" aria-label="Create project"
+            className="rounded-2xl p-5 w-full max-w-sm space-y-3"
+            style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
+            <div className="flex justify-between items-center gap-2">
+              <h3 className="text-lg font-semibold">Create Project</h3>
+              <button type="button" aria-label="Close" onClick={() => setProjectDialog(null)}><X size={18}/></button>
+            </div>
+            <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+              <span>Project name</span>
+              <input autoFocus className="w-full rounded-xl px-3 py-2 text-sm border"
+                style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                value={projectDialog.name} maxLength={60}
+                onChange={(e) => setProjectDialog({ name: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter") saveProject(); }}
+                placeholder="e.g. Quencha Zodiac Mugs" />
+            </label>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>
+              Added to the Projects page, so tasks can use it straight away.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setProjectDialog(null)} className="rounded-xl px-3 py-2 text-sm"
+                style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>Cancel</button>
+              <button type="button" disabled={busy || !projectDialog.name.trim()} onClick={saveProject}
+                className="rounded-xl px-4 py-2 text-sm font-semibold"
+                style={{ background: ACCENT, color: "var(--on-accent)", opacity: busy || !projectDialog.name.trim() ? .5 : 1 }}>
+                {busy ? "Saving…" : "Create Project"}
               </button>
             </div>
           </div>
@@ -803,6 +948,13 @@ export default function TimeBlocking({ day, onDayChange }) {
                 </button>
               ))}
             </div>
+
+            {/* same action as the Tasks page, and the label follows the tab */}
+            <button type="button" onClick={() => (tab === "tasks" ? openNewTask() : setProjectDialog({ name: "" }))}
+              className="w-full rounded-xl px-3 py-2.5 mb-2.5 text-sm font-semibold inline-flex items-center justify-center gap-2"
+              style={{ background: ACCENT, color: "var(--on-accent)" }}>
+              <Plus size={16} /> {tab === "tasks" ? "New Task" : "Create Project"}
+            </button>
 
             <div className="flex flex-col gap-1.5" style={{ maxHeight: 520, overflowY: "auto" }}>
               {sources.map((s) => (
