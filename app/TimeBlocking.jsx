@@ -315,7 +315,10 @@ export default function TimeBlocking({ day, onDayChange }) {
     if (!editable) return;
     const at = Number.isFinite(start) ? start : nextFreeSlot();
     setDialog({
-      mode: "add", sourceId: "new-task", title: "", project: "",
+      mode: "add", sourceId: "new-task", title: "",
+      // if a project is selected in the panel, start with it
+      project: picked?.kind === "project" ? picked.title : "",
+      newProject: false,
       taskDescription: "", taskStatus: "todo", taskPriority: "medium", createdTask: null,
       start: at, end: Math.min(DAY_END, at + 60), note: "",
     });
@@ -349,11 +352,18 @@ export default function TimeBlocking({ day, onDayChange }) {
       end: b.end, note: b.note || "", block: b });
   };
 
+  const projectOptions = useMemo(
+    () => [...new Set([...projects, ...tasks.map((t) => t.project).filter(Boolean)])]
+      .filter((name) => name !== "Daily Tasks").sort((a, b) => a.localeCompare(b)),
+    [projects, tasks]
+  );
+
   const allSources = sources.flatMap(s => [s, ...(s.subtasks || [])]);
   const selectedSource = dialog?.mode === "add"
     ? allSources.find(s => `${s.kind}:${s.id}` === dialog.sourceId) : null;
   const dialogValid = !!dialog && String(dialog.title || "").trim() &&
     (dialog.sourceId !== "new-subtask" || !!dialog.parentTaskId) &&
+    (!dialog.newProject || String(dialog.project || "").trim()) &&
     Number.isFinite(Number(dialog.start)) && Number.isFinite(Number(dialog.end)) &&
     Number(dialog.start) >= DAY_START && Number(dialog.end) <= DAY_END &&
     Number(dialog.end) > Number(dialog.start);
@@ -375,6 +385,16 @@ export default function TimeBlocking({ day, onDayChange }) {
         setBusy(true);
         setError("");
         try {
+          // A brand new project is registered first, so the task is not the only
+          // place it exists.
+          if (dialog.newProject && dialog.project.trim()) {
+            const made = await fetch("/api/projects", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: dialog.project.trim() }),
+            });
+            const madeBody = await made.json().catch(() => ({}));
+            if (made.ok && Array.isArray(madeBody.projects)) setProjects(madeBody.projects);
+          }
           const response = await fetch("/api/tasks", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ data: {
@@ -731,7 +751,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                             setDialog(d => ({ ...d, sourceId: "new-subtask", title: "", project: firstTask?.project || "",
                               parentTaskId: firstTask?.id || "", createdTask: null }));
                           } else {
-                            setDialog(d => ({ ...d, sourceId: opt.id, title: "", project: "", createdTask: null }));
+                            setDialog(d => ({ ...d, sourceId: opt.id, title: "", project: "", newProject: false, createdTask: null }));
                           }
                         }}
                         className="flex-1 rounded-xl px-2 py-2 text-xs font-semibold"
@@ -814,10 +834,34 @@ export default function TimeBlocking({ day, onDayChange }) {
               <div className="space-y-3">
                 <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
                   <span>Project</span>
-                  <input className="w-full rounded-xl px-3 py-2 text-sm border"
-                    style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                    value={dialog.project || ""} onChange={e => setDialog(d => ({ ...d, project: e.target.value }))}
-                    placeholder="Daily Tasks" disabled={!!dialog.createdTask}/>
+                  {/* pick one that exists, or switch the field to a new name */}
+                  <div className="relative">
+                    <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border"
+                      style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                      value={dialog.newProject ? "__new" : (dialog.project || "")}
+                      disabled={!!dialog.createdTask}
+                      onChange={(e) => {
+                        if (e.target.value === "__new") setDialog(d => ({ ...d, newProject: true, project: "" }));
+                        else setDialog(d => ({ ...d, newProject: false, project: e.target.value }));
+                      }}>
+                      <option value="">Daily Tasks</option>
+                      {projectOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+                      <option value="__new">+ New project…</option>
+                    </select>
+                    <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+                  </div>
+                  {dialog.newProject && (
+                    <input autoFocus className="w-full rounded-xl px-3 py-2 text-sm border mt-1.5"
+                      style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                      value={dialog.project || ""} maxLength={60} disabled={!!dialog.createdTask}
+                      onChange={(e) => setDialog(d => ({ ...d, project: e.target.value }))}
+                      placeholder="New project name" />
+                  )}
+                  {dialog.newProject && (
+                    <span className="block text-[11px]" style={{ color: "var(--muted)" }}>
+                      Added to the Projects page when the task is created.
+                    </span>
+                  )}
                 </label>
                 <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
                   <span>Task description (optional)</span>
