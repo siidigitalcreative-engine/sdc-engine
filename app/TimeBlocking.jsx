@@ -285,6 +285,18 @@ export default function TimeBlocking({ day, onDayChange }) {
     return Math.min(start, DAY_END - SLOT);
   };
 
+  // Straight into the new-subtask mode with the parent already chosen.
+  const openNewSubtask = (parent, start) => {
+    if (!editable) return;
+    const at = Number.isFinite(start) ? start : nextFreeSlot();
+    setDialog({
+      mode: "add", sourceId: "new-subtask", parentTaskId: parent.id,
+      title: "", project: parent.project || "",
+      taskDescription: "", taskStatus: "todo", taskPriority: "medium", createdTask: null,
+      start: at, end: Math.min(DAY_END, at + 60), note: "",
+    });
+  };
+
   const openNewTask = (start) => {
     if (!editable) return;
     const at = Number.isFinite(start) ? start : nextFreeSlot();
@@ -327,6 +339,7 @@ export default function TimeBlocking({ day, onDayChange }) {
   const selectedSource = dialog?.mode === "add"
     ? allSources.find(s => `${s.kind}:${s.id}` === dialog.sourceId) : null;
   const dialogValid = !!dialog && String(dialog.title || "").trim() &&
+    (dialog.sourceId !== "new-subtask" || !!dialog.parentTaskId) &&
     Number.isFinite(Number(dialog.start)) && Number.isFinite(Number(dialog.end)) &&
     Number(dialog.start) >= DAY_START && Number(dialog.end) <= DAY_END &&
     Number(dialog.end) > Number(dialog.start);
@@ -371,6 +384,44 @@ export default function TimeBlocking({ day, onDayChange }) {
       ok = await send("POST", { block: {
         kind: "task", refId: created.id, title: created.title,
         parentTitle: "", project: created.project,
+        color: colorFor(created.project), start, end, note: dialog.note || "",
+      } });
+    } else if (dialog.sourceId === "new-subtask") {
+      // Append to the parent task's checklist through the Tasks API, then block
+      // the new subtask. The created subtask is remembered so a failed block
+      // save cannot add it twice.
+      const parent = tasks.find((t) => t.id === dialog.parentTaskId);
+      if (!parent) { setError("Pick a parent task."); return; }
+
+      let created = dialog.createdTask;
+      if (!created) {
+        setBusy(true);
+        setError("");
+        try {
+          const subtask = {
+            id: `st-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            title: dialog.title.trim(), done: false,
+          };
+          const response = await fetch("/api/tasks", {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: parent.id, data: { subtasks: [...(parent.subtasks || []), subtask] } }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Unable to add the subtask.");
+          created = { ...subtask, parentId: parent.id, parentTitle: parent.title, project: parent.project };
+          setDialog(d => (d ? { ...d, createdTask: created } : d));
+          setTasks(Array.isArray(result.tasks) ? result.tasks.filter((t) => !t.archived) : tasks);
+        } catch (err) {
+          setError(err.message || "Unable to add the subtask.");
+          setBusy(false);
+          return;
+        }
+        setBusy(false);
+      }
+
+      ok = await send("POST", { block: {
+        kind: "subtask", refId: created.id, title: created.title,
+        parentTitle: created.parentTitle, project: created.project || "",
         color: colorFor(created.project), start, end, note: dialog.note || "",
       } });
     } else {
@@ -646,12 +697,13 @@ export default function TimeBlocking({ day, onDayChange }) {
                 {/* an explicit choice rather than two commands hidden at the top of a long list */}
                 <div className="flex gap-1.5">
                   {[
-                    { id: "existing", label: "Existing work" },
+                    { id: "existing", label: "Existing" },
                     { id: "new-task", label: "New task" },
-                    { id: "custom", label: "Custom block" },
+                    { id: "new-subtask", label: "New subtask" },
+                    { id: "custom", label: "Custom" },
                   ].map((opt) => {
                     const on = opt.id === "existing"
-                      ? dialog.sourceId !== "new-task" && dialog.sourceId !== "custom"
+                      ? !["new-task", "new-subtask", "custom"].includes(dialog.sourceId)
                       : dialog.sourceId === opt.id;
                     return (
                       <button key={opt.id} type="button" disabled={!!dialog.createdTask}
@@ -660,6 +712,10 @@ export default function TimeBlocking({ day, onDayChange }) {
                             const first = allSources[0];
                             setDialog(d => ({ ...d, sourceId: first ? `${first.kind}:${first.id}` : "custom",
                               title: first?.title || "", project: first?.project || "", createdTask: null }));
+                          } else if (opt.id === "new-subtask") {
+                            const firstTask = allSources.find(x => x.kind === "task");
+                            setDialog(d => ({ ...d, sourceId: "new-subtask", title: "", project: firstTask?.project || "",
+                              parentTaskId: firstTask?.id || "", createdTask: null }));
                           } else {
                             setDialog(d => ({ ...d, sourceId: opt.id, title: "", project: "", createdTask: null }));
                           }
@@ -674,7 +730,26 @@ export default function TimeBlocking({ day, onDayChange }) {
                   })}
                 </div>
 
-                {dialog.sourceId !== "new-task" && dialog.sourceId !== "custom" && (
+                {dialog.sourceId === "new-subtask" && (
+                  <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+                    <span>Parent task</span>
+                    <div className="relative">
+                      <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border"
+                        style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                        value={dialog.parentTaskId || ""} disabled={!!dialog.createdTask}
+                        onChange={(e) => {
+                          const parent = allSources.find(x => x.kind === "task" && x.id === e.target.value);
+                          setDialog(d => ({ ...d, parentTaskId: e.target.value, project: parent?.project || "" }));
+                        }}>
+                        {allSources.filter(x => x.kind === "task").map(x =>
+                          <option key={x.id} value={x.id}>{x.title}</option>)}
+                      </select>
+                      <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+                    </div>
+                  </label>
+                )}
+
+                {!["new-task", "new-subtask", "custom"].includes(dialog.sourceId) && (
                   <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
                     <span>Task or project</span>
                     <div className="relative">
@@ -707,9 +782,11 @@ export default function TimeBlocking({ day, onDayChange }) {
                 <p className="text-xs" style={{ color: "var(--muted)" }}>
                   {dialog.sourceId === "new-task"
                     ? "Creates the task on the Tasks page and blocks the time for it."
-                    : dialog.sourceId === "custom"
-                      ? "Blocks the time only. Nothing is added to the Tasks page."
-                      : "Blocks time against work that already exists."}
+                    : dialog.sourceId === "new-subtask"
+                      ? "Adds the subtask to that task's checklist and blocks the time for it."
+                      : dialog.sourceId === "custom"
+                        ? "Blocks the time only. Nothing is added to the Tasks page."
+                        : "Blocks time against work that already exists."}
                 </p>
               </div>
             )}
@@ -793,7 +870,11 @@ export default function TimeBlocking({ day, onDayChange }) {
               <button type="button" onClick={() => setDialog(null)} className="rounded-xl px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>Cancel</button>
               <button type="button" disabled={!dialogValid || busy} onClick={saveDialog} className="rounded-xl px-4 py-2 text-sm font-semibold"
                 style={{ background: ACCENT, color: "var(--on-accent)", opacity: !dialogValid || busy ? .5 : 1 }}>
-                {busy ? "Saving…" : dialog.mode === "edit" ? "Save Changes" : dialog.sourceId === "new-task" ? "Create Task & Add Block" : "Add Block"}
+                {busy ? "Saving…"
+                  : dialog.mode === "edit" ? "Save Changes"
+                  : dialog.sourceId === "new-task" ? "Create Task & Add Block"
+                  : dialog.sourceId === "new-subtask" ? "Add Subtask & Block"
+                  : "Add Block"}
               </button>
             </div>
           </div>
@@ -960,17 +1041,26 @@ export default function TimeBlocking({ day, onDayChange }) {
               {sources.map((s) => (
                 <div key={s.id}>
                   <SourceRow s={s} picked={picked} onPick={setPicked} onDragPick={startCardDrag} onDragStop={stopCardDrag} />
-                  {s.subtasks?.length > 0 && (
-                    <button onClick={() => setExpanded((prev) => {
-                        const next = new Set(prev);
-                        next.has(s.id) ? next.delete(s.id) : next.add(s.id);
-                        return next;
-                      })}
-                      className="flex items-center gap-1 text-[10.5px] font-semibold ml-4 mt-1"
-                      style={{ color: "var(--muted)" }}>
-                      {expanded.has(s.id) ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                      {expanded.has(s.id) ? "Hide" : "Show"} {s.subtasks.length} subtask{s.subtasks.length === 1 ? "" : "s"}
-                    </button>
+                  {s.kind === "task" && (
+                    <div className="flex items-center gap-3 ml-4 mt-1">
+                      {s.subtasks?.length > 0 && (
+                        <button onClick={() => setExpanded((prev) => {
+                            const next = new Set(prev);
+                            next.has(s.id) ? next.delete(s.id) : next.add(s.id);
+                            return next;
+                          })}
+                          className="flex items-center gap-1 text-[10.5px] font-semibold"
+                          style={{ color: "var(--muted)" }}>
+                          {expanded.has(s.id) ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                          {expanded.has(s.id) ? "Hide" : "Show"} {s.subtasks.length} subtask{s.subtasks.length === 1 ? "" : "s"}
+                        </button>
+                      )}
+                      <button onClick={() => openNewSubtask(s)}
+                        className="flex items-center gap-1 text-[10.5px] font-semibold"
+                        style={{ color: "var(--text-2)" }}>
+                        <Plus size={11} /> Subtask
+                      </button>
+                    </div>
                   )}
                   {expanded.has(s.id) && s.subtasks.map((st) => (
                     <div key={st.id} className="ml-4 mt-1.5"><SourceRow s={st} picked={picked} onPick={setPicked} onDragPick={startCardDrag} onDragStop={stopCardDrag} sub /></div>
