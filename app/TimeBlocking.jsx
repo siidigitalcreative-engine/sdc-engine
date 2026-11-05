@@ -74,6 +74,7 @@ export default function TimeBlocking({ day, onDayChange }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const dragRef = useRef(null);
+  const writeSeq = useRef(0);
   const suppressBlockClick = useRef(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareSettings, setShareSettings] = useState({ enabled: false, view: "all", token: "" });
@@ -88,6 +89,7 @@ export default function TimeBlocking({ day, onDayChange }) {
   const me = currentMember?.id;
 
   const load = useCallback(async () => {
+    const seq = writeSeq.current;
     try {
       const [blockRes, taskRes, statusRes, projectRes] = await Promise.all([
         fetch(`/api/time-blocks?date=${key}`, { cache: "no-store" }),
@@ -97,6 +99,9 @@ export default function TimeBlocking({ day, onDayChange }) {
       ]);
       const body = await blockRes.json();
       if (!blockRes.ok) throw new Error(body.error || "Unable to load the time blocks.");
+      // A refetch that started before a write finished, or that lands while a
+      // block is being dragged, must not undo what is on screen.
+      if (seq !== writeSeq.current || dragRef.current) return;
       setData((d) => ({ ...d, ...body }));
       const taskBody = await taskRes.json().catch(() => ({}));
       setTasks(Array.isArray(taskBody.tasks) ? taskBody.tasks.filter((t) => !t.archived) : []);
@@ -236,6 +241,10 @@ export default function TimeBlocking({ day, onDayChange }) {
   }, [mine, tab, statusLabel, projects]);
 
   /* ---- writing ---- */
+  /* Writing used to refetch the whole day, which threw away the optimistic
+     position and showed the old one until the next load caught up. The write
+     response already carries the saved blocks, so use that and only refetch
+     when something actually failed. */
   const send = async (method, payload) => {
     setBusy(true);
     setError("");
@@ -246,11 +255,16 @@ export default function TimeBlocking({ day, onDayChange }) {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || "That did not save.");
-      await load();
+      if (Array.isArray(body.blocks)) {
+        writeSeq.current += 1;                 // anything still in flight is now stale
+        setData((d) => ({ ...d, blocks: body.blocks }));
+      } else {
+        await load();
+      }
       return true;
     } catch (e) {
       setError(e.message);
-      await load();
+      await load();                            // put the board back to the truth
       return false;
     } finally {
       setBusy(false);
