@@ -251,7 +251,11 @@ export default function TimeBlocking({ day, onDayChange }) {
     try {
       const res = await fetch("/api/time-blocks", {
         method, headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, date: key }),
+        body: JSON.stringify({
+          ...payload,
+          date: key,
+          ...(payload.block ? { block: { ...payload.block, date: key } } : {}),
+        }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || "That did not save.");
@@ -302,6 +306,7 @@ export default function TimeBlocking({ day, onDayChange }) {
   // Straight into the new-subtask mode with the parent already chosen.
   const openNewSubtask = (parent, start) => {
     if (!editable) return;
+    setError("");
     const at = Number.isFinite(start) ? start : nextFreeSlot();
     setDialog({
       mode: "add", sourceId: "new-subtask", parentTaskId: parent.id,
@@ -313,6 +318,7 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   const openNewTask = (start) => {
     if (!editable) return;
+    setError("");
     const at = Number.isFinite(start) ? start : nextFreeSlot();
     setDialog({
       mode: "add", sourceId: "new-task", title: "",
@@ -921,6 +927,7 @@ export default function TimeBlocking({ day, onDayChange }) {
               Multiple time blocks may overlap. Editing here changes only this timeline block, not the original task record.
             </p>
             {!dialogValid && <p className="text-xs" style={{ color: "#E5536E" }}>Enter a title and valid times within the workday, with end after start.</p>}
+            {error && <p className="text-xs" style={{ color: "#E5536E" }}>{error}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               {dialog.mode === "edit" && <button type="button" onClick={() => openAdd(dialog.start)}
                 className="rounded-xl px-3 py-2 text-xs font-semibold inline-flex items-center gap-1"
