@@ -76,8 +76,10 @@ export async function POST(request) {
     const actor = await getAuthenticatedMember(request);
     if (!actor) return json({ error: "Unauthorized." }, 401);
     const body = await request.json();
+    // The client sends the date alongside the block, so merge it in rather than
+    // letting the store reject a block that looks dateless.
     const date = body.block?.date || body.date || "";
-    const result = await addBlock(actor.id, body.block || {});
+    const result = await addBlock(actor.id, { ...(body.block || {}), date });
     return json({ blocks: await visibleForDate(actor, request, result.state, date) }, 201);
   } catch (error) {
     return json({ error: error.message || "Unable to add that block." }, 400);
