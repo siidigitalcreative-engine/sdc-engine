@@ -63,13 +63,22 @@ export async function GET(request) {
   }
 }
 
+// Write responses are what the board renders next, so they are filtered the
+// same way GET is: this date, and only the members this viewer can see.
+async function visibleForDate(actor, request, state, date) {
+  const scope = await visibleMembers(actor, request);
+  const ids = new Set(scope.members.map((m) => m.id));
+  return state.blocks.filter((b) => b.date === date && ids.has(b.member));
+}
+
 export async function POST(request) {
   try {
     const actor = await getAuthenticatedMember(request);
     if (!actor) return json({ error: "Unauthorized." }, 401);
     const body = await request.json();
+    const date = body.block?.date || body.date || "";
     const result = await addBlock(actor.id, body.block || {});
-    return json({ blocks: result.state.blocks.filter((b) => b.date === (body.block?.date || "")) }, 201);
+    return json({ blocks: await visibleForDate(actor, request, result.state, date) }, 201);
   } catch (error) {
     return json({ error: error.message || "Unable to add that block." }, 400);
   }
@@ -81,7 +90,7 @@ export async function PATCH(request) {
     if (!actor) return json({ error: "Unauthorized." }, 401);
     const body = await request.json();
     const result = await moveBlock(actor.id, body.id, body);
-    return json({ blocks: result.state.blocks.filter((b) => b.date === body.date) });
+    return json({ blocks: await visibleForDate(actor, request, result.state, body.date) });
   } catch (error) {
     return json({ error: error.message || "Unable to move that block." }, 400);
   }
@@ -95,7 +104,7 @@ export async function DELETE(request) {
     const result = body.all
       ? await clearDay(actor.id, body.date)
       : await removeBlock(actor.id, body.id);
-    return json({ blocks: result.state.blocks.filter((b) => b.date === body.date) });
+    return json({ blocks: await visibleForDate(actor, request, result.state, body.date) });
   } catch (error) {
     return json({ error: error.message || "Unable to remove that block." }, 400);
   }
