@@ -751,7 +751,8 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
     task: { title: f.title || "Untitled task", project: f.project || "", status: f.status },
     siblings: subtasks.map((x) => ({ id: x.id, title: x.title, status: x.status || (x.done ? "done" : "todo") })),
     statusNames: Object.fromEntries(statuses.map((x) => [x.id, x.name])),
-    assignee: (f.assignees || []).map((ref) => memberByRef[ref]?.name).filter(Boolean).join(", "),
+    assignees: (f.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean)
+      .map((m) => ({ i: m.i, name: m.name, c: m.c })),
     footer: new Date().toLocaleDateString("default", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
   });
 
