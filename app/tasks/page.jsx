@@ -11,7 +11,7 @@ import { useLarkSend } from "../LarkSend";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, X, Search, Paperclip, Clock, Flag, Trash2, Tag, Sparkles, List, MoreHorizontal,
-  Moon, Sun, ChevronDown, Archive, Check, CheckCircle2,
+  Moon, Sun, ChevronDown, Archive, Check, CheckCircle2, Download, Send,
 } from "lucide-react";
 
 /* ---------- theme ---------- */
@@ -733,7 +733,53 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
     setForm({ subtasks: [...subtasks, { id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title, done: false }] });
     setSubDraft("");
   };
-  const toggleSubtask = (id) => setForm({ subtasks: subtasks.map((s) => (s.id === id ? { ...s, done: !s.done } : s)) });
+  const toggleSubtask = (id) => setForm({
+    subtasks: subtasks.map((s) => (s.id === id
+      ? { ...s, done: !s.done, status: !s.done ? "done" : (s.status === "done" || !s.status ? "inprogress" : s.status) }
+      : s)),
+  });
+  const setSubtaskStatus = (id, status) => setForm({
+    subtasks: subtasks.map((s) => (s.id === id ? { ...s, status, done: status === "done" } : s)),
+  });
+  const setSubtaskDue = (id, due) => setForm({
+    subtasks: subtasks.map((s) => (s.id === id ? { ...s, due } : s)),
+  });
+
+  // What one subtask's PNG is built from: itself, its parent and its siblings.
+  const subtaskPayload = (s) => ({
+    subtask: { id: s.id, title: s.title, status: s.status || (s.done ? "done" : "todo"), due: s.due || "", note: "" },
+    task: { title: f.title || "Untitled task", project: f.project || "", status: f.status },
+    siblings: subtasks.map((x) => ({ id: x.id, title: x.title, status: x.status || (x.done ? "done" : "todo") })),
+    statusNames: Object.fromEntries(statuses.map((x) => [x.id, x.name])),
+    assignee: (f.assignees || []).map((ref) => memberByRef[ref]?.name).filter(Boolean).join(", "),
+    footer: new Date().toLocaleDateString("default", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+  });
+
+  const exportSubtaskPng = async (s) => {
+    setTaskImgMsg("");
+    try {
+      const res = await fetch("/api/subtask-image", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subtaskPayload(s)),
+      });
+      if (!res.ok) throw new Error("Unable to render that subtask.");
+      const url = URL.createObjectURL(await res.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `subtask-${String(s.title || "subtask").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setTaskImgMsg(e.message || "Export failed.");
+    }
+  };
+
+  const sendSubtaskToLark = (s) => {
+    setTaskImgMsg("");
+    onSendToLark("/api/lark/subtask-image", subtaskPayload(s), { label: `the subtask “${s.title}”` });
+  };
   const deleteSubtask = (id) => setForm({ subtasks: subtasks.filter((s) => s.id !== id) });
   const subDone = subtasks.filter((s) => s.done).length;
   const [projDraft, setProjDraft] = useState("");
@@ -982,15 +1028,36 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
           <Labeled label={`Subtasks${subtasks.length ? ` · ${subDone}/${subtasks.length}` : ""}`}>
             {subtasks.length > 0 && (
               <div className="space-y-1 mb-1.5">
-                {subtasks.map((s) => (
-                  <div key={s.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--col)" }}>
-                    <button type="button" onClick={() => toggleSubtask(s.id)} className="shrink-0 flex items-center justify-center rounded" style={{ width: 16, height: 16, border: `1.5px solid ${s.done ? "#3FA37A" : "var(--border)"}`, background: s.done ? "#3FA37A" : "transparent", color: "#fff" }}>
-                      {s.done ? <Check size={11} /> : null}
-                    </button>
-                    <span className="flex-1 min-w-0 truncate" style={{ color: s.done ? "var(--faint)" : "var(--text)", textDecoration: s.done ? "line-through" : "none" }}>{s.title}</span>
-                    <button type="button" onClick={() => deleteSubtask(s.id)} style={{ color: "var(--faint)" }}><X size={13} /></button>
-                  </div>
-                ))}
+                {subtasks.map((s) => {
+                  const st = statuses.find((x) => x.id === (s.status || (s.done ? "done" : "todo")))
+                    || { id: "todo", name: "To Do", color: "#8E8A96", soft: "#ECEBEE" };
+                  return (
+                    <div key={s.id} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--col)" }}>
+                      <button type="button" onClick={() => toggleSubtask(s.id)} className="shrink-0 flex items-center justify-center rounded" style={{ width: 16, height: 16, border: `1.5px solid ${s.done ? "#3FA37A" : "var(--border)"}`, background: s.done ? "#3FA37A" : "transparent", color: "#fff" }}>
+                        {s.done ? <Check size={11} /> : null}
+                      </button>
+                      <span className="flex-1 min-w-0 truncate" style={{ color: s.done ? "var(--faint)" : "var(--text)", textDecoration: s.done ? "line-through" : "none" }}>{s.title}</span>
+
+                      {/* its own status, from the same list the task uses */}
+                      <select value={st.id} onChange={(e) => setSubtaskStatus(s.id, e.target.value)}
+                        className="shrink-0 rounded-full text-xs font-semibold outline-none appearance-none text-center"
+                        style={{ background: st.soft, color: st.color, border: "none", padding: "3px 8px", maxWidth: 108 }}>
+                        {statuses.map((x) => <option key={x.id} value={x.id} style={{ background: "var(--card)", color: "var(--text)" }}>{x.name}</option>)}
+                      </select>
+
+                      <input type="date" value={s.due || ""} onChange={(e) => setSubtaskDue(s.id, e.target.value)}
+                        title="Subtask due date"
+                        className="shrink-0 rounded-lg text-xs outline-none"
+                        style={{ background: "var(--card)", border: "1px solid var(--border)", color: s.due ? "var(--text-2)" : "var(--faint)", padding: "3px 6px", width: 124 }} />
+
+                      <button type="button" title="Export this subtask as PNG" onClick={() => exportSubtaskPng(s)}
+                        className="shrink-0" style={{ color: "var(--faint)" }}><Download size={13} /></button>
+                      <button type="button" title="Send this subtask to Lark" onClick={() => sendSubtaskToLark(s)}
+                        className="shrink-0" style={{ color: "var(--faint)" }}><Send size={13} /></button>
+                      <button type="button" onClick={() => deleteSubtask(s.id)} style={{ color: "var(--faint)" }}><X size={13} /></button>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div className="flex gap-1.5">
