@@ -1,244 +1,167 @@
-import "server-only";
+/* Renders one subtask as a PNG in the same format as the task export: gradient
+   header, white body, labelled blocks. Satori has no CSS grid, so every row
+   here is flex. */
 
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
-import { randomUUID } from "node:crypto";
-
-const PATHNAME = "sdc/tasks.json";
-
-const pad = (n) => String(n).padStart(2, "0");
-const dateOffset = (days) => {
-  const date = new Date();
-  date.setUTCHours(0, 0, 0, 0);
-  date.setUTCDate(date.getUTCDate() + days);
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtDate = (v) => {
+  const s = String(v || "");
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}`;
+  const d = new Date(s);
+  return isNaN(d) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 };
 
-const DEFAULT_TASKS = [
-  { id: "seed-1", title: "Wireframe Quencha PDP", project: "Quencha", desc: "Two-column layout with sticky add-to-cart", status: "inprogress", priority: "high", assignees: ["cn"], start: dateOffset(-1), due: dateOffset(2), time: "", tags: ["web", "ux"], attachments: [{ name: "pdp-wireframe.fig", size: 2415000 }], progress: 45 },
-  { id: "seed-2", title: "Update brand colors — CRYSALIS", project: "CRYSALIS", desc: "Apply rebrand palette across the catalog", status: "todo", priority: "medium", assignees: [], start: dateOffset(0), due: dateOffset(4), time: "", tags: ["brand"], attachments: [], progress: 0 },
-  { id: "seed-3", title: "Checkout flow redesign", project: "Website Revamp", desc: "Reduce checkout from 4 steps to 2", status: "inreview", priority: "high", assignees: ["cn", "jl", "sp"], start: dateOffset(-4), due: dateOffset(1), time: "14:00", tags: ["web", "cro"], attachments: [{ name: "flow.pdf", size: 530000 }, { name: "specs.docx", size: 82000 }], progress: 85 },
-  { id: "seed-4", title: "Reel edits — FITSPIRE", project: "FITSPIRE", desc: "Three reels for launch week", status: "done", priority: "low", assignees: ["sp"], start: dateOffset(-6), due: dateOffset(-2), time: "", tags: ["content"], attachments: [], progress: 100 },
-  { id: "seed-5", title: "Email template QA", project: "Daily Tasks", desc: "Check rendering in Outlook and mobile", status: "inreview", priority: "medium", assignees: [], start: dateOffset(-2), due: dateOffset(0), time: "", tags: ["email", "qa"], attachments: [], progress: 80 },
-  { id: "seed-6", title: "Product shoot — SCRUBZ", project: "SCRUBZ", desc: "Studio booking and shot list", status: "todo", priority: "medium", assignees: ["sp"], start: dateOffset(1), due: dateOffset(5), time: "09:00", tags: ["shoot"], attachments: [], progress: 0 },
-  { id: "seed-7", title: "Design system audit", project: "Sunbeams Lifestyle", desc: "Consolidate button and form tokens", status: "inprogress", priority: "medium", assignees: ["cn"], start: dateOffset(-3), due: dateOffset(3), time: "", tags: ["design", "system"], attachments: [{ name: "audit.xlsx", size: 120000 }], progress: 50 },
-  { id: "seed-8", title: "Fix nav overflow bug", project: "Website Revamp", desc: "Mobile menu clips on iOS Safari", status: "todo", priority: "high", assignees: ["jl"], start: dateOffset(-2), due: dateOffset(-1), time: "", tags: ["bug", "web"], attachments: [], progress: 0 },
-  { id: "seed-9", title: "Landing hero animation", project: "PRIMEO", desc: "Subtle parallax on scroll", status: "inprogress", priority: "low", assignees: ["cn"], start: dateOffset(0), due: dateOffset(6), time: "", tags: ["web", "motion"], attachments: [], progress: 35 },
-  { id: "seed-10", title: "Publish blog — Nest Design Lab", project: "Nest Design Lab", desc: "SEO pass and hero image", status: "done", priority: "low", assignees: [], start: dateOffset(-8), due: dateOffset(-5), time: "", tags: ["content", "seo"], attachments: [], progress: 100 },
-];
-
-const cleanDate = (value) => {
-  const text = String(value || "").trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
+const STATUS_COLORS = {
+  todo: "#8E8A96", inprogress: "#3E8ED0", inreview: "#E0A93C",
+  revision: "#7C5CD8", onhold: "#E5536E", done: "#3FA37A",
 };
+const statusColor = (id) => STATUS_COLORS[String(id || "").toLowerCase()] || "#8E8A96";
 
-// A subtask carries its own status and due date. The done flag stays in step
-// with the status, because the cards, progress bars and the Monday archive all
-// read done, and two sources of truth would drift.
-const cleanSubtasks = (items) => (
-  Array.isArray(items)
-    ? items
-        .map((s) => {
-          const status = String(s?.status || "").trim();
-          const done = status ? status === "done" : Boolean(s?.done);
-          const due = String(s?.due || "").trim();
-          return {
-            id: String(s?.id || `st-${randomUUID()}`),
-            title: String(s?.title || "").trim().slice(0, 200),
-            done,
-            status: status || (done ? "done" : "todo"),
-            due: /^\d{4}-\d{2}-\d{2}$/.test(due) ? due : "",
-          };
-        })
-        .filter((s) => s.title)
-        .slice(0, 100)
-    : []
-);
+const W = 760, PAD = 40;
 
-const cleanAttachments = (items) => (
-  Array.isArray(items)
-    ? items
-        .filter((item) => !item?.uploading)
-        .map((item) => {
-          const out = {
-            name: String(item?.name || "Attachment").slice(0, 255),
-            size: Math.max(0, Number(item?.size) || 0),
-          };
-          if (item?.url) out.url = String(item.url);
-          if (item?.contentType) out.contentType = String(item.contentType);
-          return out;
-        })
-    : []
-);
+export function buildSubtaskImage(payload = {}) {
+  const sub = payload.subtask || {};
+  const task = payload.task || {};
+  const siblings = Array.isArray(payload.siblings) ? payload.siblings.slice(0, 20) : [];
+  const names = payload.statusNames || {};
+  const label = (id) => names[id] || String(id || "To Do");
 
-function normalizeTask(task = {}) {
-  const progress = task.progress == null || task.progress === ""
-    ? undefined
-    : Math.min(100, Math.max(0, Number(task.progress) || 0));
+  const title = String(sub.title || "Untitled subtask").slice(0, 120);
+  const parent = String(task.title || "").slice(0, 70);
+  const note = String(sub.note || "").slice(0, 400);
+  const assignees = Array.isArray(payload.assignees) ? payload.assignees.slice(0, 8) : [];
+  const doneCount = siblings.filter((s) => s.status === "done").length;
 
-  const statusRaw = String(task.status || "").trim();
-  const status = /^[a-z0-9][a-z0-9_-]*$/i.test(statusRaw) ? statusRaw : "todo";
+  const subStatus = sub.status || "todo";
+  const overdue = !!sub.due && subStatus !== "done" && new Date(sub.due) < new Date(new Date().toDateString());
 
-  return {
-    id: String(task.id || `task-${randomUUID()}`),
-    title: String(task.title || "Untitled task").trim() || "Untitled task",
-    project: String(task.project || "Daily Tasks"),
-    department: String(task.department || "sdc").trim() || "sdc",
-    desc: String(task.desc || ""),
-    notes: String(task.notes || ""),
-    status,
-    priority: ["low", "medium", "high"].includes(task.priority) ? task.priority : "medium",
-    assignees: [...new Set(Array.isArray(task.assignees) ? task.assignees.map(String).filter(Boolean) : [])],
-    start: cleanDate(task.start),
-    due: cleanDate(task.due),
-    time: /^\d{2}:\d{2}$/.test(String(task.time || "")) ? String(task.time) : "",
-    tags: [...new Set(Array.isArray(task.tags) ? task.tags.map((tag) => String(tag).trim()).filter(Boolean) : [])],
-    attachments: cleanAttachments(task.attachments),
-    subtasks: cleanSubtasks(task.subtasks),
-    ...(progress == null ? {} : { progress }),
-    ...(task.larkRecordId ? { larkRecordId: String(task.larkRecordId) } : {}),
-    ...(task.doneAt ? { doneAt: Number(task.doneAt) } : {}),
-    ...(task.archived ? { archived: true } : {}),
-  };
-}
+  const titleLines = Math.max(1, Math.min(3, Math.ceil(title.length / 30)));
+  const noteLines = note ? Math.min(8, Math.ceil(note.length / 78)) : 0;
 
-function makeInitialState() {
-  return {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    tasks: DEFAULT_TASKS.map(normalizeTask),
-  };
-}
+  const HEAD = 96 + titleLines * 40;
+  let bodyH = 24;
+  bodyH += 34 + 22;                              // status row
+  bodyH += 52;                                   // parent task block
+  bodyH += 58;                                   // due / parent status / progress
+  if (noteLines) bodyH += 26 + noteLines * 22 + 8;
+  if (siblings.length) bodyH += 30 + siblings.length * 26 + 6;
+  if (assignees.length) bodyH += 30 + 46;
+  bodyH += 28;
+  const H = HEAD + bodyH;
 
-async function parseResult(result) {
-  if (!result?.stream) return null;
-  const text = await new Response(result.stream).text();
-  const parsed = JSON.parse(text);
-  return {
-    version: 1,
-    updatedAt: parsed.updatedAt || new Date().toISOString(),
-    tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map(normalizeTask) : [],
-  };
-}
+  const metaBlock = (label_, value, strong) => (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+      <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0" }}>{label_}</div>
+      <div style={{ display: "flex", fontSize: 15, fontWeight: 600, color: strong ? "#E5536E" : "#2A2E38", marginTop: 4 }}>{value}</div>
+    </div>
+  );
 
-async function createInitialBlob() {
-  const state = makeInitialState();
-  const blob = await put(PATHNAME, JSON.stringify(state), {
-    access: "private",
-    contentType: "application/json",
-    allowOverwrite: true,
-    addRandomSuffix: false,
-    cacheControlMaxAge: 60,
-  });
-  return { state, etag: blob.etag };
-}
+  const element = (
+    <div style={{ width: W, height: H, display: "flex", flexDirection: "column",
+      backgroundColor: "#FFFFFF", fontFamily: "Inter, sans-serif" }}>
 
-export async function readTasksState({ ifNoneMatch } = {}) {
-  const result = await get(PATHNAME, {
-    access: "private",
-    useCache: false,
-    ifNoneMatch: ifNoneMatch || undefined,
-  });
+      {/* header */}
+      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: HEAD,
+        paddingLeft: PAD, paddingRight: PAD, background: "linear-gradient(135deg, #FFAA62 0%, #E53E30 100%)" }}>
+        <div style={{ display: "flex", fontSize: 14, letterSpacing: 2, color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>
+          SDC SUBTASK
+        </div>
+        <div style={{ display: "flex", fontSize: 32, color: "#ffffff", fontWeight: 700, marginTop: 6, lineHeight: 1.2 }}>
+          {title}
+        </div>
+      </div>
 
-  if (!result) return createInitialBlob();
-  if (result.statusCode === 304) return { notModified: true, etag: result.blob.etag };
+      {/* body */}
+      <div style={{ display: "flex", flexDirection: "column", flexGrow: 1,
+        paddingLeft: PAD, paddingRight: PAD, paddingTop: 24 }}>
 
-  const state = await parseResult(result);
-  if (!state) return createInitialBlob();
-  return { state, etag: result.blob.etag, notModified: false };
-}
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", height: 30, paddingLeft: 12, paddingRight: 12,
+            borderRadius: 15, backgroundColor: statusColor(subStatus) }}>
+            <div style={{ display: "flex", fontSize: 13, fontWeight: 700, color: "#ffffff" }}>{label(subStatus)}</div>
+          </div>
+          {task.project ? (
+            <div style={{ display: "flex", alignItems: "center", height: 30, paddingLeft: 12, paddingRight: 12,
+              borderRadius: 15, backgroundColor: "#F1F2F5", marginLeft: 10 }}>
+              <div style={{ display: "flex", fontSize: 13, fontWeight: 700, color: "#6E6A76" }}>
+                {String(task.project).slice(0, 40)}
+              </div>
+            </div>
+          ) : null}
+        </div>
 
-function isEtagConflict(error) {
-  return error instanceof BlobPreconditionFailedError ||
-    error?.name === "BlobPreconditionFailedError" ||
-    /precondition failed|etag mismatch/i.test(String(error?.message || ""));
-}
+        <div style={{ display: "flex", flexDirection: "column", marginBottom: 18 }}>
+          <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0" }}>PART OF</div>
+          <div style={{ display: "flex", fontSize: 17, fontWeight: 700, color: "#1F2430", marginTop: 4 }}>
+            {parent || "—"}
+          </div>
+        </div>
 
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        <div style={{ display: "flex", marginBottom: 18 }}>
+          {metaBlock("DUE", sub.due ? fmtDate(sub.due) : "—", overdue)}
+          {metaBlock("PARENT STATUS", label(task.status))}
+          {metaBlock("PARENT PROGRESS", siblings.length ? `${doneCount}/${siblings.length} done` : "—")}
+        </div>
 
-export async function mutateTasks(mutator, maxAttempts = 12) {
-  let lastError;
+        {noteLines ? (
+          <div style={{ display: "flex", flexDirection: "column", marginBottom: 20 }}>
+            <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0", marginBottom: 6 }}>NOTE</div>
+            <div style={{ display: "flex", fontSize: 15, color: "#4A4753", lineHeight: 1.45 }}>{note}</div>
+          </div>
+        ) : null}
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const current = await readTasksState();
-    const nextTasks = await mutator(current.state.tasks.map((task) => ({
-      ...task,
-      assignees: [...task.assignees],
-      tags: [...task.tags],
-      attachments: task.attachments.map((attachment) => ({ ...attachment })),
-    })));
-    const nextState = {
-      version: 1,
-      updatedAt: new Date().toISOString(),
-      tasks: nextTasks.map(normalizeTask),
-    };
+        {siblings.length ? (
+          <div style={{ display: "flex", flexDirection: "column", marginBottom: 20 }}>
+            <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0", marginBottom: 8 }}>
+              SUBTASKS · {doneCount}/{siblings.length}
+            </div>
+            {siblings.map((s, i) => {
+              const isDone = s.status === "done";
+              const mine = s.id && s.id === sub.id;
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 16, height: 16,
+                    borderRadius: 4, marginRight: 10, backgroundColor: isDone ? "#3FA37A" : "#ffffff",
+                    border: isDone ? "1px solid #3FA37A" : "1.5px solid #C9CBD2" }}>
+                    {isDone ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24">
+                        <polyline points="20 6 9 17 4 12" fill="none" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : null}
+                  </div>
+                  <div style={{ display: "flex", fontSize: 14, fontWeight: mine ? 700 : 400,
+                    color: isDone ? "#AEB1BA" : "#3A3743", textDecoration: isDone ? "line-through" : "none" }}>
+                    {String(s.title || "").slice(0, 60)}
+                  </div>
+                  <div style={{ display: "flex", marginLeft: "auto", fontSize: 12.5, fontWeight: 700,
+                    color: statusColor(s.status) }}>{label(s.status)}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
 
-    try {
-      const blob = await put(PATHNAME, JSON.stringify(nextState), {
-        access: "private",
-        contentType: "application/json",
-        allowOverwrite: true,
-        addRandomSuffix: false,
-        cacheControlMaxAge: 60,
-        ifMatch: current.etag,
-      });
-      return { state: nextState, etag: blob.etag };
-    } catch (error) {
-      if (!isEtagConflict(error)) throw error;
-      lastError = error;
-      await wait(25 * (attempt + 1));
-    }
-  }
+        {assignees.length ? (
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", fontSize: 11, letterSpacing: 1, fontWeight: 700, color: "#A2A6B0", marginBottom: 8 }}>ASSIGNEES</div>
+            <div style={{ display: "flex", flexWrap: "wrap" }}>
+              {assignees.map((a, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", marginRight: 16, marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30,
+                    borderRadius: 15, backgroundColor: a.c || "#9A9CA6", marginRight: 8 }}>
+                    <div style={{ display: "flex", fontSize: 12, fontWeight: 700, color: "#ffffff" }}>{a.i}</div>
+                  </div>
+                  <div style={{ display: "flex", fontSize: 14, fontWeight: 600, color: "#3A3743" }}>
+                    {String(a.name || a.i || "").slice(0, 24)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 
-  const latest = await readTasksState();
-  const finalTasks = await mutator(latest.state.tasks.map((task) => ({
-    ...task,
-    assignees: [...task.assignees],
-    tags: [...task.tags],
-    attachments: task.attachments.map((attachment) => ({ ...attachment })),
-  })));
-  const finalState = {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    tasks: finalTasks.map(normalizeTask),
-  };
-
-  try {
-    const blob = await put(PATHNAME, JSON.stringify(finalState), {
-      access: "private",
-      contentType: "application/json",
-      allowOverwrite: true,
-      addRandomSuffix: false,
-      cacheControlMaxAge: 60,
-    });
-    return { state: finalState, etag: blob.etag };
-  } catch (error) {
-    throw lastError || error;
-  }
-}
-
-// A completion date typed in by hand: must be a real past (or today) time.
-function validDoneAt(value) {
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 946684800000 && n <= Date.now() + 86400000 ? n : null;
-}
-
-export function createTask(data = {}) {
-  const task = { ...data, id: `task-${randomUUID()}` };
-  const chosen = validDoneAt(task.doneAt);
-  if (task.status === "done") task.doneAt = chosen ?? Date.now();
-  else delete task.doneAt;
-  return normalizeTask(task);
-}
-
-export function updateTask(existing, data = {}) {
-  if (!existing) throw new Error("Task not found.");
-  const merged = { ...existing, ...data, id: existing.id };
-  const wasDone = existing.status === "done";
-  const isDone = merged.status === "done";
-  const chosen = validDoneAt(data.doneAt);              // a date set by hand wins
-  if (!isDone) delete merged.doneAt;                    // reopened → clear
-  else if (chosen != null) merged.doneAt = chosen;
-  else if (!wasDone) merged.doneAt = Date.now();        // just completed → stamp now
-  // if it was and still is done, keep the original doneAt
-  return normalizeTask(merged);
+  return { element, width: W, height: H };
 }
