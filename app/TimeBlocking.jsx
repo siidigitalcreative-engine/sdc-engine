@@ -678,7 +678,9 @@ export default function TimeBlocking({ day, onDayChange }) {
         )}
         {showParent && (
           <div style={{ fontSize: 9, fontWeight: 700, lineHeight: "12px", letterSpacing: ".03em",
-            textTransform: "uppercase", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}>
+            textTransform: "uppercase", opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0,
+            // keep clear of the floating remove button
+            paddingRight: interactive && showTime ? 18 : 0 }}>
             {b.parentTitle}
           </div>
         )}
@@ -698,6 +700,8 @@ export default function TimeBlocking({ day, onDayChange }) {
           <div title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
             display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: titleLines,
             overflow: "hidden", overflowWrap: "anywhere", flexShrink: 0,
+            // the first line runs under the remove button without this
+            paddingRight: interactive && showTime && !showParent ? 18 : 0,
             paddingRight: interactive ? 10 : 0 }}>{b.title}</div>
         )}
         {showTime && (
