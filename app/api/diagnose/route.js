@@ -14,7 +14,13 @@ export async function GET(request) {
       steps.push({ step: name, ok: true, value });
       return value;
     } catch (error) {
-      steps.push({ step: name, ok: false, error: String(error?.message || error) });
+      steps.push({
+        step: name,
+        ok: false,
+        error: String(error?.message || error),
+        // the first frames name the function that is missing
+        stack: String(error?.stack || "").split("\n").slice(0, 4).map((l) => l.trim()),
+      });
       return null;
     }
   };
@@ -23,6 +29,22 @@ export async function GET(request) {
     const { getAuthenticatedMember } = await import("../../lib/auth-token");
     const member = await getAuthenticatedMember(request);
     return member ? { id: member.id, name: member.name, department: member.department || null } : null;
+  });
+
+  await run("raw blob read (no store code)", async () => {
+    const { get } = await import("@vercel/blob");
+    const result = await get("sdc/tasks.json", { access: "private", useCache: false });
+    if (!result) return "no blob at sdc/tasks.json";
+    const text = await new Response(result.stream).text();
+    const parsed = JSON.parse(text);
+    const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+    const withSubtasks = tasks.filter((t) => Array.isArray(t.subtasks) && t.subtasks.length).length;
+    return {
+      bytes: text.length,
+      tasks: tasks.length,
+      tasksWithSubtasks: withSubtasks,
+      sampleSubtask: tasks.find((t) => t.subtasks?.length)?.subtasks?.[0] || null,
+    };
   });
 
   await run("read tasks blob", async () => {
