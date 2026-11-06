@@ -31,14 +31,24 @@ const cleanDate = (value) => {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : "";
 };
 
+// A subtask carries its own status and due date. The done flag stays in step
+// with the status, because the cards, progress bars and the Monday archive all
+// read done, and two sources of truth would drift.
 const cleanSubtasks = (items) => (
   Array.isArray(items)
     ? items
-        .map((s) => ({
-          id: String(s?.id || `st-${randomUUID()}`),
-          title: String(s?.title || "").trim().slice(0, 200),
-          done: Boolean(s?.done),
-        }))
+        .map((s) => {
+          const status = String(s?.status || "").trim();
+          const done = status ? status === "done" : Boolean(s?.done);
+          const due = String(s?.due || "").trim();
+          return {
+            id: String(s?.id || `st-${randomUUID()}`),
+            title: String(s?.title || "").trim().slice(0, 200),
+            done,
+            status: status || (done ? "done" : "todo"),
+            due: /^\d{4}-\d{2}-\d{2}$/.test(due) ? due : "",
+          };
+        })
         .filter((s) => s.title)
         .slice(0, 100)
     : []
