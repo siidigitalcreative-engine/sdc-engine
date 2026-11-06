@@ -46,7 +46,9 @@ export async function GET(request) {
     return json({ tasks: filterTasks(result.state.tasks, scope), scope: { departmentId: scope.departmentId, isAdmin: scope.isAdmin } }, 200, result.etag);
   } catch (error) {
     console.error("GET /api/tasks", error);
-    return json({ error: "Unable to load tasks." }, 500);
+    // The detail goes in the body so a failure can be read from the browser
+    // rather than only from the server log.
+    return json({ error: "Unable to load tasks.", detail: String(error?.message || error) }, 500);
   }
 }
 
