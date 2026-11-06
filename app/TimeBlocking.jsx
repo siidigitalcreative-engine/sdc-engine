@@ -69,6 +69,7 @@ export default function TimeBlocking({ day, onDayChange }) {
   const [tab, setTab] = useState("tasks");
   const [projects, setProjects] = useState([]);
   const [projectDialog, setProjectDialog] = useState(null);
+  const [showInvalid, setShowInvalid] = useState(false);   // only after a failed save attempt
   const [expanded, setExpanded] = useState(new Set());
   const [picked, setPicked] = useState(null);
   const [error, setError] = useState("");
@@ -307,6 +308,7 @@ export default function TimeBlocking({ day, onDayChange }) {
   const openNewSubtask = (parent, start) => {
     if (!editable) return;
     setError("");
+    setShowInvalid(false);
     const at = Number.isFinite(start) ? start : nextFreeSlot();
     setDialog({
       mode: "add", sourceId: "new-subtask", parentTaskId: parent.id,
@@ -316,9 +318,13 @@ export default function TimeBlocking({ day, onDayChange }) {
     });
   };
 
+  // Any edit to the dialog clears a previous complaint.
+  const patchDialog2 = (fn) => { setShowInvalid(false); setDialog(fn); };
+
   const openNewTask = (start) => {
     if (!editable) return;
     setError("");
+    setShowInvalid(false);
     const at = Number.isFinite(start) ? start : nextFreeSlot();
     setDialog({
       mode: "add", sourceId: "new-task", title: "",
@@ -354,6 +360,8 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   const openEdit = (b) => {
     if (!editable || b.member !== me) return;
+    setError("");
+    setShowInvalid(false);
     setDialog({ mode: "edit", id: b.id, title: b.title, originalTitle: b.title, start: b.start,
       end: b.end, note: b.note || "", block: b });
   };
@@ -754,14 +762,14 @@ export default function TimeBlocking({ day, onDayChange }) {
                         onClick={() => {
                           if (opt.id === "existing") {
                             const first = allSources[0];
-                            setDialog(d => ({ ...d, sourceId: first ? `${first.kind}:${first.id}` : "custom",
+                            patchDialog2(d => ({ ...d, sourceId: first ? `${first.kind}:${first.id}` : "custom",
                               title: first?.title || "", project: first?.project || "", createdTask: null }));
                           } else if (opt.id === "new-subtask") {
                             const firstTask = allSources.find(x => x.kind === "task");
-                            setDialog(d => ({ ...d, sourceId: "new-subtask", title: "", project: firstTask?.project || "",
+                            patchDialog2(d => ({ ...d, sourceId: "new-subtask", title: "", project: firstTask?.project || "",
                               parentTaskId: firstTask?.id || "", createdTask: null }));
                           } else {
-                            setDialog(d => ({ ...d, sourceId: opt.id, title: "", project: "", newProject: false, createdTask: null }));
+                            patchDialog2(d => ({ ...d, sourceId: opt.id, title: "", project: "", newProject: false, createdTask: null }));
                           }
                         }}
                         className="flex-1 rounded-xl px-2 py-2 text-xs font-semibold"
@@ -783,7 +791,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                         value={dialog.parentTaskId || ""} disabled={!!dialog.createdTask}
                         onChange={(e) => {
                           const parent = allSources.find(x => x.kind === "task" && x.id === e.target.value);
-                          setDialog(d => ({ ...d, parentTaskId: e.target.value, project: parent?.project || "" }));
+                          patchDialog2(d => ({ ...d, parentTaskId: e.target.value, project: parent?.project || "" }));
                         }}>
                         {allSources.filter(x => x.kind === "task").map(x =>
                           <option key={x.id} value={x.id}>{x.title}</option>)}
@@ -801,7 +809,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                         style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
                         value={dialog.sourceId} onChange={e => {
                           const src = allSources.find(s => `${s.kind}:${s.id}` === e.target.value);
-                          setDialog(d => ({ ...d, sourceId: e.target.value,
+                          patchDialog2(d => ({ ...d, sourceId: e.target.value,
                             title: src?.title || "", project: src?.project || "", createdTask: null }));
                         }}>
                         {/* grouped, so a subtask is never mistaken for a task */}
@@ -837,7 +845,7 @@ export default function TimeBlocking({ day, onDayChange }) {
             <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
               <span>Title</span>
               <input className="w-full rounded-xl px-3 py-2 text-sm border" style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                value={dialog.title} onChange={e => setDialog(d => ({ ...d, title: e.target.value }))} maxLength={120}
+                value={dialog.title} onChange={e => patchDialog2(d => ({ ...d, title: e.target.value }))} maxLength={120}
                 disabled={!!dialog.createdTask}/>
             </label>
             {dialog.mode === "add" && dialog.sourceId === "new-task" && (
@@ -851,8 +859,8 @@ export default function TimeBlocking({ day, onDayChange }) {
                       value={dialog.newProject ? "__new" : (dialog.project || "")}
                       disabled={!!dialog.createdTask}
                       onChange={(e) => {
-                        if (e.target.value === "__new") setDialog(d => ({ ...d, newProject: true, project: "" }));
-                        else setDialog(d => ({ ...d, newProject: false, project: e.target.value }));
+                        if (e.target.value === "__new") patchDialog2(d => ({ ...d, newProject: true, project: "" }));
+                        else patchDialog2(d => ({ ...d, newProject: false, project: e.target.value }));
                       }}>
                       <option value="">Daily Tasks</option>
                       {projectOptions.map((name) => <option key={name} value={name}>{name}</option>)}
@@ -864,7 +872,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                     <input autoFocus className="w-full rounded-xl px-3 py-2 text-sm border mt-1.5"
                       style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
                       value={dialog.project || ""} maxLength={60} disabled={!!dialog.createdTask}
-                      onChange={(e) => setDialog(d => ({ ...d, project: e.target.value }))}
+                      onChange={(e) => patchDialog2(d => ({ ...d, project: e.target.value }))}
                       placeholder="New project name" />
                   )}
                   {dialog.newProject && (
@@ -877,7 +885,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                   <span>Task description (optional)</span>
                   <textarea rows={2} className="w-full rounded-xl px-3 py-2 text-sm border resize-y"
                     style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                    value={dialog.taskDescription || ""} onChange={e => setDialog(d => ({ ...d, taskDescription: e.target.value }))}
+                    value={dialog.taskDescription || ""} onChange={e => patchDialog2(d => ({ ...d, taskDescription: e.target.value }))}
                     disabled={!!dialog.createdTask}/>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -886,7 +894,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                     <div className="relative">
                       <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border"
                         style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                        value={dialog.taskStatus || "todo"} onChange={e => setDialog(d => ({ ...d, taskStatus: e.target.value }))}
+                        value={dialog.taskStatus || "todo"} onChange={e => patchDialog2(d => ({ ...d, taskStatus: e.target.value }))}
                         disabled={!!dialog.createdTask}>
                         <option value="todo">To Do</option><option value="inprogress">In Progress</option>
                         <option value="inreview">In Review</option><option value="done">Done</option>
@@ -899,7 +907,7 @@ export default function TimeBlocking({ day, onDayChange }) {
                     <div className="relative">
                       <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border"
                         style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                        value={dialog.taskPriority || "medium"} onChange={e => setDialog(d => ({ ...d, taskPriority: e.target.value }))}
+                        value={dialog.taskPriority || "medium"} onChange={e => patchDialog2(d => ({ ...d, taskPriority: e.target.value }))}
                         disabled={!!dialog.createdTask}>
                         <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
                       </select>
@@ -918,26 +926,32 @@ export default function TimeBlocking({ day, onDayChange }) {
                 <input type="time" step={SLOT * 60} className="w-full rounded-xl px-3 py-2 text-sm border"
                   style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
                   value={hhmm(dialog[k])} onChange={e => { const [h, m] = e.target.value.split(":").map(Number);
-                    if (Number.isFinite(h) && Number.isFinite(m)) setDialog(d => ({ ...d, [k]: h * 60 + m })); }}/>
+                    if (Number.isFinite(h) && Number.isFinite(m)) patchDialog2(d => ({ ...d, [k]: h * 60 + m })); }}/>
               </label>)}
             </div>
             <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
               <span>Notes (optional)</span>
               <textarea rows={3} maxLength={160} className="w-full rounded-xl px-3 py-2 text-sm border resize-y"
                 style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                value={dialog.note} onChange={e => setDialog(d => ({ ...d, note: e.target.value }))}/>
+                value={dialog.note} onChange={e => patchDialog2(d => ({ ...d, note: e.target.value }))}/>
             </label>
             <p className="text-xs" style={{ color: "var(--muted)" }}>
               Multiple time blocks may overlap. Editing here changes only this timeline block, not the original task record.
             </p>
-            {!dialogValid && <p className="text-xs" style={{ color: "#E5536E" }}>Enter a title and valid times within the workday, with end after start.</p>}
+            {showInvalid && !dialogValid && (
+              <p className="text-xs" style={{ color: "#E5536E" }}>
+                Enter a title and valid times within the workday, with end after start.
+              </p>
+            )}
             {error && <p className="text-xs" style={{ color: "#E5536E" }}>{error}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               {dialog.mode === "edit" && <button type="button" onClick={() => openAdd(dialog.start)}
                 className="rounded-xl px-3 py-2 text-xs font-semibold inline-flex items-center gap-1"
                 style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}><Plus size={14}/> Add Another at This Time</button>}
               <button type="button" onClick={() => setDialog(null)} className="rounded-xl px-3 py-2 text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>Cancel</button>
-              <button type="button" disabled={!dialogValid || busy} onClick={saveDialog} className="rounded-xl px-4 py-2 text-sm font-semibold"
+              <button type="button" disabled={busy}
+                onClick={() => { if (!dialogValid) { setShowInvalid(true); return; } saveDialog(); }}
+                className="rounded-xl px-4 py-2 text-sm font-semibold"
                 style={{ background: ACCENT, color: "var(--on-accent)", opacity: !dialogValid || busy ? .5 : 1 }}>
                 {busy ? "Saving…"
                   : dialog.mode === "edit" ? "Save Changes"
