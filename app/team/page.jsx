@@ -43,8 +43,13 @@ function makeInitials(name) {
 }
 
 function TeamPageInner() {
-  const { members, currentMember, addMember, updateMember, deleteMember, canSwitchDepartments } = useAuth();
-  const [deptView, setDeptView] = useState("all");
+  const { members, currentMember, addMember, updateMember, deleteMember, canSwitchDepartments, department } = useAuth();
+  // Start on the viewer's own department; "All departments" stays available in
+  // the picker for Management, Admin and HOD Admin.
+  const [deptView, setDeptView] = useState("");
+  useEffect(() => {
+    if (!deptView && department?.id) setDeptView(department.id);
+  }, [department, deptView]);
   const { dark } = useTheme();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
