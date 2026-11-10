@@ -12,18 +12,18 @@ const CHEVRON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/sv
    already limited to their own department by the API. Pass the chosen id back
    and refetch with ?department=<id>. */
 export default function DepartmentView({ value, onChange }) {
-  const { department } = useAuth();
+  const { department, canSwitchDepartments } = useAuth();
   const [departments, setDepartments] = useState([]);
 
   useEffect(() => {
-    if (!department?.admin) return;
+    if (!canSwitchDepartments) return;
     fetch("/api/departments", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => setDepartments(body?.departments || []))
       .catch(() => {});
-  }, [department]);
+  }, [canSwitchDepartments]);
 
-  if (!department?.admin || departments.length < 2) return null;
+  if (!canSwitchDepartments || departments.length < 2) return null;
 
   return (
     <div className="inline-flex items-center gap-2">
