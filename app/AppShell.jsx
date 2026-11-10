@@ -103,7 +103,7 @@ function AppFrame({ children, dark }) {
     <div className={shellClass} style={{ minHeight: 560, background: "var(--page)", color: "var(--text)" }}>
       <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex" style={{ background: "var(--surface)" }}>
         {!isLogin && <Sidebar />}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col">
           {!isLogin && (
             <div className="md:hidden flex items-center gap-3 px-4 py-3 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
               <button onClick={() => setMenuOpen(true)} aria-label="Open menu" className="sb-ib h-9 w-9 flex items-center justify-center rounded-xl" style={{ color: "var(--text)", background: "var(--col)", border: "1px solid var(--border)" }}>
