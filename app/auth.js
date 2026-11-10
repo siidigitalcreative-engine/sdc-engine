@@ -16,6 +16,7 @@ async function getError(response, fallback) {
 
 export function AuthProvider({ children }) {
   const [members, setMembers] = useState([]);
+  const [departments, setDepartments] = useState([]);   // names only, for the sign-in screen
   const [sessionId, setSessionId] = useState(null);
   const [department, setDepartment] = useState(null);
   const [allowedPages, setAllowedPages] = useState(null);   // null until known
@@ -43,6 +44,7 @@ export function AuthProvider({ children }) {
       const etag = response.headers.get("etag");
       if (etag) etagRef.current = etag;
       setMembers(Array.isArray(body.members) ? body.members : []);
+      if (Array.isArray(body.departments)) setDepartments(body.departments);
     } finally {
       loadingMembersRef.current = false;
     }
@@ -173,6 +175,7 @@ export function AuthProvider({ children }) {
   const value = {
     ready,
     members,
+    departments,
     currentMember,
     department,
     allowedPages,
