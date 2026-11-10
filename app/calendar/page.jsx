@@ -2,6 +2,7 @@
 
 import PageAccess from "../PageAccess";
 import TimeBlocking from "../TimeBlocking";
+import DepartmentView from "../DepartmentView";
 import { usePathname, useRouter } from "next/navigation";
 
 
@@ -117,6 +118,8 @@ function TeamCalendarInner() {
   }, [members]);
   const normalizeMemberRefs = (refs = []) => [...new Set(refs.map((ref) => memberByRef[ref]?.id).filter(Boolean))];
 
+  const [deptView, setDeptView] = useState("all");
+  const changeDeptView = (next) => { calendarEtagRef.current = null; setDeptView(next); };
   const [view, setView] = useState(() => pathname === "/calendar/timeblock" ? "blocking" : "month");
   useEffect(() => {
     if (pathname === "/calendar/timeblock") setView("blocking");
@@ -201,7 +204,8 @@ function TeamCalendarInner() {
     try {
       const headers = {};
       if (!force && calendarEtagRef.current) headers["If-None-Match"] = calendarEtagRef.current;
-      const response = await fetch("/api/calendar", { headers, cache: "no-store" });
+      const response = await fetch(`/api/calendar${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`,
+        { headers, cache: "no-store" });
       if (response.status === 304) return;
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -217,7 +221,7 @@ function TeamCalendarInner() {
     } finally {
       loadingCalendarRef.current = false;
     }
-  }, [hydrateEvents]);
+  }, [hydrateEvents, deptView]);
 
   const applyCalendarResponse = useCallback(async (response, fallback) => {
     if (!response.ok) {
@@ -379,6 +383,7 @@ function TeamCalendarInner() {
                   </button>
                 ))}
               </div>
+              <DepartmentView value={deptView} onChange={changeDeptView} />
               <div className="flex items-center gap-2 shrink-0" style={{ display: view === "blocking" ? "none" : undefined }}>
                 <button onClick={exportCalendarPng} className="tc-pill rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
                 <button onClick={sendToLark} className="tc-pill rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
