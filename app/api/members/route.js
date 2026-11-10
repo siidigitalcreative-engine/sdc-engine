@@ -33,7 +33,15 @@ export async function GET(request) {
       });
     }
 
-    return json({ members: sanitizeMembers(result.state.members) }, 200, result.etag);
+    let departments = [];
+    try {
+      const { listDepartments } = await import("../../lib/department-store");
+      departments = (await listDepartments()).map((d) => ({ id: d.id, name: d.name, color: d.color }));
+    } catch (error) {
+      console.error("GET /api/members: departments unavailable", error);
+    }
+
+    return json({ members: sanitizeMembers(result.state.members), departments }, 200, result.etag);
   } catch (error) {
     console.error("GET /api/members", error);
     return json({ error: "Unable to load team members." }, 500);
@@ -99,7 +107,15 @@ export async function DELETE(request) {
       return members.filter((member) => member.id !== id);
     });
 
-    return json({ members: sanitizeMembers(result.state.members) }, 200, result.etag);
+    let departments = [];
+    try {
+      const { listDepartments } = await import("../../lib/department-store");
+      departments = (await listDepartments()).map((d) => ({ id: d.id, name: d.name, color: d.color }));
+    } catch (error) {
+      console.error("GET /api/members: departments unavailable", error);
+    }
+
+    return json({ members: sanitizeMembers(result.state.members), departments }, 200, result.etag);
   } catch (error) {
     console.error("DELETE /api/members", error);
     return json({ error: error.message || "Unable to delete member." }, 400);
