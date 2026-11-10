@@ -22,6 +22,7 @@ export async function GET(request) {
     const response = NextResponse.json({
       member: sanitizeMember(member),
       department: department ? { id: department.id, name: department.name, color: department.color, admin: department.admin } : null,
+      accessLevel: String(member.accessLevel || "").trim() || (department?.admin ? "admin" : "member"),
       allowedPages,
     });
     response.headers.set("Cache-Control", "no-store");
