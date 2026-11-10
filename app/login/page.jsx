@@ -11,7 +11,8 @@ const ON_ACCENT = "var(--on-accent)";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { members, login, defaultPin } = useAuth();
+  const { members, departments, login, defaultPin } = useAuth();
+  const [deptId, setDeptId] = useState("");
   const { dark, toggle } = useTheme();
   const [memberId, setMemberId] = useState("");
   const [pin, setPin] = useState("");
@@ -19,8 +20,31 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!memberId && members[0]) setMemberId(members[0].id);
-  }, [members, memberId]);
+    if (memberId || !members.length) return;
+    const first = (deptId ? members.filter((m) => (m.department || departments[0]?.id || "") === deptId) : members)[0];
+    if (first) setMemberId(first.id);
+  }, [members, memberId, deptId, departments]);
+
+  const fallbackDept = departments[0]?.id || "";
+  const inDept = (m) => (m.department || fallbackDept) === deptId;
+  const shown = deptId ? members.filter(inDept) : members;
+
+  // Start on the department that actually has people in it.
+  useEffect(() => {
+    if (deptId || !departments.length || !members.length) return;
+    const withPeople = departments.find((d) => members.some((m) => (m.department || fallbackDept) === d.id));
+    setDeptId((withPeople || departments[0]).id);
+  }, [departments, members, deptId, fallbackDept]);
+
+  // Switching department must drop a member from the old one, or you could sign
+  // in as someone you are no longer looking at.
+  useEffect(() => {
+    if (!deptId) return;
+    if (memberId && !members.some((m) => m.id === memberId && inDept(m))) {
+      setMemberId(shown[0]?.id || "");
+      setError("");
+    }
+  }, [deptId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selected = members.find((m) => m.id === memberId);
 
@@ -57,9 +81,32 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={submit} className="rounded-3xl p-6 sm:p-7 shadow-xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            {departments.length > 1 && (
+              <>
+                <label className="text-sm font-medium" style={{ color: "var(--text)" }}>Department</label>
+                <div className="flex flex-wrap gap-2 mt-3 mb-5">
+                  {departments.map((d) => {
+                    const active = d.id === deptId;
+                    const count = members.filter((m) => (m.department || fallbackDept) === d.id).length;
+                    return (
+                      <button key={d.id} type="button" onClick={() => { setDeptId(d.id); setError(""); }}
+                        className="rounded-full px-3.5 py-2 text-sm font-medium inline-flex items-center gap-2"
+                        style={active
+                          ? { background: ACCENT_GRAD, color: ON_ACCENT }
+                          : { background: "var(--col)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                        <span className="h-2 w-2 rounded-full" style={{ background: active ? ON_ACCENT : (d.color || "var(--faint)") }} />
+                        {d.name}
+                        <span style={{ fontSize: 11, opacity: 0.7 }}>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
             <label className="text-sm font-medium" style={{ color: "var(--text)" }}>Team member</label>
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3 mb-5">
-              {members.map((m) => {
+              {shown.map((m) => {
                 const active = m.id === memberId;
                 return (
                   <button key={m.id} type="button" onClick={() => { setMemberId(m.id); setError(""); }} className="rounded-2xl px-2 py-3 flex flex-col items-center gap-2" style={{ background: active ? "var(--col)" : "transparent", border: active ? "1px solid var(--border)" : "1px solid transparent" }} title={m.name}>
@@ -68,9 +115,14 @@ export default function LoginPage() {
                   </button>
                 );
               })}
+              {!shown.length && (
+                <p className="text-sm col-span-full" style={{ color: "var(--muted)" }}>
+                  No one in this department yet.
+                </p>
+              )}
             </div>
 
-            {selected && (
+            {selected && shown.some((m) => m.id === selected.id) && (
               <div className="flex items-center gap-3 rounded-2xl p-3 mb-5" style={{ background: "var(--col)" }}>
                 <span className="h-11 w-11 rounded-full flex items-center justify-center text-white font-semibold shrink-0" style={{ background: selected.c }}>{selected.i}</span>
                 <div className="min-w-0">
