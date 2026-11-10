@@ -82,7 +82,20 @@ export function buildTimeBlockImage(payload = {}) {
   const H = PAD * 2 + 56 + HEAD_H + rows.length * ROW_H + 30;
 
   const blocksFor = (id) => blocks.filter((b) => b.member === id);
-  const minutesFor = (id) => blocksFor(id).reduce((t, b) => t + workingMinutes(b.start, b.end), 0);
+  // Elapsed time: two blocks over the same hour are one hour of the day.
+  const minutesFor = (id) => {
+    const spans = blocksFor(id)
+      .map((b) => [Number(b.start), Number(b.end)])
+      .filter(([a, z]) => Number.isFinite(a) && Number.isFinite(z) && z > a)
+      .sort((x, y) => x[0] - y[0]);
+    const merged = [];
+    spans.forEach(([start, end]) => {
+      const last = merged[merged.length - 1];
+      if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+      else merged.push([start, end]);
+    });
+    return merged.reduce((t, [start, end]) => t + workingMinutes(start, end), 0);
+  };
 
   // Match the main Time Blocking timeline: overlapping cards share the
   // available lane width in side-by-side columns rather than covering each other.
@@ -129,7 +142,7 @@ export function buildTimeBlockImage(payload = {}) {
         <div style={{ display: "flex", marginLeft: "auto", fontSize: 13.5, color: C.muted }}>
           {members.length === 1
             ? hours(minutesFor(members[0].id)) + " blocked"
-            : hours(blocks.reduce((t, b) => t + workingMinutes(b.start, b.end), 0)) + " across " + members.length + " people"}
+            : hours(members.reduce((t, m) => t + minutesFor(m.id), 0)) + " across " + members.length + " people"}
         </div>
       </div>
 
