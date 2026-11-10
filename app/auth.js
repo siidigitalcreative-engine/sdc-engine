@@ -20,6 +20,7 @@ export function AuthProvider({ children }) {
   const [sessionId, setSessionId] = useState(null);
   const [department, setDepartment] = useState(null);
   const [allowedPages, setAllowedPages] = useState(null);   // null until known
+  const [accessLevel, setAccessLevel] = useState(null);     // admin | hod | member
   const [ready, setReady] = useState(false);
   const etagRef = useRef(null);
   const loadingMembersRef = useRef(false);
@@ -61,6 +62,7 @@ export function AuthProvider({ children }) {
       setSessionId(body.member?.id || null);
       setDepartment(body.department || null);
       setAllowedPages(Array.isArray(body.allowedPages) ? body.allowedPages : null);
+      setAccessLevel(body.accessLevel || null);
       return body.member || null;
     } catch {
       setSessionId(null);
@@ -178,6 +180,9 @@ export function AuthProvider({ children }) {
     departments,
     currentMember,
     department,
+    accessLevel,
+    // Only Management, Admin and HOD Admin may look at another department.
+    canSwitchDepartments: accessLevel === "admin" || Boolean(department?.admin),
     allowedPages,
     canOpen,
     login,
