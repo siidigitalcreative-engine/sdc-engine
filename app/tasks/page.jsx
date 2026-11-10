@@ -165,6 +165,10 @@ function TasksPageInner() {
   const taskEtagRef = useRef(null);
   const loadingTasksRef = useRef(false);
   const mutationGenerationRef = useRef(0);
+  // How many writes are waiting on the server. While any is in flight, a poll
+  // that comes back is already out of date, so applying it would undo the
+  // change on screen and then let the write put it back: the flicker.
+  const pendingWritesRef = useRef(0);
   const [view, setView] = useState("board");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState(null);
@@ -216,10 +220,11 @@ function TasksPageInner() {
       }
       const body = await response.json();
 
-      // Ignore a GET that started before a create/edit/delete operation.
-      // Otherwise an older response can visually undo a task edit even after
-      // the Blob write already succeeded.
+      // Ignore a GET that started before a create/edit/delete operation, or one
+      // that lands while a write is still in flight. Either can undo a change
+      // the server has already accepted.
       if (generationAtStart !== mutationGenerationRef.current) return;
+      if (pendingWritesRef.current > 0) return;
 
       const etag = response.headers.get("etag");
       if (etag) taskEtagRef.current = etag;
@@ -364,6 +369,7 @@ function TasksPageInner() {
     setSavingTask(true);
     setTaskError("");
     mutationGenerationRef.current += 1;
+    pendingWritesRef.current += 1;
     try {
       const response = await fetch("/api/tasks", {
         method: isEdit ? "PATCH" : "POST",
@@ -381,6 +387,7 @@ function TasksPageInner() {
     } catch (error) {
       setTaskError(error.message || "Unable to save task.");
     } finally {
+      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
       setSavingTask(false);
     }
   }, [applyTaskResponse]);
@@ -395,6 +402,7 @@ function TasksPageInner() {
     setSavingTask(true);
     setTaskError("");
     mutationGenerationRef.current += 1;
+    pendingWritesRef.current += 1;
     try {
       const response = await fetch("/api/tasks", {
         method: "DELETE",
@@ -406,6 +414,7 @@ function TasksPageInner() {
     } catch (error) {
       setTaskError(error.message || "Unable to delete task.");
     } finally {
+      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
       setSavingTask(false);
     }
   };
@@ -415,6 +424,7 @@ function TasksPageInner() {
     setSavingTask(true);
     setTaskError("");
     mutationGenerationRef.current += 1;
+    pendingWritesRef.current += 1;
     try {
       const response = await fetch("/api/tasks", {
         method: "PATCH",
@@ -426,15 +436,21 @@ function TasksPageInner() {
     } catch (error) {
       setTaskError(error.message || "Unable to archive task.");
     } finally {
+      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
       setSavingTask(false);
     }
   };
 
   const toggleSubtask = async (task, subId) => {
     const current = Array.isArray(task.subtasks) ? task.subtasks : [];
-    const next = current.map((s) => (s.id === subId ? { ...s, done: !s.done } : s));
+    // Ticking sets Done, unticking returns it to In Progress, so the status and
+    // the tick never disagree.
+    const next = current.map((s) => (s.id === subId
+      ? { ...s, done: !s.done, status: !s.done ? "done" : (s.status === "done" || !s.status ? "inprogress" : s.status) }
+      : s));
     const previous = tasks;
     mutationGenerationRef.current += 1;
+    pendingWritesRef.current += 1;
     setTasks((ts) => ts.map((t) => (t.id === task.id ? { ...t, subtasks: next } : t)));
     setTaskError("");
     try {
@@ -448,6 +464,8 @@ function TasksPageInner() {
       setTasks(previous);
       setTaskError(error.message || "Unable to update subtask.");
       loadTasks({ force: true });
+    } finally {
+      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
     }
   };
 
@@ -473,6 +491,7 @@ function TasksPageInner() {
 
     const previous = tasks;
     mutationGenerationRef.current += 1;
+    pendingWritesRef.current += 1;
     setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, status: statusId } : t)));
     setTaskError("");
     try {
@@ -486,6 +505,8 @@ function TasksPageInner() {
       setTasks(previous);
       setTaskError(error.message || "Unable to move task.");
       loadTasks({ force: true });
+    } finally {
+      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
     }
   };
 
