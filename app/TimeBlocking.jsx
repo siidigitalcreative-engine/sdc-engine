@@ -734,12 +734,21 @@ export default function TimeBlocking({ day, onDayChange }) {
   };
 
   const block = (b, interactive, position) => {
-    const top = ((b.start - DAY_START) / 60) * ROW_H + 2;
-    const height = Math.max(18, ((b.end - b.start) / 60) * ROW_H - 4);
+    /* Geometry is proportional to time, with one fixed gap, so the space
+       between two blocks is the same whether they are ten minutes or two hours
+       long. A minimum height used to be forced on short blocks, which made them
+       spill into the next one and close the gap. */
+    const GAP = 3;
+    const natural = ((b.end - b.start) / 60) * ROW_H;
+    const top = ((b.start - DAY_START) / 60) * ROW_H + GAP / 2;
+    // The floor sits below the shortest block the grid can produce, so it never
+    // changes the spacing in practice.
+    const height = Math.max(4, natural - GAP);
     // Match the compact PNG card format: prioritize the time range at the
     // bottom, allow the title to wrap, and hide secondary text if space is tight.
     const showTime = height >= 35;
     const showParent = Boolean(b.parentTitle?.trim()) && height >= 50;
+    const sliver = height < 16;   // too short for a full line of text
     const titleLines = showTime ? Math.max(1, Math.min(3, Math.floor((height - (showParent ? 38 : 24)) / 12)))
       : Math.max(1, Math.min(3, Math.floor((height - (showParent ? 20 : 9)) / 12)));
     return (
@@ -760,7 +769,9 @@ export default function TimeBlocking({ day, onDayChange }) {
           width: position ? `calc(100% / ${position.count} - 8px)` : undefined,
           right: position ? undefined : 4,
           top, height, overflow: "hidden",
-          borderRadius: 10, padding: showTime ? "5px 7px" : "2px 7px", background: "var(--card)",
+          borderRadius: sliver ? 5 : 10,
+          padding: sliver ? "0 7px" : showTime ? "5px 7px" : "2px 7px",
+          background: sliver ? b.color : "var(--card)",
           boxSizing: "border-box", display: "flex", flexDirection: "column",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
           cursor: interactive ? "grab" : "default", pointerEvents: "auto",
@@ -776,7 +787,12 @@ export default function TimeBlocking({ day, onDayChange }) {
             {b.parentTitle}
           </div>
         )}
-        {!showTime ? (
+        {sliver ? (
+          // No room for a line of text, so the block reads as a solid marker and
+          // its details live in the tooltip and the edit dialog.
+          <span title={`${b.title} · ${displayRange(b.start, b.end)}`}
+            style={{ display: "block", width: "100%", height: "100%" }} />
+        ) : !showTime ? (
           <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0,
             width: "100%", height: "100%" }}>
             <span title={b.title} style={{ fontSize: 10.5, fontWeight: 700, lineHeight: "12px",
