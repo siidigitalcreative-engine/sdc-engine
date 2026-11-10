@@ -41,7 +41,24 @@ export async function GET(request) {
       console.error("GET /api/members: departments unavailable", error);
     }
 
-    return json({ members: sanitizeMembers(result.state.members), departments }, 200, result.etag);
+    /* Signed out, this list is what the sign-in screen offers, so it stays
+       whole. Signed in, it is scoped: everyone sees their own department,
+       and only Management, Admin or HOD Admin sees another. */
+    const viewer = await getAuthenticatedMember(request);
+    let members = sanitizeMembers(result.state.members);
+    let scopeInfo = null;
+
+    if (viewer) {
+      const { viewerScope } = await import("../../lib/scope");
+      const scope = await viewerScope(viewer, request);
+      const fallback = departments[0]?.id;
+      if (scope.filterId) {
+        members = members.filter((m) => (m.department || fallback) === scope.filterId);
+      }
+      scopeInfo = { departmentId: scope.departmentId, level: scope.level, isAdmin: scope.isAdmin };
+    }
+
+    return json({ members, departments, scope: scopeInfo }, 200, result.etag);
   } catch (error) {
     console.error("GET /api/members", error);
     return json({ error: "Unable to load team members." }, 500);
@@ -115,7 +132,24 @@ export async function DELETE(request) {
       console.error("GET /api/members: departments unavailable", error);
     }
 
-    return json({ members: sanitizeMembers(result.state.members), departments }, 200, result.etag);
+    /* Signed out, this list is what the sign-in screen offers, so it stays
+       whole. Signed in, it is scoped: everyone sees their own department,
+       and only Management, Admin or HOD Admin sees another. */
+    const viewer = await getAuthenticatedMember(request);
+    let members = sanitizeMembers(result.state.members);
+    let scopeInfo = null;
+
+    if (viewer) {
+      const { viewerScope } = await import("../../lib/scope");
+      const scope = await viewerScope(viewer, request);
+      const fallback = departments[0]?.id;
+      if (scope.filterId) {
+        members = members.filter((m) => (m.department || fallback) === scope.filterId);
+      }
+      scopeInfo = { departmentId: scope.departmentId, level: scope.level, isAdmin: scope.isAdmin };
+    }
+
+    return json({ members, departments, scope: scopeInfo }, 200, result.etag);
   } catch (error) {
     console.error("DELETE /api/members", error);
     return json({ error: error.message || "Unable to delete member." }, 400);
