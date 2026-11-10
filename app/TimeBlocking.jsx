@@ -20,6 +20,25 @@ const workingMinutes = (start, end) => {
     total + Math.max(0, Math.min(to, period.end) - Math.max(from, period.start)), 0);
   return Math.max(0, to - from - breakMinutes);
 };
+// Elapsed time, not the sum of each block: two blocks over the same hour are
+// one hour of the day, so the intervals are merged before counting, and break
+// time inside them still does not count.
+const elapsedMinutes = (blocks) => {
+  const spans = (blocks || [])
+    .map((b) => [Number(b.start), Number(b.end)])
+    .filter(([a, z]) => Number.isFinite(a) && Number.isFinite(z) && z > a)
+    .sort((x, y) => x[0] - y[0]);
+
+  const merged = [];
+  spans.forEach(([start, end]) => {
+    const last = merged[merged.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else merged.push([start, end]);
+  });
+
+  return merged.reduce((total, [start, end]) => total + workingMinutes(start, end), 0);
+};
+
 const PROJECT_COLORS = ["#3E8ED0", "#7C5CD8", "#3FA37A", "#E0A93C", "#F0784B", "#E5536E", "#2E9B8F", "#8E8A96"];
 const hash = (s) => { let h = 0; for (let i = 0; i < String(s).length; i++) h = (h * 31 + String(s).charCodeAt(i)) >>> 0; return h; };
 const colorFor = (name) => PROJECT_COLORS[hash(name || "x") % PROJECT_COLORS.length];
@@ -75,6 +94,11 @@ export default function TimeBlocking({ day, onDayChange }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const dragRef = useRef(null);
+  // Where a block is being put, kept separate from server data so a refetch
+  // landing between the drop and the save cannot pull it back.
+  const [pending, setPending] = useState({});
+  // Blocks that have been dropped but not yet acknowledged.
+  const [ghosts, setGhosts] = useState([]);
   const writeSeq = useRef(0);
   const suppressBlockClick = useRef(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -118,6 +142,7 @@ export default function TimeBlocking({ day, onDayChange }) {
     }
   }, [key]);
 
+  useEffect(() => { setGhosts([]); setPending({}); }, [key]);
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
@@ -202,9 +227,14 @@ export default function TimeBlocking({ day, onDayChange }) {
   }, [data.blocks, tasks]);
 
   const members = data.members || [];
-  const blocksOf = (memberId) => visibleBlocks.filter((b) => b.member === memberId);
-  const minutesOf = (memberId) => blocksOf(memberId).reduce((t, b) => t + workingMinutes(b.start, b.end), 0);
-  const totalMinutes = visibleBlocks.reduce((t, b) => t + workingMinutes(b.start, b.end), 0);
+  const withPending = (b) => (pending[b.id] ? { ...b, ...pending[b.id] } : b);
+  const blocksOf = (memberId) => [
+    ...visibleBlocks.filter((b) => b.member === memberId).map(withPending),
+    ...ghosts.filter((g) => g.member === memberId),
+  ];
+  const minutesOf = (memberId) => elapsedMinutes(blocksOf(memberId));
+  // Across people, each person's own elapsed time is added up.
+  const totalMinutes = (members || []).reduce((t, m) => t + minutesOf(m.id), 0);
   const editable = view !== "all" && view === me;
 
   /* ---- what can be blocked ---- */
@@ -505,12 +535,10 @@ export default function TimeBlocking({ day, onDayChange }) {
     // Show the dropped task straight away. The existing POST and reload remain
     // authoritative; an unsuccessful save removes this temporary block.
     const pendingId = `pending-${crypto.randomUUID()}`;
-    setData((current) => ({
-      ...current,
-      blocks: [...current.blocks, { ...nextBlock, id: pendingId, member: me }],
-    }));
+    setGhosts((list) => [...list, { ...nextBlock, id: pendingId, member: me }]);
     setPicked(null);
-    send("POST", { block: nextBlock });
+    send("POST", { block: nextBlock })
+      .finally(() => setGhosts((list) => list.filter((g) => g.id !== pendingId)));
   };
 
   /* ---- dragging: body moves, bottom edge resizes ---- */
@@ -541,12 +569,7 @@ export default function TimeBlocking({ day, onDayChange }) {
         const start = Math.max(DAY_START, Math.min(DAY_END - length, drag.start + delta));
         drag.live = { start, end: start + length };
       }
-      if (drag.live) {
-        setData((d) => ({
-          ...d,
-          blocks: d.blocks.map((b) => (b.id === drag.id ? { ...b, ...drag.live } : b)),
-        }));
-      }
+      if (drag.live) setPending((p) => ({ ...p, [drag.id]: drag.live }));
     };
 
     const end = () => {
@@ -556,7 +579,16 @@ export default function TimeBlocking({ day, onDayChange }) {
         suppressBlockClick.current = true;
         setTimeout(() => { suppressBlockClick.current = false; }, 0);
       }
-      if (drag?.live) send("PATCH", { id: drag.id, start: drag.live.start, end: drag.live.end });
+      if (drag?.live) {
+        const { id, live } = { id: drag.id, live: drag.live };
+        // Hold the new position until the save answers, then let the server copy take over.
+        send("PATCH", { id, start: live.start, end: live.end })
+          .finally(() => setPending((p) => {
+            const next = { ...p };
+            delete next[id];
+            return next;
+          }));
+      }
     };
 
     window.addEventListener("mousemove", move);
