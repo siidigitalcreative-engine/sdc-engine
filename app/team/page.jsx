@@ -1,6 +1,7 @@
 "use client";
 
 import PageAccess from "../PageAccess";
+import DepartmentView from "../DepartmentView";
 
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -23,6 +24,7 @@ const EMPTY_FORM = {
   loc: "Manila",
   status: "Active",
   department: "",
+  accessLevel: "member",
   projects: 0,
   open: 0,
   done: 0,
@@ -41,7 +43,8 @@ function makeInitials(name) {
 }
 
 function TeamPageInner() {
-  const { members, currentMember, addMember, updateMember, deleteMember } = useAuth();
+  const { members, currentMember, addMember, updateMember, deleteMember, canSwitchDepartments } = useAuth();
+  const [deptView, setDeptView] = useState("all");
   const { dark } = useTheme();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
@@ -71,7 +74,10 @@ function TeamPageInner() {
     return { projects, open: mine.length - done, done };
   };
 
+  // The API already limits this to the viewer's department unless they are
+  // Management, Admin or HOD Admin; the picker narrows it further.
   const list = members.filter((m) => {
+    if (deptView && deptView !== "all" && (m.department || "") !== deptView) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return `${m.name} ${m.role} ${m.loc} ${m.status}`.toLowerCase().includes(q);
@@ -83,8 +89,9 @@ function TeamPageInner() {
         <header className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0 flex-wrap">
           <div className="mr-auto">
             <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Team Members</h1>
-            <p className="text-sm" style={{ color: "var(--muted)" }}>{members.length} {members.length === 1 ? "person" : "people"} on the creative team</p>
+            <p className="text-sm" style={{ color: "var(--muted)" }}>{list.length} {list.length === 1 ? "person" : "people"}</p>
           </div>
+          <DepartmentView value={deptView} onChange={setDeptView} />
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
             <input
@@ -332,6 +339,19 @@ function MemberModal({ member, onClose, onSave }) {
                 {!departments.length && <option value="">Loading…</option>}
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
+            </Field>
+            <Field label="Access level">
+              <select value={form.accessLevel || "member"} onChange={(e) => set("accessLevel", e.target.value)}
+                disabled={!canSwitchDepartments} className="w-full rounded-xl px-3 py-2.5 outline-none" style={selectStyle}>
+                <option value="admin">Management / Admin / HOD Admin</option>
+                <option value="hod">HOD</option>
+                <option value="member">Member</option>
+              </select>
+              {!canSwitchDepartments && (
+                <span className="block text-[11px] mt-1" style={{ color: "var(--faint)" }}>
+                  Only Management, Admin or HOD Admin can change this.
+                </span>
+              )}
             </Field>
             <Field label="Status">
               <select value={form.status} onChange={(e) => set("status", e.target.value)} className="w-full rounded-xl px-3 py-2.5 outline-none" style={selectStyle}>
