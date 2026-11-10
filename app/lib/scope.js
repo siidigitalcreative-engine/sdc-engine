@@ -11,12 +11,17 @@ import { departmentForMember } from "./department-store";
 
 export async function viewerScope(member, request) {
   const department = await departmentForMember(member);
-  const isAdmin = Boolean(department?.admin);
+  // Management, Admin and HOD Admin see every department and may switch the
+  // view. An admin department still counts, so nobody loses access on upgrade.
+  const level = String(member?.accessLevel || "").trim() || (department?.admin ? "admin" : "member");
+  const isAdmin = level === "admin" || Boolean(department?.admin);
   const requested = request ? new URL(request.url).searchParams.get("department") : null;
 
   return {
     department,
     departmentId: department?.id || "sdc",
+    level,
+    isHod: level === "hod",
     isAdmin,
     // Which department's rows to return: admins may ask for one or for all.
     filterId: isAdmin ? (requested && requested !== "all" ? requested : null) : (department?.id || "sdc"),
