@@ -107,7 +107,7 @@ function packEvents(items) {
 function TeamCalendarInner() {
   const pathname = usePathname();
   const router = useRouter();
-  const { members } = useAuth();
+  const { members, department } = useAuth();
   const memberByRef = useMemo(() => {
     const map = {};
     members.forEach((member) => {
@@ -118,7 +118,15 @@ function TeamCalendarInner() {
   }, [members]);
   const normalizeMemberRefs = (refs = []) => [...new Set(refs.map((ref) => memberByRef[ref]?.id).filter(Boolean))];
 
-  const [deptView, setDeptView] = useState("all");
+  // Start on the viewer's own department; "All departments" stays available in
+  // the picker for Management, Admin and HOD Admin.
+  const [deptView, setDeptView] = useState("");
+  useEffect(() => {
+    if (!deptView && department?.id) {
+      calendarEtagRef.current = null;
+      setDeptView(department.id);
+    }
+  }, [department, deptView]);
   const changeDeptView = (next) => { calendarEtagRef.current = null; setDeptView(next); };
   const [view, setView] = useState(() => pathname === "/calendar/timeblock" ? "blocking" : "month");
   useEffect(() => {
