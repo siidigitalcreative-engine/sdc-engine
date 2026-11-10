@@ -1291,7 +1291,7 @@ export default function TimeBlocking({ day, onDayChange }) {
 
         {/* the board */}
         <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-          <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex" style={{ borderBottom: "1px solid var(--border)", position: "sticky", top: 0, zIndex: 4, background: "var(--card)" }}>
             <div className="flex items-end justify-end text-[10px] pb-1.5 pr-2"
               style={{ width: 66, flex: "none", borderRight: "1px solid var(--border)", color: "var(--muted)" }}>GMT+8</div>
             {lanes.map((m) => (
