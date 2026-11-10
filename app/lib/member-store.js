@@ -8,6 +8,17 @@ import {
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 
 const PATHNAME = "sdc/members.json";
+
+/* What a member may do, as opposed to their job title.
+   admin  — Management, Admin or HOD Admin: every department, can switch the view
+   hod    — head of department: their own department, manages its people
+   member — their own department only */
+export const ACCESS_LEVELS = ["admin", "hod", "member"];
+export const ACCESS_LABELS = {
+  admin: "Management / Admin / HOD Admin",
+  hod: "HOD",
+  member: "Member",
+};
 const DEFAULT_PIN = "1234";
 
 const DEFAULT_MEMBERS = [
@@ -56,6 +67,13 @@ function normalizeStoredMember(member) {
     i: String(member.i || initialsFromName(member.name)).trim().toUpperCase().slice(0, 3),
     name: String(member.name || "Team Member").trim(),
     role: String(member.role || "Creative Team").trim(),
+    // What the member may do, as opposed to their job title:
+    //   admin  — Management, Admin or HOD Admin: every department, can switch view
+    //   hod    — head of department: their own department, manages its people
+    //   member — their own department, read-only on the team page
+    accessLevel: ACCESS_LEVELS.includes(String(member.accessLevel || "").trim())
+      ? String(member.accessLevel).trim()
+      : "member",
     c: String(member.c || "#7C6FF0"),
     loc: String(member.loc || "Manila").trim(),
     projects: Math.max(0, Number(member.projects) || 0),
