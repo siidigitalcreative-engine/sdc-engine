@@ -6,7 +6,7 @@ import { useAuth } from "./auth";
 import { useLarkSend } from "./LarkSend";
 
 const ACCENT = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
-const ROW_H = 44;
+const ROW_H = 72;
 const STANDARD_BREAKS = [
   { start: 12 * 60, end: 12 * 60 + 45, label: "Lunch Break" },
   { start: 15 * 60, end: 15 * 60 + 15, label: "Other Break" },
@@ -748,7 +748,10 @@ export default function TimeBlocking({ day, onDayChange }) {
     // bottom, allow the title to wrap, and hide secondary text if space is tight.
     const showTime = height >= 35;
     const showParent = Boolean(b.parentTitle?.trim()) && height >= 50;
-    const sliver = height < 16;   // too short for a full line of text
+    // Short blocks get one compact line whose type shrinks to fit, rather than
+    // being blanked out or drawn as a solid bar.
+    const sliver = height < 26;
+    const sliverFont = Math.max(7.5, Math.min(10, height - 2.5));
     const titleLines = showTime ? Math.max(1, Math.min(3, Math.floor((height - (showParent ? 38 : 24)) / 12)))
       : Math.max(1, Math.min(3, Math.floor((height - (showParent ? 20 : 9)) / 12)));
     return (
@@ -769,9 +772,9 @@ export default function TimeBlocking({ day, onDayChange }) {
           width: position ? `calc(100% / ${position.count} - 8px)` : undefined,
           right: position ? undefined : 4,
           top, height, overflow: "hidden",
-          borderRadius: sliver ? 5 : 10,
-          padding: sliver ? "0 7px" : showTime ? "5px 7px" : "2px 7px",
-          background: sliver ? b.color : "var(--card)",
+          borderRadius: sliver ? 6 : 10,
+          padding: sliver ? "0 6px" : showTime ? "5px 7px" : "2px 7px",
+          background: "var(--card)",
           boxSizing: "border-box", display: "flex", flexDirection: "column",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
           cursor: interactive ? "grab" : "default", pointerEvents: "auto",
@@ -788,10 +791,17 @@ export default function TimeBlocking({ day, onDayChange }) {
           </div>
         )}
         {sliver ? (
-          // No room for a line of text, so the block reads as a solid marker and
-          // its details live in the tooltip and the edit dialog.
-          <span title={`${b.title} · ${displayRange(b.start, b.end)}`}
-            style={{ display: "block", width: "100%", height: "100%" }} />
+          <div title={`${b.title} · ${displayRange(b.start, b.end)}`}
+            style={{ display: "flex", alignItems: "center", gap: 5, width: "100%", height: "100%", minWidth: 0 }}>
+            <span style={{ fontSize: sliverFont, fontWeight: 700, lineHeight: 1,
+              flex: "1 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {b.title}
+            </span>
+            <span style={{ fontSize: Math.max(7, sliverFont - 1), lineHeight: 1, opacity: 0.75,
+              whiteSpace: "nowrap", flexShrink: 0 }}>
+              {displayRange(b.start, b.end)}
+            </span>
+          </div>
         ) : !showTime ? (
           <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0,
             width: "100%", height: "100%" }}>
