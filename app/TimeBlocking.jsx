@@ -84,6 +84,7 @@ export default function TimeBlocking({ day, onDayChange }) {
   const [data, setData] = useState({ blocks: [], members: [], departments: [], day: { start: 420, end: 1200, slot: 30 } });
   const [tasks, setTasks] = useState([]);
   const [statusNames, setStatusNames] = useState({});   // status id → display name
+  const [statusList, setStatusList] = useState([]);      // the Tasks page's own statuses, in order
   const [view, setView] = useState("all");          // "all" or a member id
   const [tab, setTab] = useState("tasks");
   const [projects, setProjects] = useState([]);
@@ -134,6 +135,7 @@ export default function TimeBlocking({ day, onDayChange }) {
       setProjects(Array.isArray(projectBody.projects) ? projectBody.projects : []);
       const statusBody = statusRes ? await statusRes.json().catch(() => ({})) : {};
       if (Array.isArray(statusBody.statuses)) {
+        setStatusList(statusBody.statuses.map((s) => ({ id: s.id, name: s.name })));
         setStatusNames(Object.fromEntries(statusBody.statuses.map((s) => [s.id, s.name])));
       }
       setError("");
@@ -388,12 +390,32 @@ export default function TimeBlocking({ day, onDayChange }) {
     }
   };
 
+  // The task or subtask a block refers to, if it still exists.
+  const linkedWork = (b) => {
+    if (!b) return null;
+    if (b.kind === "task") {
+      const task = tasks.find((t) => t.id === b.refId);
+      return task ? { kind: "task", taskId: task.id, status: task.status } : null;
+    }
+    if (b.kind === "subtask") {
+      for (const task of tasks) {
+        const sub = (task.subtasks || []).find((x) => x.id === b.refId);
+        if (sub) return { kind: "subtask", taskId: task.id, subtaskId: sub.id, status: sub.status || (sub.done ? "done" : "todo") };
+      }
+    }
+    return null;
+  };
+
   const openEdit = (b) => {
     if (!editable || b.member !== me) return;
     setError("");
     setShowInvalid(false);
+    const link = linkedWork(b);
     setDialog({ mode: "edit", id: b.id, title: b.title, originalTitle: b.title, start: b.start,
-      end: b.end, note: b.note || "", block: b });
+      end: b.end, note: b.note || "", block: b,
+      // so the status of the real task or subtask can be changed from here
+      workKind: link?.kind || null, workTaskId: link?.taskId || null, workSubtaskId: link?.subtaskId || null,
+      workStatus: link?.status || null, originalWorkStatus: link?.status || null });
   };
 
   const projectOptions = useMemo(
@@ -412,11 +434,41 @@ export default function TimeBlocking({ day, onDayChange }) {
     Number(dialog.start) >= DAY_START && Number(dialog.end) <= DAY_END &&
     Number(dialog.end) > Number(dialog.start);
 
+  // Writes a status change back to the task, or to the subtask inside it.
+  const saveWorkStatus = async (d) => {
+    const task = tasks.find((t) => t.id === d.workTaskId);
+    if (!task) { setError("That task no longer exists, so its status was not changed."); return false; }
+
+    const data = d.workKind === "subtask"
+      ? { subtasks: (task.subtasks || []).map((x) => (x.id === d.workSubtaskId
+          ? { ...x, status: d.workStatus, done: d.workStatus === "done" } : x)) }
+      : { status: d.workStatus };
+
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: task.id, data }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Unable to change the status.");
+      setTasks(Array.isArray(body.tasks) ? body.tasks.filter((t) => !t.archived) : tasks);
+      return true;
+    } catch (e) {
+      setError(e.message || "Unable to change the status.");
+      return false;
+    }
+  };
+
   const saveDialog = async () => {
     if (!dialogValid || busy) return;
     const start = Number(dialog.start), end = Number(dialog.end);
     let ok;
     if (dialog.mode === "edit") {
+      // A changed status goes to the Tasks API, since that is the real record.
+      if (dialog.workStatus && dialog.workStatus !== dialog.originalWorkStatus) {
+        const saved = await saveWorkStatus(dialog);
+        if (!saved) return;
+      }
       ok = await send("PATCH", { id: dialog.id, start, end,
         ...(dialog.title.trim() !== dialog.originalTitle ? { title: dialog.title.trim() } : {}),
         note: dialog.note || "" });
@@ -967,8 +1019,28 @@ export default function TimeBlocking({ day, onDayChange }) {
                 style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
                 value={dialog.note} onChange={e => patchDialog2(d => ({ ...d, note: e.target.value }))}/>
             </label>
+            {dialog.mode === "edit" && dialog.workKind && (
+              <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+                <span>{dialog.workKind === "subtask" ? "Subtask status" : "Task status"}</span>
+                <div className="relative">
+                  <select className="appearance-none w-full rounded-xl pl-3 pr-9 py-2 text-sm border"
+                    style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
+                    value={dialog.workStatus || "todo"}
+                    onChange={(e) => patchDialog2((d) => (d ? { ...d, workStatus: e.target.value } : d))}>
+                    {(statusList.length ? statusList : [{ id: "todo", name: "To Do" }]).map((x) => (
+                      <option key={x.id} value={x.id}>{x.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+                </div>
+              </label>
+            )}
+
             <p className="text-xs" style={{ color: "var(--muted)" }}>
-              Multiple time blocks may overlap. Editing here changes only this timeline block, not the original task record.
+              Multiple time blocks may overlap. Times and the title here change only this timeline block.
+              {dialog.mode === "edit" && dialog.workKind
+                ? ` Changing the status updates the ${dialog.workKind === "subtask" ? "subtask" : "task"} itself.`
+                : ""}
             </p>
             {showInvalid && !dialogValid && (
               <p className="text-xs" style={{ color: "#E5536E" }}>
