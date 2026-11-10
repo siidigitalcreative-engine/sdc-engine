@@ -100,6 +100,9 @@ export default function TimeBlocking({ day, onDayChange }) {
   const [pending, setPending] = useState({});
   // Blocks that have been dropped but not yet acknowledged.
   const [ghosts, setGhosts] = useState([]);
+  // The block under the pointer. While it moves, it is lifted out of the
+  // overlap layout so neither it nor its neighbours reflow mid-gesture.
+  const [draggingId, setDraggingId] = useState(null);
   const writeSeq = useRef(0);
   const suppressBlockClick = useRef(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -603,6 +606,7 @@ export default function TimeBlocking({ day, onDayChange }) {
     event.stopPropagation();
     const clientY = event.clientY ?? event.touches?.[0]?.clientY;
     dragRef.current = { id: block.id, mode, startY: clientY, start: block.start, end: block.end, live: null, moved: false };
+    setDraggingId(block.id);
   };
 
   useEffect(() => {
@@ -627,6 +631,7 @@ export default function TimeBlocking({ day, onDayChange }) {
     const end = () => {
       const drag = dragRef.current;
       dragRef.current = null;
+      setDraggingId(null);
       if (drag?.moved) {
         suppressBlockClick.current = true;
         setTimeout(() => { suppressBlockClick.current = false; }, 0);
@@ -702,7 +707,9 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   // Lay simultaneous blocks out in adjacent columns so none covers another.
   const layoutFor = (memberId) => {
-    const sorted = [...blocksOf(memberId)].sort((a, b) => a.start - b.start || a.end - b.end);
+    const sorted = blocksOf(memberId)
+      .filter((b) => b.id !== draggingId)
+      .sort((a, b) => a.start - b.start || a.end - b.end);
     const positions = new Map();
     const flush = (group) => {
       if (!group.length) return;
@@ -777,7 +784,11 @@ export default function TimeBlocking({ day, onDayChange }) {
           background: "var(--card)",
           boxSizing: "border-box", display: "flex", flexDirection: "column",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
-          cursor: interactive ? "grab" : "default", pointerEvents: "auto",
+          cursor: interactive ? (b.id === draggingId ? "grabbing" : "grab") : "default",
+          pointerEvents: "auto",
+          zIndex: b.id === draggingId ? 5 : 1,
+          // no transition while dragging, or the card lags behind the pointer
+          transition: b.id === draggingId ? "none" : "top .08s ease, height .08s ease",
         }}>
         {interactive && showTime && (
           <BlockRemoveButton floating onRemove={() => send("DELETE", { id: b.id })} />
@@ -1355,7 +1366,14 @@ export default function TimeBlocking({ day, onDayChange }) {
                           zIndex: 0, borderTop: "1px solid rgba(163, 168, 176, 0.15)",
                           borderBottom: "1px solid rgba(163, 168, 176, 0.15)" }} />
                     ))}
-                    {(() => { const positions = layoutFor(m.id); return blocksOf(m.id).map((b) => block(b, m.id === me, positions.get(b.id))); })()}
+                    {(() => {
+                      const positions = layoutFor(m.id);
+                      const items = blocksOf(m.id);
+                      // the dragged one renders last, so it stays above the rest
+                      const ordered = [...items].sort((a, b) =>
+                        (a.id === draggingId ? 1 : 0) - (b.id === draggingId ? 1 : 0));
+                      return ordered.map((b) => block(b, m.id === me, b.id === draggingId ? null : positions.get(b.id)));
+                    })()}
                   </div>
                 </div>
               ))}
