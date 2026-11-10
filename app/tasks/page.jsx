@@ -186,7 +186,15 @@ function TasksPageInner() {
     }))
   ), []);
 
-  const [deptView, setDeptView] = useState("all");
+  // Start on the viewer's own department; "All departments" stays available in
+  // the picker for Management, Admin and HOD Admin.
+  const [deptView, setDeptView] = useState("");
+  useEffect(() => {
+    if (!deptView && department?.id) {
+      taskEtagRef.current = null;
+      setDeptView(department.id);
+    }
+  }, [department, deptView]);
   const deptTouchedRef = useRef(false);
   const changeDeptView = (next) => {
     deptTouchedRef.current = true;
