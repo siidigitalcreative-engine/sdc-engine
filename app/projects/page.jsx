@@ -72,7 +72,12 @@ function ProjectsPageInner() {
     return map;
   }, [members]);
 
-  const [deptView, setDeptView] = useState("all");
+  // Start on the viewer's own department; "All departments" stays available in
+  // the picker for Management, Admin and HOD Admin.
+  const [deptView, setDeptView] = useState("");
+  useEffect(() => {
+    if (!deptView && department?.id) setDeptView(department.id);
+  }, [department, deptView]);
   const deptTouchedRef = useRef(false);
   const changeDeptView = (next) => { deptTouchedRef.current = true; setDeptView(next); };
   // Open on the signed-in member's own department (admin departments only —
