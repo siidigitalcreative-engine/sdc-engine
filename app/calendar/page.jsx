@@ -347,7 +347,7 @@ function TeamCalendarInner() {
   return (
     <>
       {larkPicker}
-      <main ref={calendarExportRef} className="flex-1 min-w-0 flex flex-col">
+      <main ref={calendarExportRef} className="flex-1 min-w-0 min-h-0 flex flex-col">
           {calendarError && (
             <div className="mx-5 mt-3 rounded-xl px-4 py-2.5 text-sm shrink-0" style={{ color: "#C23150", background: "rgba(229,83,110,0.10)", border: "1px solid rgba(229,83,110,0.24)" }}>
               {calendarError}
