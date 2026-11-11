@@ -124,7 +124,13 @@ export function AuthProvider({ children }) {
     if (!response.ok) return { ok: false, message: await getError(response, "Unable to sign in.") };
 
     const body = await response.json();
-    setSessionId(body.member?.id || null);
+    // Resolve the signed-in member's department and page permissions before
+    // navigating away from Login. Otherwise these controls appear only after
+    // a full page refresh (when the startup session check runs).
+    const verifiedMember = await refreshSession();
+    if (!verifiedMember) {
+      return { ok: false, message: "Unable to load your account permissions. Please sign in again." };
+    }
     await refreshMembers({ force: true });
     return { ok: true, member: body.member };
   };
