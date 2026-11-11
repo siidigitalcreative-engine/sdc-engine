@@ -62,7 +62,14 @@ export async function POST(request) {
     const incoming = body.data || body;
     const task = createTask({
       ...incoming,
-      department: scope.isAdmin && incoming.department ? incoming.department : scope.departmentId,
+      /* A task belongs to the department of whoever made it, so a Digital
+         Creative member's task only ever shows in the Digital Creative view.
+         The exception is Management, Admin or HOD Admin working inside another
+         department's view: the task belongs where they are looking. */
+      department: scope.isAdmin
+        ? (scope.filterId || incoming.department || scope.departmentId)
+        : scope.departmentId,
+      createdBy: actor.id,
     });
     if (isBaseConfigured()) {
       try { const recordId = await syncCreate(task); if (recordId) task.larkRecordId = recordId; }
@@ -85,11 +92,15 @@ export async function PATCH(request) {
     const id = String(body.id || "");
     if (!id) return json({ error: "Task ID is required." }, 400);
 
+    const patchScope = await viewerScope(actor, request);
+    const patch = { ...(body.data || {}) };
+    if (patch.department !== undefined && !patchScope.isAdmin) delete patch.department;
+
     let updated = null;
     const result = await mutateTasks((tasks) => {
       const index = tasks.findIndex((task) => String(task.id) === id);
       if (index < 0) throw new Error("Task not found.");
-      updated = updateTask(tasks[index], body.data || {});
+      updated = updateTask(tasks[index], patch);
       const next = [...tasks];
       next[index] = updated;
       return next;
@@ -109,8 +120,7 @@ export async function PATCH(request) {
       } catch (e) { console.error("Lark Base update sync failed", e); }
     }
 
-    const scope = await viewerScope(actor, request);
-    return json({ tasks: filterTasks(result.state.tasks, scope), task: updated }, 200, result.etag);
+    return json({ tasks: filterTasks(result.state.tasks, patchScope), task: updated }, 200, result.etag);
   } catch (error) {
     console.error("PATCH /api/tasks", error);
     return json({ error: error.message || "Unable to update task." }, 400);
