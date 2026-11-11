@@ -203,10 +203,36 @@ export function memberIsAdmin(member, department) {
 
 // The department a member belongs to, falling back to the first one so an
 // existing member without a department is never locked out.
-export async function departmentForMember(member) {
+/* Resolve the department a member belongs to.
+
+   The id is matched first. If it does not match, the name is tried, which
+   covers a department that was recreated and given a new id. Only a member
+   with nothing stored falls back to the first department: substituting it for
+   an unrecognised id used to put, say, a Marketing member on the Digital
+   Creative view without anything saying so. */
+export async function resolveMemberDepartment(member) {
   const { state } = await readDepartmentsState();
-  const byId = state.departments.find((d) => d.id === clean(member?.department));
-  return byId || state.departments[0];
+  const stored = clean(member?.department);
+  if (!stored) return { department: state.departments[0], matched: "default", stored: "" };
+
+  const byId = state.departments.find((d) => d.id === stored);
+  if (byId) return { department: byId, matched: "id", stored };
+
+  const byName = state.departments.find((d) => d.name.toLowerCase() === stored.toLowerCase());
+  if (byName) return { department: byName, matched: "name", stored };
+
+  // Unknown id: keep it, so the member is scoped to their own department even
+  // though its record is missing, instead of inheriting another department's.
+  return {
+    department: { id: stored, name: "Unknown department", color: "#8E8A96", admin: false, pages: ["dashboard"] },
+    matched: "none",
+    stored,
+  };
+}
+
+export async function departmentForMember(member) {
+  const { department } = await resolveMemberDepartment(member);
+  return department;
 }
 
 export async function memberCanOpen(member, pageId) {
