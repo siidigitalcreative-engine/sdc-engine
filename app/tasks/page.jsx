@@ -103,6 +103,9 @@ function TasksPageInner() {
 
   const [active, setActive] = useState("tasks");
   const [tasks, setTasks] = useState([]);
+  const taskSnapshotRef = useRef([]);
+  taskSnapshotRef.current = tasks;
+  const subtaskWriteQueuesRef = useRef(new Map());
   const [projects, setProjects] = useState([]);
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES);
 
@@ -447,32 +450,53 @@ function TasksPageInner() {
     }
   };
 
-  const toggleSubtask = async (task, subId) => {
-    const current = Array.isArray(task.subtasks) ? task.subtasks : [];
-    // Ticking sets Done, unticking returns it to In Progress, so the status and
-    // the tick never disagree.
+  const toggleSubtask = (task, subId) => {
+    // Use the latest optimistic state, not the card props captured before a
+    // previous checkbox click. Rapid changes must not overwrite one another.
+    const latestTask = taskSnapshotRef.current.find((t) => t.id === task.id) || task;
+    const current = Array.isArray(latestTask.subtasks) ? latestTask.subtasks : [];
     const next = current.map((s) => (s.id === subId
       ? { ...s, done: !s.done, status: !s.done ? "done" : (s.status === "done" || !s.status ? "inprogress" : s.status) }
       : s));
-    const previous = tasks;
+    const optimistic = taskSnapshotRef.current.map((t) => (
+      t.id === task.id ? { ...t, subtasks: next } : t
+    ));
+    taskSnapshotRef.current = optimistic;
+    setTasks(optimistic);
+    setTaskError("");
     mutationGenerationRef.current += 1;
     pendingWritesRef.current += 1;
-    setTasks((ts) => ts.map((t) => (t.id === task.id ? { ...t, subtasks: next } : t)));
-    setTaskError("");
-    try {
+
+    // PATCH sends the entire subtask array. Serialize writes for the same
+    // task so an older response cannot undo a more recent checkbox change.
+    const previousWrite = subtaskWriteQueuesRef.current.get(task.id) || Promise.resolve();
+    const write = previousWrite.catch(() => {}).then(async () => {
       const response = await fetch("/api/tasks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: task.id, data: { subtasks: next } }),
       });
-      await applyTaskResponse(response, "Unable to update subtask.");
-    } catch (error) {
-      setTasks(previous);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || "Unable to update subtask.");
+      }
+      // Do not replace the entire board with this response: a newer checkbox
+      // change may already be displayed, or another write may be queued.
+    }).catch((error) => {
       setTaskError(error.message || "Unable to update subtask.");
-      loadTasks({ force: true });
-    } finally {
+    }).finally(() => {
       pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
-    }
+      if (subtaskWriteQueuesRef.current.get(task.id) === write) {
+        subtaskWriteQueuesRef.current.delete(task.id);
+      }
+      if (pendingWritesRef.current === 0) {
+        // Reconcile with the server only after all optimistic writes settle.
+        taskEtagRef.current = null;
+        mutationGenerationRef.current += 1;
+        loadTasks({ force: true });
+      }
+    });
+    subtaskWriteQueuesRef.current.set(task.id, write);
   };
 
   // Which column a drag is over. Resolved from the pointer's position across the
