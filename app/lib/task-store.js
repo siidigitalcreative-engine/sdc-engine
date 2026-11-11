@@ -83,6 +83,8 @@ function normalizeTask(task = {}) {
     title: String(task.title || "Untitled task").trim() || "Untitled task",
     project: String(task.project || "Daily Tasks"),
     department: String(task.department || "sdc").trim() || "sdc",
+    // Who made it, so a task can be traced to a member and their department.
+    createdBy: String(task.createdBy || "").trim(),
     desc: String(task.desc || ""),
     notes: String(task.notes || ""),
     status,
