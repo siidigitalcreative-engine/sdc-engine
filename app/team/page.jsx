@@ -267,6 +267,8 @@ function MemberCard({ m, dark, isCurrent, onEdit, onDelete }) {
 }
 
 function MemberModal({ member, onClose, onSave }) {
+  // The access level field is read-only unless the viewer may change it.
+  const { canSwitchDepartments } = useAuth();
   const [form, setForm] = useState(() => member ? { ...member, pin: "" } : { ...EMPTY_FORM });
   const [departments, setDepartments] = useState([]);
 
