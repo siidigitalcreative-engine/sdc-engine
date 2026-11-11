@@ -110,6 +110,8 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   const [shareBusy, setShareBusy] = useState(false);
   const [shareNotice, setShareNotice] = useState("");
   const [dialog, setDialog] = useState(null); // { mode: "add" | "edit", start, end, ... }
+  const [detailBlock, setDetailBlock] = useState(null); // read-only details for another member
+
   const dragSrcRef = useRef(null);                   // the card being dragged onto the timeline
 
   const { openLarkSend, larkPicker } = useLarkSend();
@@ -152,6 +154,12 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   useEffect(() => { setView("all"); }, [departmentView]);
   useEffect(() => { setGhosts([]); setPending({}); }, [key, departmentView]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!detailBlock) return;
+    const onKey = e => { if (e.key === "Escape") setDetailBlock(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailBlock]);
 
   useEffect(() => {
     fetch("/api/time-block-public", { cache: "no-store" })
@@ -413,7 +421,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   };
 
   const openEdit = (b) => {
-    if (!editable || b.member !== me) return;
+    if (b.member !== me) return;
     setError("");
     setShowInvalid(false);
     const link = linkedWork(b);
@@ -609,7 +617,8 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     event.stopPropagation();
     const clientY = event.clientY ?? event.touches?.[0]?.clientY;
     dragRef.current = { id: block.id, mode, startY: clientY, start: block.start, end: block.end, live: null, moved: false };
-    setDraggingId(block.id);
+    // Only mark as dragging after actual movement. A re-render on mousedown
+    // can consume the click event before the details dialog opens.
   };
 
   useEffect(() => {
@@ -619,6 +628,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       const clientY = event.clientY ?? event.touches?.[0]?.clientY;
       if (Math.abs(clientY - drag.startY) < 4 && !drag.moved) return;
       drag.moved = true;
+      setDraggingId(drag.id);
       const delta = Math.round(((clientY - drag.startY) / ROW_H) * 60 / SLOT) * SLOT;
       if (drag.mode === "resize") {
         const end = Math.min(DAY_END, Math.max(drag.start + SLOT, drag.end + delta));
@@ -768,12 +778,13 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       <div key={b.id}
         onMouseDown={interactive ? (e) => { if (!picked && !dragSrcRef.current) beginDrag(e, b, "move"); } : undefined}
         onTouchStart={interactive ? (e) => { if (!picked && !dragSrcRef.current) beginDrag(e, b, "move"); } : undefined}
-        onClick={interactive ? (e) => {
+        onClick={(e) => {
           e.stopPropagation();
           if (suppressBlockClick.current) return;
-          if (picked) openAdd(pointerTime(e, b));
-          else openEdit(b);
-        } : undefined}
+          // All visible blocks open on a single click. Only the owner can edit.
+          if (b.member === me) openEdit(b);
+          else setDetailBlock(b);
+        }}
         onDragOver={interactive ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } : undefined}
         onDrop={interactive ? (e) => { e.preventDefault(); e.stopPropagation(); place(pointerTime(e, b), e); } : undefined}
         style={{
@@ -787,7 +798,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
           background: "var(--card)",
           boxSizing: "border-box", display: "flex", flexDirection: "column",
           border: `1px solid ${b.color}`, color: b.color, boxShadow: `inset 3px 0 0 ${b.color}`,
-          cursor: interactive ? (b.id === draggingId ? "grabbing" : "grab") : "default",
+          cursor: interactive ? (b.id === draggingId ? "grabbing" : "pointer") : "pointer",
           pointerEvents: "auto",
           zIndex: b.id === draggingId ? 5 : 1,
           // no transition while dragging, or the card lags behind the pointer
@@ -857,7 +868,46 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   return (
     <div className="flex flex-col gap-3">
       {larkPicker}
-      {dialog && editable && (
+      {detailBlock && (() => {
+        const owner = members.find(m => m.id === detailBlock.member);
+        const parentTask = detailBlock.kind === "task"
+          ? tasks.find(t => t.id === detailBlock.refId)
+          : tasks.find(t => (t.subtasks || []).some(st => st.id === detailBlock.refId));
+        const subtask = detailBlock.kind === "subtask"
+          ? (parentTask?.subtasks || []).find(st => st.id === detailBlock.refId) : null;
+        const work = subtask || parentTask;
+        return (
+          <div role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setDetailBlock(null); }}
+            style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.64)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div role="dialog" aria-modal="true" aria-label="Time block details"
+              className="rounded-2xl p-5 w-full max-w-md space-y-3"
+              style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)", maxHeight: "90vh", overflowY: "auto" }}>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold">Task Details</h3>
+                <button type="button" aria-label="Close" onClick={() => setDetailBlock(null)}><X size={18}/></button>
+              </div>
+              <div>
+                {detailBlock.parentTitle && <p className="text-xs font-semibold uppercase" style={{ color: "var(--muted)" }}>{detailBlock.parentTitle}</p>}
+                <p className="font-semibold" style={{ color: detailBlock.color || "var(--text)" }}>{detailBlock.title}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><p className="text-xs" style={{ color: "var(--muted)" }}>Member</p><p>{owner?.name || owner?.n || "Team member"}</p></div>
+                <div><p className="text-xs" style={{ color: "var(--muted)" }}>Project</p><p>{detailBlock.project || parentTask?.project || "—"}</p></div>
+                <div><p className="text-xs" style={{ color: "var(--muted)" }}>Start</p><p>{displayTime(detailBlock.start)}</p></div>
+                <div><p className="text-xs" style={{ color: "var(--muted)" }}>End</p><p>{displayTime(detailBlock.end)}</p></div>
+                <div><p className="text-xs" style={{ color: "var(--muted)" }}>Working duration</p><p>{hours(workingMinutes(detailBlock.start, detailBlock.end))}</p></div>
+                {work?.status && <div><p className="text-xs" style={{ color: "var(--muted)" }}>Status</p><p>{statusLabel(work.status)}</p></div>}
+              </div>
+              {(work?.desc || work?.description) && <div><p className="text-xs" style={{ color: "var(--muted)" }}>Description</p><p className="text-sm whitespace-pre-wrap">{work.desc || work.description}</p></div>}
+              {detailBlock.note && <div><p className="text-xs" style={{ color: "var(--muted)" }}>Time block notes</p><p className="text-sm whitespace-pre-wrap">{detailBlock.note}</p></div>}
+              <div className="flex justify-end pt-2"><button type="button" onClick={() => setDetailBlock(null)}
+                className="rounded-xl px-4 py-2 text-sm" style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>Close</button></div>
+            </div>
+          </div>
+        );
+      })()}
+      {dialog && (editable || (dialog.mode === "edit" && dialog.block?.member === me)) && (
         <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setDialog(null); }}
           style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.64)",
             display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
