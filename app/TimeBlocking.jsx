@@ -1350,25 +1350,31 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                 <div className="grid grid-cols-2 gap-1.5">
                   <label className="min-w-0">
                     <span className="block mb-1 text-[10px]" style={{ color: "var(--muted)" }}>Date</span>
-                    <select aria-label="Filter tasks by date" value={taskDateFilter}
-                      onChange={e => { setTaskDateFilter(e.target.value); setPicked(null); }}
-                      className="w-full rounded-lg px-2 py-2 text-[11px] outline-none"
-                      style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }}>
-                      <option value="all">All dates</option>
-                      <option value="start">Start date</option>
-                      <option value="due">Due date</option>
-                      <option value="overdue">Overdue</option>
-                    </select>
+                    <div className="relative">
+                      <select aria-label="Filter tasks by date" value={taskDateFilter}
+                        onChange={e => { setTaskDateFilter(e.target.value); setPicked(null); }}
+                        className="appearance-none w-full rounded-lg pl-2 pr-9 py-2 text-[11px] outline-none"
+                        style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }}>
+                        <option value="all">All dates</option>
+                        <option value="start">Start date</option>
+                        <option value="due">Due date</option>
+                        <option value="overdue">Overdue</option>
+                      </select>
+                      <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+                    </div>
                   </label>
                   <label className="min-w-0">
                     <span className="block mb-1 text-[10px]" style={{ color: "var(--muted)" }}>Status</span>
-                    <select aria-label="Filter tasks by status" value={taskStatusFilter}
-                      onChange={e => { setTaskStatusFilter(e.target.value); setPicked(null); }}
-                      className="w-full rounded-lg px-2 py-2 text-[11px] outline-none"
-                      style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }}>
-                      <option value="all">All statuses</option>
-                      {taskStatusOptions.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
-                    </select>
+                    <div className="relative">
+                      <select aria-label="Filter tasks by status" value={taskStatusFilter}
+                        onChange={e => { setTaskStatusFilter(e.target.value); setPicked(null); }}
+                        className="appearance-none w-full rounded-lg pl-2 pr-9 py-2 text-[11px] outline-none"
+                        style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }}>
+                        <option value="all">All statuses</option>
+                        {taskStatusOptions.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
+                      </select>
+                      <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+                    </div>
                   </label>
                 </div>
                 {(taskDateFilter === "start" || taskDateFilter === "due") && (
