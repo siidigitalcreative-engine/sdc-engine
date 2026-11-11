@@ -37,8 +37,7 @@ export default function PageAccess({ page, children }) {
         </span>
         <h1 className="text-lg font-semibold" style={{ color: "var(--text)" }}>This page is not open to your department</h1>
         <p className="text-sm mt-2" style={{ color: "var(--muted)" }}>
-          {department ? department.name + " does not have access to this page." : "Your department does not have access to this page."}
-          {" "}An admin can grant it in Settings.
+          You do not have access to this page. An admin can grant it in Settings.
         </p>
         <Link href="/dashboard" className="inline-block mt-5 rounded-full px-4 py-2 text-sm font-semibold"
           style={{ background: "linear-gradient(135deg,#FFAA62,#E53E30)", color: "var(--on-accent)" }}>
