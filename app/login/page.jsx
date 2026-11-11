@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LockKeyhole, Sparkles, ArrowRight, Moon, Sun } from "lucide-react";
 import { useAuth } from "../auth";
+import { useAppSettings } from "../useAppSettings";
 import { useTheme } from "../theme";
 
 const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
@@ -12,6 +13,7 @@ const ON_ACCENT = "var(--on-accent)";
 export default function LoginPage() {
   const router = useRouter();
   const { members, departments, login, defaultPin } = useAuth();
+  const app = useAppSettings();
   const [deptId, setDeptId] = useState("");
   const { dark, toggle } = useTheme();
   const [memberId, setMemberId] = useState("");
@@ -76,8 +78,10 @@ export default function LoginPage() {
             <span className="mx-auto h-12 w-12 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: ACCENT_GRAD }}>
               <Sparkles size={22} style={{ color: ON_ACCENT }} />
             </span>
-            <h1 className="mt-4 text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Welcome to SDC</h1>
-            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>Sign in to your creative team workspace</p>
+            <h1 className="mt-4 text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>
+              {app.signInTitle || `Welcome to ${app.name}`}
+            </h1>
+            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>{app.signInSubtitle}</p>
           </div>
 
           <form onSubmit={submit} className="rounded-3xl p-6 sm:p-7 shadow-xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
