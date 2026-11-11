@@ -11,10 +11,12 @@ import { departmentForMember } from "./department-store";
 
 export async function viewerScope(member, request) {
   const department = await departmentForMember(member);
-  // Management, Admin and HOD Admin see every department and may switch the
-  // view. An admin department still counts, so nobody loses access on upgrade.
-  const level = String(member?.accessLevel || "").trim() || (department?.admin ? "admin" : "member");
-  const isAdmin = level === "admin" || Boolean(department?.admin);
+  /* Who sees other departments' rows is decided by the member's access level
+     alone. A department's Admin flag only governs page access, such as
+     Settings: letting it widen the data view meant everyone in a department
+     marked Admin saw every department's work. */
+  const level = String(member?.accessLevel || "").trim() || "member";
+  const isAdmin = level === "admin";
   const requested = request ? new URL(request.url).searchParams.get("department") : null;
 
   return {
