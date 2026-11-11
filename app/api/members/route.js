@@ -41,22 +41,17 @@ export async function GET(request) {
       console.error("GET /api/members: departments unavailable", error);
     }
 
-    /* Signed out, this list is what the sign-in screen offers, so it stays
-       whole. Signed in, it is scoped: everyone sees their own department,
-       and only Management, Admin or HOD Admin sees another. */
-    const viewer = await getAuthenticatedMember(request);
-    let members = sanitizeMembers(result.state.members);
-    let scopeInfo = null;
+    /* This list is always whole. The sign-in screen needs it before anyone is
+       signed in, and scoping it by the viewer's session meant the picker only
+       showed whoever logged in last. Pages narrow it themselves: the Team page
+       shows the viewer's own department and only an admin can switch. */
+    const members = sanitizeMembers(result.state.members);
 
+    const viewer = await getAuthenticatedMember(request);
+    let scopeInfo = null;
     if (viewer) {
       const { viewerScope } = await import("../../lib/scope");
       const scope = await viewerScope(viewer, request);
-      const fallback = departments[0]?.id;
-      // Settings asks for everyone with ?all=1; only an admin gets it.
-      const wantsAll = new URL(request.url).searchParams.get("all") === "1" && scope.isAdmin;
-      if (scope.filterId && !wantsAll) {
-        members = members.filter((m) => (m.department || fallback) === scope.filterId);
-      }
       scopeInfo = { departmentId: scope.departmentId, level: scope.level, isAdmin: scope.isAdmin };
     }
 
