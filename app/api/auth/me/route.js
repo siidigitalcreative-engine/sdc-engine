@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { clearAuthCookie, getAuthenticatedMember } from "../../../lib/auth-token";
 import { sanitizeMember } from "../../../lib/member-store";
-import { PAGES, departmentCanOpen, departmentForMember } from "../../../lib/department-store";
+import { PAGES, departmentCanOpen, departmentForMember, memberIsAdmin } from "../../../lib/department-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +17,8 @@ export async function GET(request) {
     }
 
     const department = await departmentForMember(member);
-    const allowedPages = PAGES.filter((page) => departmentCanOpen(department, page.id)).map((page) => page.id);
+    const isAdmin = memberIsAdmin(member, department);
+    const allowedPages = PAGES.filter((page) => departmentCanOpen(department, page.id, isAdmin)).map((page) => page.id);
 
     const response = NextResponse.json({
       member: sanitizeMember(member),
