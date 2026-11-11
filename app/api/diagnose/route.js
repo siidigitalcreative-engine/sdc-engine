@@ -67,14 +67,17 @@ export async function GET(request) {
 
   await run("my access", async () => {
     if (!actor) throw new Error("Not signed in.");
-    const { departmentForMember, departmentCanOpen, memberIsAdmin, PAGES } = await import("../../lib/department-store");
+    const { resolveMemberDepartment, departmentCanOpen, memberIsAdmin, PAGES } = await import("../../lib/department-store");
     const { readMembersState } = await import("../../lib/member-store");
     const fresh = (await readMembersState()).state.members.find((m) => m.id === actor.id);
-    const department = await departmentForMember(fresh || actor);
+    const resolved = await resolveMemberDepartment(fresh || actor);
+    const department = resolved.department;
     const isAdmin = memberIsAdmin(fresh || actor, department);
     return {
       name: fresh?.name,
       accessLevel: fresh?.accessLevel || "(not set)",
+      storedDepartmentId: resolved.stored || "(none)",
+      matchedBy: resolved.matched,          // id | name | default | none
       department: department?.name,
       departmentIsAdminFlagged: Boolean(department?.admin),
       countsAsAdmin: isAdmin,
