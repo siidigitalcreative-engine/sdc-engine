@@ -182,7 +182,8 @@ export function AuthProvider({ children }) {
     department,
     accessLevel,
     // Only Management, Admin and HOD Admin may look at another department.
-    canSwitchDepartments: accessLevel === "admin" || Boolean(department?.admin),
+    // Matches the server: only the access level widens the data view.
+    canSwitchDepartments: accessLevel === "admin",
     allowedPages,
     canOpen,
     login,
