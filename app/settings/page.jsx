@@ -15,6 +15,8 @@ function SettingsInner() {
   const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [app, setApp] = useState({ name: "SDC", tagline: "Creative team", signInTitle: "", signInSubtitle: "" });
+  const [allMembers, setAllMembers] = useState([]);
   const [error, setError] = useState("");
   const [renaming, setRenaming] = useState(null);
   const [draftName, setDraftName] = useState("");
@@ -30,15 +32,21 @@ function SettingsInner() {
 
   const load = useCallback(async () => {
     try {
-      const [res, memberRes] = await Promise.all([
+      const [res, memberRes, appRes] = await Promise.all([
         fetch("/api/departments", { cache: "no-store" }),
-        fetch("/api/members", { cache: "no-store" }),
+        // every department's people, so roles can be set from one place
+        fetch("/api/members?all=1", { cache: "no-store" }),
+        fetch("/api/app-settings", { cache: "no-store" }),
       ]);
+      const appBody = await appRes.json().catch(() => ({}));
+      if (appBody?.settings) setApp(appBody.settings);
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || "Unable to load departments.");
       apply(body);
       const memberBody = await memberRes.json().catch(() => ({}));
-      setMembers(Array.isArray(memberBody.members) ? memberBody.members : []);
+      const list = Array.isArray(memberBody.members) ? memberBody.members : [];
+      setMembers(list);
+      setAllMembers(list);
       setError("");
     } catch (e) {
       setError(e.message);
@@ -63,6 +71,42 @@ function SettingsInner() {
     } catch (e) {
       setError(e.message);
       return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveApp = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/app-settings", {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(app),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Unable to save the name.");
+      setApp(body.settings);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Changing what a member may do, from any department.
+  const setMemberField = async (memberId, patch) => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/members", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: memberId, data: patch }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Unable to save that member.");
+      await load();
+    } catch (e) {
+      setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -120,6 +164,40 @@ function SettingsInner() {
       </header>
 
       <div className="px-4 sm:px-7 pb-8 flex flex-col gap-4" style={{ maxWidth: 980 }}>
+        <section className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>Workspace</h2>
+          <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+            The name in the sidebar and on the sign-in screen.
+          </p>
+          <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+            <label className="block text-xs" style={{ color: "var(--text-2)" }}>
+              <span className="block mb-1">Name</span>
+              <input value={app.name} maxLength={40} onChange={(e) => setApp({ ...app, name: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }} />
+            </label>
+            <label className="block text-xs" style={{ color: "var(--text-2)" }}>
+              <span className="block mb-1">Tagline</span>
+              <input value={app.tagline} maxLength={60} onChange={(e) => setApp({ ...app, tagline: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }} />
+            </label>
+            <label className="block text-xs" style={{ color: "var(--text-2)" }}>
+              <span className="block mb-1">Sign-in subtitle</span>
+              <input value={app.signInSubtitle} maxLength={120} onChange={(e) => setApp({ ...app, signInSubtitle: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }} />
+            </label>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <button disabled={busy} onClick={saveApp}
+              className="rounded-full px-4 py-2.5 text-sm font-semibold"
+              style={{ background: ACCENT, color: "var(--on-accent)" }}>Save name</button>
+            <span className="text-xs" style={{ color: "var(--muted)" }}>
+              The sign-in screen shows “{app.signInTitle || `Welcome to ${app.name}`}”.
+            </span>
+          </div>
+        </section>
         <section className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
           <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>Departments</h2>
           <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
@@ -228,6 +306,71 @@ function SettingsInner() {
               <Plus size={15} /> Add department
             </button>
           </div>
+        </section>
+
+        <section className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>People and roles</h2>
+          <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+            Everyone in every department. Change a department or an access level here.
+          </p>
+
+          {departments.map((d) => {
+            const people = allMembers.filter((m) => (m.department || departments[0]?.id) === d.id);
+            if (!people.length) return (
+              <div key={d.id} className="mb-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: d.color }} />
+                  <span className="text-xs font-semibold" style={{ color: "var(--text)" }}>{d.name}</span>
+                </div>
+                <p className="text-xs ml-4.5" style={{ color: "var(--muted)" }}>No one here yet.</p>
+              </div>
+            );
+            return (
+              <div key={d.id} className="mb-3.5">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: d.color }} />
+                  <span className="text-xs font-semibold" style={{ color: "var(--text)" }}>{d.name}</span>
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>{people.length}</span>
+                </div>
+
+                {people.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2 rounded-xl px-2.5 py-2 mb-1.5 flex-wrap"
+                    style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
+                    <span className="rounded-full flex items-center justify-center text-white font-bold shrink-0"
+                      style={{ height: 26, width: 26, fontSize: 10, background: m.c }}>{m.i}</span>
+                    <span className="text-sm font-medium min-w-0 truncate" style={{ color: "var(--text)" }}>{m.name}</span>
+                    <span className="text-xs truncate" style={{ color: "var(--muted)" }}>{m.role}</span>
+
+                    <div className="flex gap-1.5 ml-auto flex-wrap">
+                      <select value={m.department || departments[0]?.id || ""} disabled={busy}
+                        onChange={(e) => setMemberField(m.id, { department: e.target.value })}
+                        className="rounded-full px-3 py-1.5 text-xs outline-none"
+                        style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-2)" }}>
+                        {departments.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                      </select>
+
+                      <select value={m.accessLevel || "member"} disabled={busy}
+                        onChange={(e) => setMemberField(m.id, { accessLevel: e.target.value })}
+                        className="rounded-full px-3 py-1.5 text-xs font-semibold outline-none"
+                        style={{
+                          background: m.accessLevel === "admin" ? "#FCE3D6" : m.accessLevel === "hod" ? "#E3EEF9" : "var(--card)",
+                          color: m.accessLevel === "admin" ? "#F26A3C" : m.accessLevel === "hod" ? "#3E8ED0" : "var(--text-2)",
+                          border: "1px solid var(--border)",
+                        }}>
+                        <option value="admin">Management / Admin / HOD Admin</option>
+                        <option value="hod">HOD</option>
+                        <option value="member">Member</option>
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          <p className="text-xs mt-1" style={{ color: "var(--faint)" }}>
+            Management, Admin and HOD Admin see every department and can switch the view. HOD and Member see only their own.
+          </p>
         </section>
 
         <section className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
