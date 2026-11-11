@@ -79,10 +79,12 @@ function TeamPageInner() {
     return { projects, open: mine.length - done, done };
   };
 
-  // The API already limits this to the viewer's department unless they are
-  // Management, Admin or HOD Admin; the picker narrows it further.
+  /* The member list itself is public, because the sign-in screen needs it.
+     This page is what narrows it: your own department, unless you are
+     Management, Admin or HOD Admin and switch the view. */
+  const effectiveDept = canSwitchDepartments ? deptView : (department?.id || deptView);
   const list = members.filter((m) => {
-    if (deptView && deptView !== "all" && (m.department || "") !== deptView) return false;
+    if (effectiveDept && effectiveDept !== "all" && (m.department || "") !== effectiveDept) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return `${m.name} ${m.role} ${m.loc} ${m.status}`.toLowerCase().includes(q);
