@@ -1,205 +1,444 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Plus, Lock, Users } from "lucide-react";
+import PageAccess from "../PageAccess";
 
-const AuthCtx = createContext(null);
-const POLL_MS = 3000;
+const ACCENT = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
+const SWATCHES = ["#7C6FF0", "#3E8ED0", "#3FA37A", "#E0A93C", "#F0784B", "#E5536E", "#2E9B8F", "#8E8A96"];
+const CHEVRON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238C8398' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`;
 
-async function getError(response, fallback) {
-  try {
-    const body = await response.json();
-    return body?.error || fallback;
-  } catch {
-    return fallback;
-  }
-}
 
-export function AuthProvider({ children }) {
+function SettingsInner() {
+  const [departments, setDepartments] = useState([]);
+  const [pages, setPages] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [app, setApp] = useState({ name: "SDC", tagline: "Creative team", signInTitle: "", signInSubtitle: "" });
+  const [allMembers, setAllMembers] = useState([]);
+  const [error, setError] = useState("");
+  const [renaming, setRenaming] = useState(null);
+  const [draftName, setDraftName] = useState("");
+  const [newName, setNewName] = useState("");
   const [members, setMembers] = useState([]);
-  const [departments, setDepartments] = useState([]);   // names only, for the sign-in screen
-  const [sessionId, setSessionId] = useState(null);
-  const [department, setDepartment] = useState(null);
-  const [allowedPages, setAllowedPages] = useState(null);   // null until known
-  const [accessLevel, setAccessLevel] = useState(null);     // admin | hod | member
-  const [ready, setReady] = useState(false);
-  const etagRef = useRef(null);
-  const loadingMembersRef = useRef(false);
+  const [expanded, setExpanded] = useState(null);
 
-  const refreshMembers = useCallback(async ({ force = false } = {}) => {
-    if (loadingMembersRef.current) return;
-    loadingMembersRef.current = true;
+  const apply = (body) => {
+    setDepartments(body.departments || []);
+    setPages(body.pages || []);
+    setCounts(body.counts || {});
+  };
+
+  const load = useCallback(async () => {
     try {
-      const headers = {};
-      if (!force && etagRef.current) headers["If-None-Match"] = etagRef.current;
-
-      const response = await fetch("/api/members", {
-        method: "GET",
-        headers,
-        cache: "no-store",
-      });
-
-      if (response.status === 304) return;
-      if (!response.ok) throw new Error(await getError(response, "Unable to load team members."));
-
-      const body = await response.json();
-      const etag = response.headers.get("etag");
-      if (etag) etagRef.current = etag;
-      setMembers(Array.isArray(body.members) ? body.members : []);
-      if (Array.isArray(body.departments)) setDepartments(body.departments);
+      const [res, memberRes, appRes] = await Promise.all([
+        fetch("/api/departments", { cache: "no-store" }),
+        // every department's people, so roles can be set from one place
+        fetch("/api/members", { cache: "no-store" }),
+        fetch("/api/app-settings", { cache: "no-store" }),
+      ]);
+      const appBody = await appRes.json().catch(() => ({}));
+      if (appBody?.settings) setApp(appBody.settings);
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Unable to load departments.");
+      apply(body);
+      const memberBody = await memberRes.json().catch(() => ({}));
+      const list = Array.isArray(memberBody.members) ? memberBody.members : [];
+      setMembers(list);
+      setAllMembers(list);
+      setError("");
+    } catch (e) {
+      setError(e.message);
     } finally {
-      loadingMembersRef.current = false;
+      setLoading(false);
     }
   }, []);
 
-  const refreshSession = useCallback(async () => {
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (method, payload) => {
+    setBusy(true);
+    setError("");
     try {
-      const response = await fetch("/api/auth/me", { cache: "no-store" });
-      if (!response.ok) {
-        setSessionId(null);
-        return null;
-      }
-      const body = await response.json();
-      setSessionId(body.member?.id || null);
-      setDepartment(body.department || null);
-      setAllowedPages(Array.isArray(body.allowedPages) ? body.allowedPages : null);
-      setAccessLevel(body.accessLevel || null);
-      return body.member || null;
-    } catch {
-      setSessionId(null);
-      return null;
+      const res = await fetch("/api/departments", {
+        method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "That did not save.");
+      apply(body);
+      return true;
+    } catch (e) {
+      setError(e.message);
+      return false;
+    } finally {
+      setBusy(false);
     }
-  }, []);
+  };
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        await Promise.all([refreshMembers({ force: true }), refreshSession()]);
-      } finally {
-        if (active) setReady(true);
-      }
-    })();
-    return () => { active = false; };
-  }, [refreshMembers, refreshSession]);
+  const saveApp = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/app-settings", {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(app),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Unable to save the name.");
+      setApp(body.settings);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  useEffect(() => {
-    const poll = () => {
-      if (document.visibilityState === "visible") refreshMembers().catch(() => {});
-    };
-    const id = window.setInterval(poll, POLL_MS);
-    const onFocus = () => refreshMembers({ force: true }).catch(() => {});
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", poll);
-    return () => {
-      window.clearInterval(id);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", poll);
-    };
-  }, [refreshMembers]);
+  // Changing what a member may do, from any department.
+  const setMemberField = async (memberId, patch) => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/members", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: memberId, data: patch }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Unable to save that member.");
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  const currentMember = useMemo(
-    () => members.find((member) => member.id === sessionId) || null,
-    [members, sessionId]
+  // Moving someone between departments from this side; the member form does
+  // the same thing from the other side.
+  const moveMember = async (memberId, departmentId) => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/members", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: memberId, data: { department: departmentId } }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Unable to move that member.");
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const membersIn = (deptId) => members.filter((m) => (m.department || departments[0]?.id) === deptId);
+
+  // Always-on and admin-only pages are fixed, so no change here can lock anyone out.
+  const isFixed = (page) => page.always || page.adminOnly;
+  const can = (dept, page) =>
+    page.always ? true : page.adminOnly ? Boolean(dept.admin) : dept.pages.includes(page.id);
+
+  const togglePage = (dept, page) => {
+    if (isFixed(page) || busy) return;
+    const next = dept.pages.includes(page.id)
+      ? dept.pages.filter((p) => p !== page.id)
+      : [...dept.pages, page.id];
+    act("PATCH", { id: dept.id, pages: next });
+  };
+
+  const switchStyle = (on) => ({
+    height: 26, width: 46, borderRadius: 999, position: "relative",
+    border: on ? "1px solid transparent" : "1px solid var(--border)",
+    background: on ? ACCENT : "var(--col)",
+  });
+
+  return (
+    <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
+      <header className="px-4 sm:px-7 pt-6 pb-4 shrink-0">
+        <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Settings</h1>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          Departments, and which pages each one can open
+        </p>
+        {error && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{error}</p>}
+      </header>
+
+      <div className="px-4 sm:px-7 pb-8 flex flex-col gap-4" style={{ maxWidth: 980 }}>
+        <section className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>Workspace</h2>
+          <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+            The name in the sidebar and on the sign-in screen.
+          </p>
+          <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
+            <label className="block text-xs" style={{ color: "var(--text-2)" }}>
+              <span className="block mb-1">Name</span>
+              <input value={app.name} maxLength={40} onChange={(e) => setApp({ ...app, name: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }} />
+            </label>
+            <label className="block text-xs" style={{ color: "var(--text-2)" }}>
+              <span className="block mb-1">Tagline</span>
+              <input value={app.tagline} maxLength={60} onChange={(e) => setApp({ ...app, tagline: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }} />
+            </label>
+            <label className="block text-xs" style={{ color: "var(--text-2)" }}>
+              <span className="block mb-1">Sign-in subtitle</span>
+              <input value={app.signInSubtitle} maxLength={120} onChange={(e) => setApp({ ...app, signInSubtitle: e.target.value })}
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }} />
+            </label>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <button disabled={busy} onClick={saveApp}
+              className="rounded-full px-4 py-2.5 text-sm font-semibold"
+              style={{ background: ACCENT, color: "var(--on-accent)" }}>Save name</button>
+            <span className="text-xs" style={{ color: "var(--muted)" }}>
+              The sign-in screen shows “{app.signInTitle || `Welcome to ${app.name}`}”.
+            </span>
+          </div>
+        </section>
+        <section className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>Departments</h2>
+          <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+            A member belongs to one. A department with members cannot be removed.
+          </p>
+
+          {loading ? (
+            <p className="text-sm" style={{ color: "var(--muted)" }}>Loading…</p>
+          ) : departments.map((d) => (
+            <div key={d.id} className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 mb-2 flex-wrap"
+              style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
+              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+
+              {renaming === d.id ? (
+                <input value={draftName} onChange={(e) => setDraftName(e.target.value)} autoFocus
+                  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                  onBlur={async () => {
+                    if (draftName.trim() && draftName !== d.name) await act("PATCH", { id: d.id, name: draftName });
+                    setRenaming(null);
+                  }}
+                  className="rounded-lg px-2.5 py-1.5 text-sm outline-none"
+                  style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)", width: 190 }} />
+              ) : (
+                <span className="text-sm font-semibold" style={{ color: "var(--text)" }}>{d.name}</span>
+              )}
+
+              {d.admin && (
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                  style={{ background: "#FCE3D6", color: "#F26A3C" }}>Admin</span>
+              )}
+              <span className="text-xs inline-flex items-center gap-1" style={{ color: "var(--muted)" }}>
+                <Users size={12} /> {counts[d.id] || 0}
+              </span>
+
+              <div className="flex gap-1.5 ml-auto flex-wrap">
+                <button disabled={busy} onClick={() => setExpanded(expanded === d.id ? null : d.id)}
+                  className="rounded-full px-3 py-1.5 text-xs font-medium"
+                  style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>
+                  {expanded === d.id ? "Hide members" : "Members"}
+                </button>
+                <button disabled={busy} onClick={() => { setRenaming(d.id); setDraftName(d.name); }}
+                  className="rounded-full px-3 py-1.5 text-xs font-medium"
+                  style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>Rename</button>
+                <button disabled={busy}
+                  onClick={() => act("PATCH", { id: d.id, color: SWATCHES[(SWATCHES.indexOf(d.color) + 1) % SWATCHES.length] })}
+                  className="rounded-full px-3 py-1.5 text-xs font-medium"
+                  style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>Color</button>
+                <button disabled={busy} onClick={() => act("PATCH", { id: d.id, admin: !d.admin })}
+                  className="rounded-full px-3 py-1.5 text-xs font-medium"
+                  style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}>
+                  {d.admin ? "Remove admin" : "Make admin"}
+                </button>
+                <button disabled={busy} onClick={() => act("DELETE", { id: d.id })}
+                  className="rounded-full px-3 py-1.5 text-xs font-medium"
+                  style={{ border: "1px solid var(--border)", color: "#E5536E" }}>Remove</button>
+              </div>
+
+              {expanded === d.id && (
+                <div className="w-full mt-1 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                  <div className="flex flex-wrap gap-2 mb-2.5">
+                    {membersIn(d.id).length ? membersIn(d.id).map((m) => (
+                      <span key={m.id} className="inline-flex items-center gap-2 rounded-full pl-1 pr-2.5 py-1"
+                        style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                        <span className="h-6 w-6 rounded-full inline-flex items-center justify-center text-[10px] font-bold text-white"
+                          style={{ background: m.c }}>{m.i}</span>
+                        <span className="text-xs font-medium" style={{ color: "var(--text)" }}>{m.name}</span>
+                      </span>
+                    )) : (
+                      <span className="text-xs" style={{ color: "var(--muted)" }}>No one in this department yet.</span>
+                    )}
+                  </div>
+
+                  <select value="" disabled={busy}
+                    onChange={(e) => { if (e.target.value) moveMember(e.target.value, d.id); }}
+                    className="rounded-xl px-3 py-2 text-xs outline-none"
+                    style={{
+                      background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)",
+                      WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
+                      backgroundImage: CHEVRON, backgroundRepeat: "no-repeat",
+                      backgroundPosition: "right 12px center", paddingRight: 34,
+                    }}>
+                    <option value="">Move someone into {d.name}…</option>
+                    {members.filter((m) => (m.department || departments[0]?.id) !== d.id).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} — currently {(departments.find((x) => x.id === (m.department || departments[0]?.id))?.name) || "unassigned"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <input value={newName} onChange={(e) => setNewName(e.target.value)}
+              placeholder="New department, e.g. Warehouse"
+              onKeyDown={async (e) => {
+                if (e.key === "Enter" && newName.trim() && await act("POST", { name: newName })) setNewName("");
+              }}
+              className="rounded-xl px-3 py-2.5 text-sm outline-none flex-1"
+              style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)", minWidth: 200 }} />
+            <button disabled={busy || !newName.trim()}
+              onClick={async () => { if (await act("POST", { name: newName })) setNewName(""); }}
+              className="rounded-full px-4 py-2.5 text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50"
+              style={{ background: ACCENT, color: "var(--on-accent)" }}>
+              <Plus size={15} /> Add department
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>People and roles</h2>
+          <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+            Everyone in every department. Change a department or an access level here.
+          </p>
+
+          {departments.map((d) => {
+            const people = allMembers.filter((m) => (m.department || departments[0]?.id) === d.id);
+            if (!people.length) return (
+              <div key={d.id} className="mb-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: d.color }} />
+                  <span className="text-xs font-semibold" style={{ color: "var(--text)" }}>{d.name}</span>
+                </div>
+                <p className="text-xs ml-4.5" style={{ color: "var(--muted)" }}>No one here yet.</p>
+              </div>
+            );
+            return (
+              <div key={d.id} className="mb-3.5">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: d.color }} />
+                  <span className="text-xs font-semibold" style={{ color: "var(--text)" }}>{d.name}</span>
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>{people.length}</span>
+                </div>
+
+                {people.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2 rounded-xl px-2.5 py-2 mb-1.5 flex-wrap"
+                    style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
+                    <span className="rounded-full flex items-center justify-center text-white font-bold shrink-0"
+                      style={{ height: 26, width: 26, fontSize: 10, background: m.c }}>{m.i}</span>
+                    <span className="text-sm font-medium min-w-0 truncate" style={{ color: "var(--text)" }}>{m.name}</span>
+                    <span className="text-xs truncate" style={{ color: "var(--muted)" }}>{m.role}</span>
+
+                    <div className="flex gap-1.5 ml-auto flex-wrap">
+                      <select value={m.department || departments[0]?.id || ""} disabled={busy}
+                        onChange={(e) => setMemberField(m.id, { department: e.target.value })}
+                        className="rounded-full px-3 py-1.5 text-xs outline-none"
+                        style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-2)" }}>
+                        {departments.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                      </select>
+
+                      <select value={m.accessLevel || "member"} disabled={busy}
+                        onChange={(e) => setMemberField(m.id, { accessLevel: e.target.value })}
+                        className="rounded-full px-3 py-1.5 text-xs font-semibold outline-none"
+                        style={{
+                          background: m.accessLevel === "admin" ? "#FCE3D6" : m.accessLevel === "hod" ? "#E3EEF9" : "var(--card)",
+                          color: m.accessLevel === "admin" ? "#F26A3C" : m.accessLevel === "hod" ? "#3E8ED0" : "var(--text-2)",
+                          border: "1px solid var(--border)",
+                        }}>
+                        <option value="admin">Management / Admin / HOD Admin</option>
+                        <option value="hod">HOD</option>
+                        <option value="member">Member</option>
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          <p className="text-xs mt-1" style={{ color: "var(--faint)" }}>
+            Management, Admin and HOD Admin see every department and can switch the view. HOD and Member see only their own.
+          </p>
+        </section>
+
+        <section className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>Page access</h2>
+          <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+            Switching a page off hides it from the sidebar and refuses it if the URL is typed directly.
+          </p>
+
+          <div style={{ overflowX: "auto" }}>
+            <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 480 }}>
+              <thead>
+                <tr>
+                  <th className="text-left px-2.5 py-2.5 text-[10px] uppercase tracking-wider font-semibold"
+                    style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Page</th>
+                  {departments.map((d) => (
+                    <th key={d.id} className="text-left px-2.5 py-2.5 text-[10px] uppercase tracking-wider font-semibold"
+                      style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{d.name}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pages.map((page) => (
+                  <tr key={page.id}>
+                    <td className="px-2.5 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
+                      <span className="font-semibold" style={{ color: "var(--text)" }}>{page.name}</span>
+                      <span className="block text-xs" style={{ color: "var(--muted)" }}>{page.note}</span>
+                    </td>
+                    {departments.map((d) => {
+                      const on = can(d, page);
+                      const fixed = isFixed(page);
+                      return (
+                        <td key={d.id} className="px-2.5 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
+                          <button type="button" disabled={fixed || busy} onClick={() => togglePage(d, page)}
+                            style={{ ...switchStyle(on), opacity: fixed ? 0.45 : 1, cursor: fixed ? "not-allowed" : "pointer" }}>
+                            <span style={{
+                              position: "absolute", top: 2, left: 2, height: 20, width: 20, borderRadius: 999,
+                              background: on ? "#fff" : "var(--faint)",
+                              transform: on ? "translateX(20px)" : "none", transition: "transform .12s",
+                            }} />
+                          </button>
+                          {fixed && (
+                            <span className="block text-[10px] mt-1" style={{ color: "var(--faint)" }}>
+                              {page.always ? "always on" : "admin only"}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-xs mt-3 inline-flex items-start gap-1.5" style={{ color: "var(--faint)" }}>
+            <Lock size={12} style={{ marginTop: 2 }} />
+            Settings follows the Admin flag and Dashboard stays on for everyone, so no change here can lock anyone out.
+          </p>
+        </section>
+      </div>
+    </main>
   );
-
-  useEffect(() => {
-    if (ready && sessionId && members.length && !currentMember) {
-      refreshSession().catch(() => {});
-    }
-  }, [ready, sessionId, members, currentMember, refreshSession]);
-
-  const applyServerMembers = (response, body) => {
-    const etag = response.headers.get("etag");
-    if (etag) etagRef.current = etag;
-    if (Array.isArray(body.members)) setMembers(body.members);
-  };
-
-  const login = async (memberId, pin) => {
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memberId, pin }),
-    });
-
-    if (!response.ok) return { ok: false, message: await getError(response, "Unable to sign in.") };
-
-    const body = await response.json();
-    setSessionId(body.member?.id || null);
-    await refreshMembers({ force: true });
-    return { ok: true, member: body.member };
-  };
-
-  const logout = async () => {
-    try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
-    setSessionId(null);
-  };
-
-  const addMember = async (data) => {
-    const response = await fetch("/api/members", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) throw new Error(await getError(response, "Unable to add member."));
-    const body = await response.json();
-    applyServerMembers(response, body);
-    return body.member;
-  };
-
-  const updateMember = async (id, data) => {
-    const response = await fetch("/api/members", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, data }),
-    });
-    if (!response.ok) throw new Error(await getError(response, "Unable to update member."));
-    const body = await response.json();
-    applyServerMembers(response, body);
-    return body.member;
-  };
-
-  const deleteMember = async (id) => {
-    const response = await fetch("/api/members", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    if (!response.ok) throw new Error(await getError(response, "Unable to delete member."));
-    const body = await response.json();
-    applyServerMembers(response, body);
-    return true;
-  };
-
-  // Until the session is known, allowedPages is null and callers wait rather
-  // than flashing a sidebar the member may not be entitled to.
-  const canOpen = (pageId) => (allowedPages ? allowedPages.includes(pageId) : false);
-
-  const value = {
-    ready,
-    members,
-    departments,
-    currentMember,
-    department,
-    accessLevel,
-    // Only Management, Admin and HOD Admin may look at another department.
-    // Matches the server: only the access level widens the data view.
-    canSwitchDepartments: accessLevel === "admin",
-    allowedPages,
-    canOpen,
-    login,
-    logout,
-    addMember,
-    updateMember,
-    deleteMember,
-    refreshMembers,
-    defaultPin: "1234",
-  };
-
-  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
-export function useAuth() {
-  const value = useContext(AuthCtx);
-  if (!value) throw new Error("useAuth must be used inside AuthProvider");
-  return value;
+export default function SettingsPage() {
+  return (
+    <PageAccess page="settings">
+      <SettingsInner />
+    </PageAccess>
+  );
 }
