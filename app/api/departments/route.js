@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  PAGES, addDepartment, departmentForMember, listDepartments, removeDepartment, updateDepartment,
+  PAGES, addDepartment, departmentForMember, listDepartments, memberIsAdmin, removeDepartment, updateDepartment,
 } from "../../lib/department-store";
 import { readMembersState } from "../../lib/member-store";
 import { getAuthenticatedMember } from "../../lib/auth-token";
@@ -19,7 +19,9 @@ async function requireAdmin(request) {
   const member = await getAuthenticatedMember(request);
   if (!member) return { error: json({ error: "Unauthorized." }, 401) };
   const department = await departmentForMember(member);
-  if (!department?.admin) return { error: json({ error: "Only an admin department can change access." }, 403) };
+  if (!memberIsAdmin(member, department)) {
+    return { error: json({ error: "Only Management, Admin or HOD Admin can change this." }, 403) };
+  }
   return { member, department };
 }
 
