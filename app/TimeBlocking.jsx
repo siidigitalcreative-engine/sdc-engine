@@ -108,6 +108,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   // overlap layout so neither it nor its neighbours reflow mid-gesture.
   const [draggingId, setDraggingId] = useState(null);
   const writeSeq = useRef(0);
+  const activeWrites = useRef(0);
   const suppressBlockClick = useRef(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareSettings, setShareSettings] = useState({ enabled: false, view: "all", token: "" });
@@ -137,7 +138,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       if (!blockRes.ok) throw new Error(body.error || "Unable to load the time blocks.");
       // A refetch that started before a write finished, or that lands while a
       // block is being dragged, must not undo what is on screen.
-      if (seq !== writeSeq.current || dragRef.current) return;
+      if (seq !== writeSeq.current || dragRef.current || activeWrites.current > 0) return;
       setData((d) => ({ ...d, ...body }));
       const taskBody = await taskRes.json().catch(() => ({}));
       setTasks(Array.isArray(taskBody.tasks) ? taskBody.tasks.filter((t) => !t.archived) : []);
@@ -324,8 +325,13 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
      response already carries the saved blocks, so use that and only refetch
      when something actually failed. */
   const send = async (method, payload) => {
+    // Invalidate GET requests that began before this write. Otherwise a slow
+    // refresh can replace an optimistically resized block with its old time.
+    writeSeq.current += 1;
+    activeWrites.current += 1;
     setBusy(true);
     setError("");
+    let failed = false;
     try {
       const res = await fetch(`/api/time-blocks?department=${encodeURIComponent(departmentView || "")}`, {
         method, headers: { "Content-Type": "application/json" },
@@ -338,18 +344,24 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || "That did not save.");
       if (Array.isArray(body.blocks)) {
-        writeSeq.current += 1;                 // anything still in flight is now stale
+        // These server-confirmed blocks replace the optimistic copy without
+        // a second loading state or a transient jump to the previous duration.
         setData((d) => ({ ...d, blocks: body.blocks }));
       } else {
-        await load();
+        failed = true; // refetch only when the response lacks confirmed blocks
       }
       return true;
     } catch (e) {
+      failed = true;
       setError(e.message);
-      await load();                            // put the board back to the truth
       return false;
     } finally {
+      activeWrites.current = Math.max(0, activeWrites.current - 1);
       setBusy(false);
+      if (failed && activeWrites.current === 0) {
+        // Roll back to server data only if saving failed.
+        await load();
+      }
     }
   };
 
@@ -506,6 +518,12 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
 
   const saveDialog = async () => {
     if (!dialogValid || busy) return;
+    // Editing must target a saved time-block ID. Never fall through to the
+    // create-task / create-block POST paths if that ID is unavailable.
+    if (dialog.mode === "edit" && (!dialog.id || !dialog.block || dialog.block.id !== dialog.id)) {
+      setError("The selected time block could not be identified. Close and reopen it before saving.");
+      return;
+    }
     const start = Number(dialog.start), end = Number(dialog.end);
     let ok;
     if (dialog.mode === "edit") {
@@ -618,10 +636,18 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
 
   const place = (start, event) => {
     if (event) event.preventDefault();
-    // A card dropped here is used straight from the drag, without waiting for state.
-    const chosen = (event && dragSrcRef.current) || picked;
+    // A DROP must originate from the sidebar. A previously selected task must
+    // not be silently re-added when an existing block is moved or edited.
+    // Clicking an empty slot can still use the selected task via openAdd().
+    const chosen = event ? dragSrcRef.current : picked;
     dragSrcRef.current = null;
-    if (!chosen || !editable) { setError(chosen ? "" : "Pick a task, subtask or project first."); return; }
+    if (!chosen) {
+      // Ignore unrelated drops, including those fired while manipulating a
+      // timeline card; do not POST a duplicate block.
+      if (!event) setError("Pick a task, subtask or project first.");
+      return;
+    }
+    if (!editable) return;
     // Blocks may overlap: an occupied timeslot can hold multiple tasks.
     const end = Math.min(DAY_END, start + Math.max(SLOT, chosen.est));
     const nextBlock = {
@@ -682,7 +708,12 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       }
       if (drag?.live) {
         const { id, live } = { id: drag.id, live: drag.live };
-        // Hold the new position until the save answers, then let the server copy take over.
+        // Commit to the local block snapshot at mouseup as well. The pending
+        // overlay remains until the server confirms the same coordinates.
+        // This prevents the old duration flashing when the drag state clears.
+        writeSeq.current += 1;
+        setData((d) => ({ ...d, blocks: d.blocks.map((b) =>
+          b.id === id ? { ...b, start: live.start, end: live.end } : b) }));
         send("PATCH", { id, start: live.start, end: live.end })
           .finally(() => setPending((p) => {
             const next = { ...p };
