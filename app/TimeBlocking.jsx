@@ -87,6 +87,10 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   const [statusList, setStatusList] = useState([]);      // the Tasks page's own statuses, in order
   const [view, setView] = useState("all");          // "all" or a member id
   const [tab, setTab] = useState("tasks");
+  // Sidebar-only task filters. These never modify saved tasks or time blocks.
+  const [taskDateFilter, setTaskDateFilter] = useState("all");
+  const [taskFilterDate, setTaskFilterDate] = useState("");
+  const [taskStatusFilter, setTaskStatusFilter] = useState("all");
   const [projects, setProjects] = useState([]);
   const [projectDialog, setProjectDialog] = useState(null);
   const [showInvalid, setShowInvalid] = useState(false);   // only after a failed save attempt
@@ -260,6 +264,33 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     return (myId && assignees.includes(myId)) || (myInitials && assignees.includes(myInitials));
   }), [tasks, myId, myInitials]);
 
+  const taskStatusOptions = useMemo(() => {
+    const options = [...statusList];
+    const seen = new Set(options.map((s) => String(s.id)));
+    for (const task of mine) {
+      const status = String(task.status || "");
+      if (status && !seen.has(status)) {
+        options.push({ id: status, name: statusNames[status] || status.replace(/[-_]+/g, " ") });
+        seen.add(status);
+      }
+    }
+    return options;
+  }, [mine, statusList, statusNames]);
+
+  const filteredMine = useMemo(() => {
+    // Tasks store date-only strings, but also tolerate ISO timestamps.
+    const datePart = value => typeof value === "string" ? value.slice(0, 10) : "";
+    const chosenDate = taskFilterDate || key;
+    const today = dateKey(new Date());
+    return mine.filter(task => {
+      if (taskStatusFilter !== "all" && String(task.status || "") !== taskStatusFilter) return false;
+      if (taskDateFilter === "start" && datePart(task.start) !== chosenDate) return false;
+      if (taskDateFilter === "due" && datePart(task.due) !== chosenDate) return false;
+      if (taskDateFilter === "overdue" && !(datePart(task.due) && datePart(task.due) < today && !["done", "completed"].includes(String(task.status || "").toLowerCase()))) return false;
+      return true;
+    });
+  }, [mine, taskStatusFilter, taskDateFilter, taskFilterDate, key]);
+
   // "inprogress" → "In Progress", "on-hold" → "On Hold" (real names win when known).
   const statusLabel = useCallback((id) => {
     const known = { todo: "To Do", inprogress: "In Progress", inreview: "In Review", done: "Done" };
@@ -277,7 +308,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         color: colorFor(name), est: 60,
       }));
     }
-    return mine.map((t) => ({
+    return filteredMine.map((t) => ({
       id: t.id, kind: "task", title: t.title, meta: `${t.project || "No project"} · ${statusLabel(t.status)}`,
       project: t.project, color: colorFor(t.project), est: 60,
       subtasks: (t.subtasks || []).map((st) => ({
@@ -285,7 +316,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         meta: `part of ${t.title}`, project: t.project, color: colorFor(t.project), est: 60,
       })),
     }));
-  }, [mine, tab, statusLabel, projects]);
+  }, [mine, filteredMine, tab, statusLabel, projects]);
 
   /* ---- writing ---- */
   /* Writing used to refetch the whole day, which threw away the optimistic
@@ -1314,6 +1345,47 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
               <Plus size={16} /> {tab === "tasks" ? "New Task" : "Create Project"}
             </button>
 
+            {tab === "tasks" && (
+              <div className="mb-2.5 space-y-1.5" aria-label="Task list filters">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <label className="min-w-0">
+                    <span className="block mb-1 text-[10px]" style={{ color: "var(--muted)" }}>Date</span>
+                    <select aria-label="Filter tasks by date" value={taskDateFilter}
+                      onChange={e => { setTaskDateFilter(e.target.value); setPicked(null); }}
+                      className="w-full rounded-lg px-2 py-2 text-[11px] outline-none"
+                      style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }}>
+                      <option value="all">All dates</option>
+                      <option value="start">Start date</option>
+                      <option value="due">Due date</option>
+                      <option value="overdue">Overdue</option>
+                    </select>
+                  </label>
+                  <label className="min-w-0">
+                    <span className="block mb-1 text-[10px]" style={{ color: "var(--muted)" }}>Status</span>
+                    <select aria-label="Filter tasks by status" value={taskStatusFilter}
+                      onChange={e => { setTaskStatusFilter(e.target.value); setPicked(null); }}
+                      className="w-full rounded-lg px-2 py-2 text-[11px] outline-none"
+                      style={{ background: "var(--col)", border: "1px solid var(--border)", color: "var(--text)" }}>
+                      <option value="all">All statuses</option>
+                      {taskStatusOptions.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
+                    </select>
+                  </label>
+                </div>
+                {(taskDateFilter === "start" || taskDateFilter === "due") && (
+                  <input type="date" aria-label="Task filter date" value={taskFilterDate || key}
+                    onChange={e => { setTaskFilterDate(e.target.value); setPicked(null); }}
+                    className="w-full rounded-lg px-2 py-1.5 text-xs outline-none"
+                    style={{ color: "var(--text)", background: "var(--col)", border: "1px solid var(--border)" }} />
+                )}
+                {(taskDateFilter !== "all" || taskStatusFilter !== "all") && (
+                  <button type="button" className="text-[10px]" style={{ color: "var(--text-2)" }}
+                    onClick={() => { setTaskDateFilter("all"); setTaskFilterDate(""); setTaskStatusFilter("all"); setPicked(null); }}>
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-col gap-1.5" style={{ maxHeight: 520, overflowY: "auto" }}>
               {sources.map((s) => (
                 <div key={s.id}>
@@ -1344,7 +1416,10 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                   ))}
                 </div>
               ))}
-              {!sources.length && <p className="text-xs" style={{ color: "var(--muted)" }}>Nothing to block yet.</p>}
+              {!sources.length && <p className="text-xs" style={{ color: "var(--muted)" }}>
+                {tab === "tasks" && (taskDateFilter !== "all" || taskStatusFilter !== "all")
+                  ? "No tasks match these filters." : "Nothing to block yet."}
+              </p>}
             </div>
 
             <p className="text-[11.5px] mt-2.5" style={{ color: "var(--faint)" }}>
