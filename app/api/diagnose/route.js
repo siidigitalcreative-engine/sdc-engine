@@ -65,6 +65,24 @@ export async function GET(request) {
     return result.state.members.map((m) => ({ id: m.id, name: m.name, department: m.department || null }));
   });
 
+  await run("my access", async () => {
+    if (!actor) throw new Error("Not signed in.");
+    const { departmentForMember, departmentCanOpen, memberIsAdmin, PAGES } = await import("../../lib/department-store");
+    const { readMembersState } = await import("../../lib/member-store");
+    const fresh = (await readMembersState()).state.members.find((m) => m.id === actor.id);
+    const department = await departmentForMember(fresh || actor);
+    const isAdmin = memberIsAdmin(fresh || actor, department);
+    return {
+      name: fresh?.name,
+      accessLevel: fresh?.accessLevel || "(not set)",
+      department: department?.name,
+      departmentIsAdminFlagged: Boolean(department?.admin),
+      countsAsAdmin: isAdmin,
+      canOpenSettings: departmentCanOpen(department, "settings", isAdmin),
+      allowedPages: PAGES.filter((p) => departmentCanOpen(department, p.id, isAdmin)).map((p) => p.id),
+    };
+  });
+
   await run("resolve scope", async () => {
     if (!actor) throw new Error("No signed-in member, so scope cannot be resolved.");
     const { viewerScope } = await import("../../lib/scope");
