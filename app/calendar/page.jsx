@@ -436,7 +436,7 @@ function TeamCalendarInner() {
             <div className="flex-1 min-w-0 min-h-0 flex flex-col">
               {view === "blocking" ? (
                 <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 pb-6">
-                  <TimeBlocking day={cursor} onDayChange={(d) => setCursor(new Date(d))} />
+                  <TimeBlocking day={cursor} onDayChange={(d) => setCursor(new Date(d))} departmentView={deptView} />
                 </div>
               ) : view === "month" ? (
                 <MonthView cells={monthCells} cursor={cursor} today={now} eventsForDay={eventsForDay} catOf={catOf}
