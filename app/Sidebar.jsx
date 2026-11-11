@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LayoutGrid, Calendar, CheckSquare, Folder, Users, Printer, Send, BarChart, Settings, Sparkles, Moon, Sun, LogOut, Megaphone } from "lucide-react";
 import { useTheme } from "./theme";
 import { useAuth } from "./auth";
+import { useAppSettings } from "./useAppSettings";
 
 const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 const ON_ACCENT = "var(--on-accent)";
@@ -25,6 +26,7 @@ export default function Sidebar({ mobile = false, onNavigate }) {
   const router = useRouter();
   const { dark, toggle } = useTheme();
   const { currentMember, logout, canOpen, allowedPages } = useAuth();
+  const app = useAppSettings();
 
   if (!currentMember) return null;
 
@@ -39,8 +41,8 @@ export default function Sidebar({ mobile = false, onNavigate }) {
         <div className="flex items-center gap-2.5">
           <span className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: ACCENT_GRAD }}><Sparkles size={18} style={{ color: ON_ACCENT }} /></span>
           <div className="leading-tight">
-            <p className="font-semibold" style={{ fontSize: 15, color: "var(--text)" }}>SDC</p>
-            <p className="text-xs" style={{ color: "var(--muted)" }}>Creative team</p>
+            <p className="font-semibold" style={{ fontSize: 15, color: "var(--text)" }}>{app.name}</p>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>{app.tagline}</p>
           </div>
         </div>
         <button onClick={toggle} aria-label="Toggle theme" className="sb-ib h-8 w-8 flex items-center justify-center rounded-full" style={{ color: "var(--text-2)" }}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
