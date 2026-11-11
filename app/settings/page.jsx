@@ -35,7 +35,7 @@ function SettingsInner() {
       const [res, memberRes, appRes] = await Promise.all([
         fetch("/api/departments", { cache: "no-store" }),
         // every department's people, so roles can be set from one place
-        fetch("/api/members?all=1", { cache: "no-store" }),
+        fetch("/api/members", { cache: "no-store" }),
         fetch("/api/app-settings", { cache: "no-store" }),
       ]);
       const appBody = await appRes.json().catch(() => ({}));
