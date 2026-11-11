@@ -61,7 +61,7 @@ async function createInitialBlob() {
     access: "private",
     contentType: "application/json",
     allowOverwrite: true,
-    cacheControlMaxAge: 60,
+    cacheControlMaxAge: 0,
   });
   return { state, etag: blob.etag };
 }
@@ -106,7 +106,7 @@ export async function mutateCalendar(mutator, maxAttempts = 8) {
         access: "private",
         contentType: "application/json",
         allowOverwrite: true,
-        cacheControlMaxAge: 60,
+        cacheControlMaxAge: 0,
         ifMatch: current.etag,
       });
       return { state: nextState, etag: blob.etag };
@@ -132,7 +132,7 @@ export async function mutateCalendar(mutator, maxAttempts = 8) {
       access: "private",
       contentType: "application/json",
       allowOverwrite: true,
-      cacheControlMaxAge: 60,
+      cacheControlMaxAge: 0,
     });
     return { state: finalState, etag: blob.etag };
   } catch (error) {
