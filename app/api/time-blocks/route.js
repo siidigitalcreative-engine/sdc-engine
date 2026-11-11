@@ -24,17 +24,21 @@ async function visibleMembers(actor, request) {
     departmentForMember(actor), listDepartments(), readMembersState(),
   ]);
   const requested = new URL(request.url).searchParams.get("department");
-  const scopeId = department?.admin && requested ? requested : department?.id;
+  // Management / Admin / HOD Admin use accessLevel "admin" across the app.
+  // Department ownership alone does not grant cross-department visibility.
+  const isAdmin = String(actor?.accessLevel || "").trim() === "admin";
+  const validRequested = requested === "all" || departments.some((d) => d.id === requested);
   const fallbackId = departments[0]?.id;
+  const scopeId = isAdmin && requested && validRequested ? requested : (department?.id || fallbackId);
 
-  const visible = members.state.members.filter(
+  const visible = scopeId === "all" ? members.state.members : members.state.members.filter(
     (m) => (m.department || fallbackId) === scopeId
   );
   return {
     department,
-    departments: department?.admin ? departments : [],
+    departments: isAdmin ? departments : [],
     scopeId,
-    members: sanitizeMembers(visible.length ? visible : members.state.members),
+    members: sanitizeMembers(visible),
   };
 }
 
