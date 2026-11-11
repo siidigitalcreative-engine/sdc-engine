@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedMember } from "../../lib/auth-token";
-import { filterEvents, viewerScope } from "../../lib/scope";
+import { viewerScope } from "../../lib/scope";
+import { readMembersState } from "../../lib/member-store";
 import {
   createCalendarEvent,
   mutateCalendar,
@@ -20,6 +21,28 @@ function json(body, status = 200, etag) {
 
 async function requireAuth(request) {
   return getAuthenticatedMember(request);
+}
+
+async function eventsForDepartment(events, scope) {
+  // Admins viewing all departments keep the original all-events behavior.
+  if (!scope.filterId) return events;
+
+  // Events belong to their creator's department, but invited members should
+  // also see the event in their own department's calendar.
+  const { state } = await readMembersState();
+  const memberDepartments = new Map();
+  for (const member of state.members) {
+    const departmentId = String(member.department || "sdc").trim() || "sdc";
+    memberDepartments.set(String(member.id).trim().toLowerCase(), departmentId);
+    if (member.i) memberDepartments.set(String(member.i).trim().toLowerCase(), departmentId);
+  }
+
+  return events.filter((event) => {
+    if ((event.department || "sdc") === scope.filterId) return true;
+    return (event.attendees || []).some((ref) =>
+      memberDepartments.get(String(ref).trim().toLowerCase()) === scope.filterId
+    );
+  });
 }
 
 export async function GET(request) {
@@ -42,7 +65,7 @@ export async function GET(request) {
 
     // Only this member's department, unless they are in an admin department.
     const scope = await viewerScope(actor, request);
-    return json({ events: filterEvents(result.state.events, scope) }, 200, result.etag);
+    return json({ events: await eventsForDepartment(result.state.events, scope) }, 200, result.etag);
   } catch (error) {
     console.error("GET /api/calendar", error);
     return json({ error: "Unable to load calendar events." }, 500);
@@ -62,7 +85,7 @@ export async function POST(request) {
       department: scope.isAdmin && incoming.department ? incoming.department : scope.departmentId,
     });
     const result = await mutateCalendar((events) => [...events, event]);
-    return json({ events: filterEvents(result.state.events, scope), event }, 201, result.etag);
+    return json({ events: await eventsForDepartment(result.state.events, scope), event }, 201, result.etag);
   } catch (error) {
     console.error("POST /api/calendar", error);
     return json({ error: error.message || "Unable to create event." }, 400);
@@ -92,7 +115,7 @@ export async function PATCH(request) {
       return next;
     });
 
-    return json({ events: filterEvents(result.state.events, scope), event: updated }, 200, result.etag);
+    return json({ events: await eventsForDepartment(result.state.events, scope), event: updated }, 200, result.etag);
   } catch (error) {
     console.error("PATCH /api/calendar", error);
     return json({ error: error.message || "Unable to update event." }, 400);
@@ -114,7 +137,7 @@ export async function DELETE(request) {
     });
 
     const scope = await viewerScope(actor, request);
-    return json({ events: filterEvents(result.state.events, scope) }, 200, result.etag);
+    return json({ events: await eventsForDepartment(result.state.events, scope) }, 200, result.etag);
   } catch (error) {
     console.error("DELETE /api/calendar", error);
     return json({ error: error.message || "Unable to delete event." }, 400);
