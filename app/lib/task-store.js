@@ -129,7 +129,7 @@ async function createInitialBlob() {
     contentType: "application/json",
     allowOverwrite: true,
     addRandomSuffix: false,
-    cacheControlMaxAge: 60,
+    cacheControlMaxAge: 0,
   });
   return { state, etag: blob.etag };
 }
@@ -180,7 +180,7 @@ export async function mutateTasks(mutator, maxAttempts = 12) {
         contentType: "application/json",
         allowOverwrite: true,
         addRandomSuffix: false,
-        cacheControlMaxAge: 60,
+        cacheControlMaxAge: 0,
         ifMatch: current.etag,
       });
       return { state: nextState, etag: blob.etag };
@@ -210,7 +210,7 @@ export async function mutateTasks(mutator, maxAttempts = 12) {
       contentType: "application/json",
       allowOverwrite: true,
       addRandomSuffix: false,
-      cacheControlMaxAge: 60,
+      cacheControlMaxAge: 0,
     });
     return { state: finalState, etag: blob.etag };
   } catch (error) {
