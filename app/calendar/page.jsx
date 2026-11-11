@@ -107,7 +107,7 @@ function packEvents(items) {
 function TeamCalendarInner() {
   const pathname = usePathname();
   const router = useRouter();
-  const { members, department } = useAuth();
+  const { members, departments, currentMember, department } = useAuth();
   const memberByRef = useMemo(() => {
     const map = {};
     members.forEach((member) => {
@@ -121,13 +121,20 @@ function TeamCalendarInner() {
   // Start on the viewer's own department; "All departments" stays available in
   // the picker for Management, Admin and HOD Admin.
   const [deptView, setDeptView] = useState("");
+  const deptTouchedRef = useRef(false);
+  const assignedDepartment = currentMember?.department || department?.id || "";
+  const ownDepartmentId = useMemo(() => {
+    const assigned = String(assignedDepartment).trim();
+    if (!assigned) return "";
+    const match = departments.find(d => d.id === assigned || d.name?.toLowerCase() === assigned.toLowerCase());
+    return match?.id || (assigned === department?.name ? department.id : assigned);
+  }, [assignedDepartment, departments, department]);
   useEffect(() => {
-    if (!deptView && department?.id) {
-      calendarEtagRef.current = null;
-      setDeptView(department.id);
-    }
-  }, [department, deptView]);
-  const changeDeptView = (next) => { calendarEtagRef.current = null; setDeptView(next); };
+    if (deptTouchedRef.current || !ownDepartmentId || deptView === ownDepartmentId) return;
+    calendarEtagRef.current = null;
+    setDeptView(ownDepartmentId);
+  }, [ownDepartmentId, deptView]);
+  const changeDeptView = (next) => { deptTouchedRef.current = true; calendarEtagRef.current = null; setDeptView(next); };
   const [view, setView] = useState(() => pathname === "/calendar/timeblock" ? "blocking" : "month");
   useEffect(() => {
     if (pathname === "/calendar/timeblock") setView("blocking");
@@ -207,7 +214,7 @@ function TeamCalendarInner() {
   ), []);
 
   const loadCalendar = useCallback(async ({ force = false } = {}) => {
-    if (loadingCalendarRef.current) return;
+    if (!deptView || loadingCalendarRef.current) return;
     loadingCalendarRef.current = true;
     try {
       const headers = {};
