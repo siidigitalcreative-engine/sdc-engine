@@ -3,7 +3,7 @@
 import PageAccess from "../PageAccess";
 import DepartmentView from "../DepartmentView";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus, Search, MoreHorizontal, Pencil, Trash2, X, UserPlus, Save, AlertTriangle,
 } from "lucide-react";
@@ -43,7 +43,7 @@ function makeInitials(name) {
 }
 
 function TeamPageInner() {
-  const { members, currentMember, addMember, updateMember, deleteMember, canSwitchDepartments, department } = useAuth();
+  const { members, departments, currentMember, addMember, updateMember, deleteMember, canSwitchDepartments, department } = useAuth();
   // Start on the viewer's own department; "All departments" stays available in
   // the picker for Management, Admin and HOD Admin.
   const [departmentNames, setDepartmentNames] = useState({});
@@ -58,9 +58,19 @@ function TeamPageInner() {
   }, []);
 
   const [deptView, setDeptView] = useState("");
+  const deptTouchedRef = useRef(false);
+  const assignedDepartment = currentMember?.department || department?.id || "";
+  const ownDepartmentId = useMemo(() => {
+    const assigned = String(assignedDepartment).trim();
+    if (!assigned) return "";
+    const match = departments.find(d => d.id === assigned || d.name?.toLowerCase() === assigned.toLowerCase());
+    return match?.id || (assigned === department?.name ? department.id : assigned);
+  }, [assignedDepartment, departments, department]);
   useEffect(() => {
-    if (!deptView && department?.id) setDeptView(department.id);
-  }, [department, deptView]);
+    if (deptTouchedRef.current || !ownDepartmentId || deptView === ownDepartmentId) return;
+    setDeptView(ownDepartmentId);
+  }, [ownDepartmentId, deptView]);
+  const changeDeptView = (next) => { deptTouchedRef.current = true; setDeptView(next); };
   const { dark } = useTheme();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(null);
@@ -93,7 +103,7 @@ function TeamPageInner() {
   /* The member list itself is public, because the sign-in screen needs it.
      This page is what narrows it: your own department, unless you are
      Management, Admin or HOD Admin and switch the view. */
-  const effectiveDept = canSwitchDepartments ? deptView : (department?.id || deptView);
+  const effectiveDept = canSwitchDepartments ? (deptView || ownDepartmentId) : (ownDepartmentId || deptView);
   const list = members.filter((m) => {
     if (effectiveDept && effectiveDept !== "all" && (m.department || "") !== effectiveDept) return false;
     const q = query.trim().toLowerCase();
@@ -109,7 +119,7 @@ function TeamPageInner() {
             <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Team Members</h1>
             <p className="text-sm" style={{ color: "var(--muted)" }}>{list.length} {list.length === 1 ? "person" : "people"}</p>
           </div>
-          <DepartmentView value={deptView} onChange={setDeptView} />
+          <DepartmentView value={deptView} onChange={changeDeptView} />
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
             <input
