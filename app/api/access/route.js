@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PAGES, departmentCanOpen, departmentForMember } from "../../lib/department-store";
+import { PAGES, departmentCanOpen, departmentForMember, memberIsAdmin } from "../../lib/department-store";
 import { getAuthenticatedMember } from "../../lib/auth-token";
 
 export const runtime = "nodejs";
@@ -13,12 +13,13 @@ export async function GET(request) {
     if (!member) return NextResponse.json({ allowed: false, reason: "signed-out" }, { status: 401 });
 
     const department = await departmentForMember(member);
-    const allowed = departmentCanOpen(department, page);
+    const isAdmin = memberIsAdmin(member, department);
+    const allowed = departmentCanOpen(department, page, isAdmin);
     const response = NextResponse.json({
       allowed,
       page,
       department: department ? { id: department.id, name: department.name, admin: department.admin } : null,
-      allowedPages: PAGES.filter((p) => departmentCanOpen(department, p.id)).map((p) => p.id),
+      allowedPages: PAGES.filter((p) => departmentCanOpen(department, p.id, isAdmin)).map((p) => p.id),
     });
     response.headers.set("Cache-Control", "no-store");
     return response;
