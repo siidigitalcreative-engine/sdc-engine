@@ -52,7 +52,9 @@ export async function GET(request) {
       const { viewerScope } = await import("../../lib/scope");
       const scope = await viewerScope(viewer, request);
       const fallback = departments[0]?.id;
-      if (scope.filterId) {
+      // Settings asks for everyone with ?all=1; only an admin gets it.
+      const wantsAll = new URL(request.url).searchParams.get("all") === "1" && scope.isAdmin;
+      if (scope.filterId && !wantsAll) {
         members = members.filter((m) => (m.department || fallback) === scope.filterId);
       }
       scopeInfo = { departmentId: scope.departmentId, level: scope.level, isAdmin: scope.isAdmin };
@@ -90,11 +92,21 @@ export async function PATCH(request) {
     const id = String(body.id || "");
     if (!id) return json({ error: "Member ID is required." }, 400);
 
+    /* Only Management, Admin or HOD Admin may move someone to another
+       department or change what they are allowed to do. */
+    const { viewerScope } = await import("../../lib/scope");
+    const scope = await viewerScope(actor, request);
+    const data = { ...(body.data || {}) };
+    if (!scope.isAdmin) {
+      delete data.department;
+      delete data.accessLevel;
+    }
+
     let updated = null;
     const result = await mutateMembers((members) => {
       const index = members.findIndex((member) => member.id === id);
       if (index < 0) throw new Error("Member not found.");
-      updated = updateMemberInput(members[index], body.data || {});
+      updated = updateMemberInput(members[index], data);
       const next = [...members];
       next[index] = updated;
       return next;
@@ -117,6 +129,16 @@ export async function DELETE(request) {
     const body = await request.json();
     const id = String(body.id || "");
     if (!id) return json({ error: "Member ID is required." }, 400);
+
+    /* Only Management, Admin or HOD Admin may move someone to another
+       department or change what they are allowed to do. */
+    const { viewerScope } = await import("../../lib/scope");
+    const scope = await viewerScope(actor, request);
+    const data = { ...(body.data || {}) };
+    if (!scope.isAdmin) {
+      delete data.department;
+      delete data.accessLevel;
+    }
     if (id === actor.id) return json({ error: "You cannot delete the account you are currently signed in with." }, 400);
 
     const result = await mutateMembers((members) => {
@@ -143,7 +165,9 @@ export async function DELETE(request) {
       const { viewerScope } = await import("../../lib/scope");
       const scope = await viewerScope(viewer, request);
       const fallback = departments[0]?.id;
-      if (scope.filterId) {
+      // Settings asks for everyone with ?all=1; only an admin gets it.
+      const wantsAll = new URL(request.url).searchParams.get("all") === "1" && scope.isAdmin;
+      if (scope.filterId && !wantsAll) {
         members = members.filter((m) => (m.department || fallback) === scope.filterId);
       }
       scopeInfo = { departmentId: scope.departmentId, level: scope.level, isAdmin: scope.isAdmin };
