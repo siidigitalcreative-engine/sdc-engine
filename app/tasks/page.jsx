@@ -324,7 +324,7 @@ function TasksPageInner() {
 
   const blank = (status = "todo") => ({
     id: null, title: "", project: projects[0] || "", desc: "", notes: "", status, priority: "medium",
-    assignees: [], start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [], subtasks: [], doneDate: "",
+    assignees: [], department: ownDepartmentId || "", start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [], subtasks: [], doneDate: "",
   });
   const openCreate = (status) => setModal({ mode: "create", form: blank(status) });
   const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), doneDate: t.doneAt ? toDateInput(new Date(Number(t.doneAt))) : "", tags: [...t.tags], attachments: [...t.attachments], subtasks: (t.subtasks || []).map((s) => ({ ...s })) } });
