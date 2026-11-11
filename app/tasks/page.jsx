@@ -81,7 +81,7 @@ const NAV = [
 
 
 function TasksPageInner() {
-  const { members, currentMember: authCurrentMember, member, department } = useAuth();
+  const { members, departments, currentMember: authCurrentMember, member, department } = useAuth();
   const currentMember = authCurrentMember || member || members.find((m) => m.id === "cn" || m.i === "CN") || null;
   const memberByRef = useMemo(() => {
     const map = {};
@@ -186,34 +186,30 @@ function TasksPageInner() {
     }))
   ), []);
 
-  // Start on the viewer's own department; "All departments" stays available in
-  // the picker for Management, Admin and HOD Admin.
+  // Default to the signed-in member's assigned department, not an earlier
+  // department view. Preserve explicit department selections made by the user.
   const [deptView, setDeptView] = useState("");
-  useEffect(() => {
-    if (!deptView && department?.id) {
-      taskEtagRef.current = null;
-      setDeptView(department.id);
-    }
-  }, [department, deptView]);
   const deptTouchedRef = useRef(false);
+  const assignedDepartment = authCurrentMember?.department || member?.department || department?.id || "";
+  const ownDepartmentId = useMemo(() => {
+    const assigned = String(assignedDepartment).trim();
+    if (!assigned) return "";
+    const match = departments.find(d => d.id === assigned || d.name?.toLowerCase() === assigned.toLowerCase());
+    return match?.id || (assigned === department?.name ? department.id : assigned);
+  }, [assignedDepartment, departments, department]);
+  useEffect(() => {
+    if (deptTouchedRef.current || !ownDepartmentId || deptView === ownDepartmentId) return;
+    taskEtagRef.current = null;
+    setDeptView(ownDepartmentId);
+  }, [ownDepartmentId, deptView]);
   const changeDeptView = (next) => {
     deptTouchedRef.current = true;
-    taskEtagRef.current = null;          // the cached ETag belongs to the old view
+    taskEtagRef.current = null; // the cached ETag belongs to the previous view
     setDeptView(next);
   };
-  // Open on the signed-in member's own department. Only admin departments can
-  // switch views at all (everyone else is already limited by the API), and a
-  // manual choice from the picker is never overridden.
-  const deptId = department?.id;
-  const deptIsAdmin = !!department?.admin;
-  useEffect(() => {
-    if (deptTouchedRef.current || !deptIsAdmin || !deptId) return;
-    taskEtagRef.current = null;
-    setDeptView(deptId);
-  }, [deptId, deptIsAdmin]);
 
   const loadTasks = useCallback(async ({ force = false } = {}) => {
-    if (loadingTasksRef.current) return;
+    if (!deptView || loadingTasksRef.current) return;
     loadingTasksRef.current = true;
     const generationAtStart = mutationGenerationRef.current;
     try {
