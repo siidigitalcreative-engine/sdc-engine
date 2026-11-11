@@ -88,11 +88,18 @@ export async function PATCH(request) {
     if (!id) return json({ error: "Member ID is required." }, 400);
 
     /* Only Management, Admin or HOD Admin may move someone to another
-       department or change what they are allowed to do. */
+       department or change what they are allowed to do.
+
+       The exception is a workspace with no admin at all: without it the first
+       one could never be appointed, since granting the level would require
+       already holding it. */
     const { viewerScope } = await import("../../lib/scope");
     const scope = await viewerScope(actor, request);
+    const existing = await readMembersState();
+    const hasAdmin = existing.state.members.some((m) => String(m.accessLevel || "").trim() === "admin");
+
     const data = { ...(body.data || {}) };
-    if (!scope.isAdmin) {
+    if (!scope.isAdmin && hasAdmin) {
       delete data.department;
       delete data.accessLevel;
     }
@@ -125,15 +132,6 @@ export async function DELETE(request) {
     const id = String(body.id || "");
     if (!id) return json({ error: "Member ID is required." }, 400);
 
-    /* Only Management, Admin or HOD Admin may move someone to another
-       department or change what they are allowed to do. */
-    const { viewerScope } = await import("../../lib/scope");
-    const scope = await viewerScope(actor, request);
-    const data = { ...(body.data || {}) };
-    if (!scope.isAdmin) {
-      delete data.department;
-      delete data.accessLevel;
-    }
     if (id === actor.id) return json({ error: "You cannot delete the account you are currently signed in with." }, 400);
 
     const result = await mutateMembers((members) => {
