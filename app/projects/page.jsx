@@ -50,7 +50,7 @@ function Avatars({ list, size = 20 }) {
 }
 
 function ProjectsPageInner() {
-  const { members, department } = useAuth();
+  const { members, departments, currentMember, department } = useAuth();
   const [projects, setProjects] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [statuses, setStatuses] = useState(null);
@@ -75,22 +75,23 @@ function ProjectsPageInner() {
   // Start on the viewer's own department; "All departments" stays available in
   // the picker for Management, Admin and HOD Admin.
   const [deptView, setDeptView] = useState("");
-  useEffect(() => {
-    if (!deptView && department?.id) setDeptView(department.id);
-  }, [department, deptView]);
   const deptTouchedRef = useRef(false);
-  const changeDeptView = (next) => { deptTouchedRef.current = true; setDeptView(next); };
-  // Open on the signed-in member's own department (admin departments only —
-  // everyone else is already limited by the API). A manual pick is kept.
-  const deptId = department?.id;
-  const deptIsAdmin = !!department?.admin;
+  const assignedDepartment = currentMember?.department || department?.id || "";
+  const ownDepartmentId = useMemo(() => {
+    const assigned = String(assignedDepartment).trim();
+    if (!assigned) return "";
+    const match = departments.find(d => d.id === assigned || d.name?.toLowerCase() === assigned.toLowerCase());
+    return match?.id || (assigned === department?.name ? department.id : assigned);
+  }, [assignedDepartment, departments, department]);
   useEffect(() => {
-    if (deptTouchedRef.current || !deptIsAdmin || !deptId) return;
-    setDeptView(deptId);
-  }, [deptId, deptIsAdmin]);
+    if (deptTouchedRef.current || !ownDepartmentId || deptView === ownDepartmentId) return;
+    setDeptView(ownDepartmentId);
+  }, [ownDepartmentId, deptView]);
+  const changeDeptView = (next) => { deptTouchedRef.current = true; setDeptView(next); };
   const [projectDepartments, setProjectDepartments] = useState({});
 
   const load = useCallback(() => {
+    if (!deptView) return Promise.resolve();
     // Both calls carry the chosen department so the project cards and the task
     // counts on them describe the same slice.
     const q = deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : "";
