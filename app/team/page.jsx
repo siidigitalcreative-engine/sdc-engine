@@ -46,6 +46,17 @@ function TeamPageInner() {
   const { members, currentMember, addMember, updateMember, deleteMember, canSwitchDepartments, department } = useAuth();
   // Start on the viewer's own department; "All departments" stays available in
   // the picker for Management, Admin and HOD Admin.
+  const [departmentNames, setDepartmentNames] = useState({});
+  useEffect(() => {
+    fetch("/api/departments", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!body?.departments) return;
+        setDepartmentNames(Object.fromEntries(body.departments.map((d) => [d.id, d.name])));
+      })
+      .catch(() => {});
+  }, []);
+
   const [deptView, setDeptView] = useState("");
   useEffect(() => {
     if (!deptView && department?.id) setDeptView(department.id);
@@ -125,6 +136,7 @@ function TeamPageInner() {
                   key={m.id}
                   m={{ ...m, ...statsFor(m) }}
                   dark={dark}
+                  departmentNames={departmentNames}
                   isCurrent={currentMember?.id === m.id}
                   onEdit={() => setEditing(m)}
                   onDelete={() => setDeleting(m)}
@@ -179,7 +191,7 @@ function TeamPageInner() {
   );
 }
 
-function MemberCard({ m, dark, isCurrent, onEdit, onDelete }) {
+function MemberCard({ m, dark, isCurrent, onEdit, onDelete, departmentNames = {} }) {
   const [menu, setMenu] = useState(false);
   const menuRef = useRef(null);
   const total = m.open + m.done;
@@ -241,6 +253,10 @@ function MemberCard({ m, dark, isCurrent, onEdit, onDelete }) {
         </div>
         <p className="font-semibold mt-3" style={{ color: t.text, fontSize: 16 }}>{m.name}</p>
         <p className="text-xs mt-0.5" style={{ color: t.muted }}>{m.role}</p>
+        <p className="text-[11px] mt-0.5" style={{ color: "var(--faint)" }}>
+          {departmentNames[m.department] || "No department set"}
+          {m.accessLevel === "admin" ? " · Management / Admin" : m.accessLevel === "hod" ? " · HOD" : ""}
+        </p>
         {isCurrent && <span className="mt-2 rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "rgba(242,106,60,0.13)", color: "#F26A3C" }}>You</span>}
       </div>
 
