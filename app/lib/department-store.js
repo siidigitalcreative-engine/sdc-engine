@@ -185,12 +185,20 @@ export async function removeDepartment(id, memberCount = 0) {
 
 /* ---- access ---- */
 
-export function departmentCanOpen(department, pageId) {
+export function departmentCanOpen(department, pageId, isAdmin = false) {
   const page = PAGES.find((p) => p.id === pageId);
   if (!page) return false;
   if (page.always) return true;                     // a landing page for everyone
-  if (page.adminOnly) return Boolean(department?.admin);
-  return Boolean(department?.pages?.includes(pageId));
+  // An admin-only page follows the member's access level first, so Management,
+  // Admin and HOD Admin keep Settings whichever department they sit in.
+  if (page.adminOnly) return Boolean(isAdmin) || Boolean(department?.admin);
+  return Boolean(isAdmin) || Boolean(department?.pages?.includes(pageId));
+}
+
+// True for Management, Admin and HOD Admin, or anyone in an admin department.
+export function memberIsAdmin(member, department) {
+  const level = String(member?.accessLevel || "").trim();
+  return level === "admin" || Boolean(department?.admin);
 }
 
 // The department a member belongs to, falling back to the first one so an
@@ -203,5 +211,5 @@ export async function departmentForMember(member) {
 
 export async function memberCanOpen(member, pageId) {
   const department = await departmentForMember(member);
-  return departmentCanOpen(department, pageId);
+  return departmentCanOpen(department, pageId, memberIsAdmin(member, department));
 }
