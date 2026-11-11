@@ -24,6 +24,8 @@ export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
   const etagRef = useRef(null);
   const loadingMembersRef = useRef(false);
+  // Ignore a session check started before a newer login/logout operation.
+  const authEpochRef = useRef(0);
 
   const refreshMembers = useCallback(async ({ force = false } = {}) => {
     if (loadingMembersRef.current) return;
@@ -52,20 +54,31 @@ export function AuthProvider({ children }) {
   }, []);
 
   const refreshSession = useCallback(async () => {
+    const epoch = authEpochRef.current;
     try {
       const response = await fetch("/api/auth/me", { cache: "no-store" });
+      if (epoch !== authEpochRef.current) return null;
       if (!response.ok) {
         setSessionId(null);
+        setDepartment(null);
+        setAllowedPages(null);
+        setAccessLevel(null);
         return null;
       }
       const body = await response.json();
+      if (epoch !== authEpochRef.current) return null;
       setSessionId(body.member?.id || null);
       setDepartment(body.department || null);
       setAllowedPages(Array.isArray(body.allowedPages) ? body.allowedPages : null);
       setAccessLevel(body.accessLevel || null);
       return body.member || null;
     } catch {
-      setSessionId(null);
+      if (epoch === authEpochRef.current) {
+        setSessionId(null);
+        setDepartment(null);
+        setAllowedPages(null);
+        setAccessLevel(null);
+      }
       return null;
     }
   }, []);
@@ -115,6 +128,8 @@ export function AuthProvider({ children }) {
   };
 
   const login = async (memberId, pin) => {
+    // Invalidate a startup session request that might finish after sign-in.
+    const epoch = ++authEpochRef.current;
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -124,20 +139,25 @@ export function AuthProvider({ children }) {
     if (!response.ok) return { ok: false, message: await getError(response, "Unable to sign in.") };
 
     const body = await response.json();
-    // Resolve the signed-in member's department and page permissions before
-    // navigating away from Login. Otherwise these controls appear only after
-    // a full page refresh (when the startup session check runs).
-    const verifiedMember = await refreshSession();
-    if (!verifiedMember) {
-      return { ok: false, message: "Unable to load your account permissions. Please sign in again." };
-    }
+    if (epoch !== authEpochRef.current) return { ok: false, message: "Sign-in was interrupted." };
+
+    // The login response is the authoritative, freshly computed permissions
+    // for this member. No second request or browser refresh is needed.
+    setSessionId(body.member?.id || null);
+    setDepartment(body.department || null);
+    setAllowedPages(Array.isArray(body.allowedPages) ? body.allowedPages : null);
+    setAccessLevel(body.accessLevel || null);
     await refreshMembers({ force: true });
     return { ok: true, member: body.member };
   };
 
   const logout = async () => {
+    ++authEpochRef.current;
     try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
     setSessionId(null);
+    setDepartment(null);
+    setAllowedPages(null);
+    setAccessLevel(null);
   };
 
   const addMember = async (data) => {
