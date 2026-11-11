@@ -53,7 +53,7 @@ async function createInitialBlob() {
   const state = makeInitialState();
   const blob = await put(PATHNAME, JSON.stringify(state), {
     access: "private", contentType: "application/json", allowOverwrite: true,
-    addRandomSuffix: false, cacheControlMaxAge: 60,
+    addRandomSuffix: false, cacheControlMaxAge: 0,
   });
   return { state, etag: blob.etag };
 }
@@ -87,7 +87,7 @@ export async function mutateProjects(mutator, maxAttempts = 12) {
     try {
       const blob = await put(PATHNAME, JSON.stringify(nextState), {
         access: "private", contentType: "application/json", allowOverwrite: true,
-        addRandomSuffix: false, cacheControlMaxAge: 60, ifMatch: current.etag,
+        addRandomSuffix: false, cacheControlMaxAge: 0, ifMatch: current.etag,
       });
       return { state: nextState, etag: blob.etag };
     } catch (error) {
@@ -105,7 +105,7 @@ export async function mutateProjects(mutator, maxAttempts = 12) {
   try {
     const blob = await put(PATHNAME, JSON.stringify(finalState), {
       access: "private", contentType: "application/json", allowOverwrite: true,
-      addRandomSuffix: false, cacheControlMaxAge: 60,
+      addRandomSuffix: false, cacheControlMaxAge: 0,
     });
     return { state: finalState, etag: blob.etag };
   } catch (error) {
@@ -132,7 +132,7 @@ export async function setProjectDepartment(name, departmentId) {
   };
   const blob = await put(PATHNAME, JSON.stringify(nextState), {
     access: "private", contentType: "application/json", allowOverwrite: true,
-    addRandomSuffix: false, cacheControlMaxAge: 60,
+    addRandomSuffix: false, cacheControlMaxAge: 0,
   });
   return { state: nextState, etag: blob.etag };
 }
