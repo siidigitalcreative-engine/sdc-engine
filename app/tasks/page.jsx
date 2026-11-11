@@ -364,6 +364,8 @@ function TasksPageInner() {
       attachments: attachmentsOverride ? [...attachmentsOverride] : [...f.attachments],
       subtasks: [...(f.subtasks || [])],
       progress: f.progress,
+      // Only an admin's modal offers this; the API ignores it from anyone else.
+      ...(f.department ? { department: f.department } : {}),
     };
     // A completion date typed in by hand. Only sent when it was actually
     // changed, so saving a done task doesn't overwrite its recorded time.
@@ -751,6 +753,16 @@ function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging, o
 
 /* ---------- modal ---------- */
 function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAutoSave, onDelete, onArchive, onSendToLark, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
+  const { canSwitchDepartments, department } = useAuth();
+  const [allDepartments, setAllDepartments] = useState([]);
+
+  useEffect(() => {
+    if (!canSwitchDepartments) return;
+    fetch("/api/departments", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => setAllDepartments(body?.departments || []))
+      .catch(() => {});
+  }, [canSwitchDepartments]);
   const f = modal.form;
   const fileRef = useRef(null);
   const [tagDraft, setTagDraft] = useState("");
@@ -958,6 +970,22 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
 
           <textarea value={f.desc} onChange={(e) => setForm({ desc: e.target.value })} rows={2} placeholder="Description / note"
             className="w-full rounded-lg px-3 py-2 text-sm resize-none outline-none" style={field} />
+
+          {canSwitchDepartments && (
+            <Labeled label="Department">
+              <div className="relative">
+                <select value={f.department || department?.id || ""} onChange={(e) => setForm({ department: e.target.value })}
+                  className="appearance-none w-full rounded-lg pl-2.5 pr-9 py-2 text-sm outline-none"
+                  style={{ ...field, color: "var(--text)" }}>
+                  {allDepartments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
+              </div>
+              <span className="block text-[11px] mt-1" style={{ color: "var(--faint)" }}>
+                Which department's board this task appears on.
+              </span>
+            </Labeled>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <Labeled label="Project">
