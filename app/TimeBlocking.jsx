@@ -79,7 +79,7 @@ function BlockRemoveButton({ onRemove, floating = false }) {
   );
 }
 
-export default function TimeBlocking({ day, onDayChange }) {
+export default function TimeBlocking({ day, onDayChange, departmentView = "" }) {
   const { currentMember } = useAuth();
   const [data, setData] = useState({ blocks: [], members: [], departments: [], day: { start: 420, end: 1200, slot: 30 } });
   const [tasks, setTasks] = useState([]);
@@ -114,6 +114,7 @@ export default function TimeBlocking({ day, onDayChange }) {
 
   const { openLarkSend, larkPicker } = useLarkSend();
   const key = dateKey(day);
+  const departmentParam = departmentView ? `&department=${encodeURIComponent(departmentView)}` : "";
   const DAY_START = data.day.start, DAY_END = data.day.end, SLOT = data.day.slot;
   const me = currentMember?.id;
 
@@ -121,7 +122,7 @@ export default function TimeBlocking({ day, onDayChange }) {
     const seq = writeSeq.current;
     try {
       const [blockRes, taskRes, statusRes, projectRes] = await Promise.all([
-        fetch(`/api/time-blocks?date=${key}`, { cache: "no-store" }),
+        fetch(`/api/time-blocks?date=${key}${departmentParam}`, { cache: "no-store" }),
         fetch("/api/tasks", { cache: "no-store" }),
         fetch("/api/statuses", { cache: "no-store" }).catch(() => null),
         fetch("/api/projects", { cache: "no-store" }).catch(() => null),
@@ -145,9 +146,11 @@ export default function TimeBlocking({ day, onDayChange }) {
     } catch (e) {
       setError(e.message);
     }
-  }, [key]);
+  }, [key, departmentParam]);
 
-  useEffect(() => { setGhosts([]); setPending({}); }, [key]);
+  // A member selected in the previous department may not exist in the next one.
+  useEffect(() => { setView("all"); }, [departmentView]);
+  useEffect(() => { setGhosts([]); setPending({}); }, [key, departmentView]);
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
@@ -285,7 +288,7 @@ export default function TimeBlocking({ day, onDayChange }) {
     setBusy(true);
     setError("");
     try {
-      const res = await fetch("/api/time-blocks", {
+      const res = await fetch(`/api/time-blocks?department=${encodeURIComponent(departmentView || "")}`, {
         method, headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...payload,
