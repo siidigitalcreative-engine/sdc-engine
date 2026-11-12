@@ -478,6 +478,12 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     return null;
   };
 
+  // Everyone a shared block belongs to.
+  const groupMembers = (b) => (b?.groupId
+    ? visibleBlocks.filter((x) => x.groupId === b.groupId)
+        .map((x) => members.find((m) => m.id === x.member)).filter(Boolean)
+    : []);
+
   const openEdit = (b) => {
     if (b.member !== me) return;
     setError("");
@@ -593,7 +599,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         kind: "task", refId: created.id, title: created.title,
         parentTitle: "", project: created.project,
         color: colorFor(created.project), start, end, note: dialog.note || "",
-      } });
+      }, members: dialog.members || [] });
     } else if (dialog.sourceId === "new-subtask") {
       // Append to the parent task's checklist through the Tasks API, then block
       // the new subtask. The created subtask is remembered so a failed block
@@ -631,7 +637,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         kind: "subtask", refId: created.id, title: created.title,
         parentTitle: created.parentTitle, project: created.project || "",
         color: colorFor(created.project), start, end, note: dialog.note || "",
-      } });
+      }, members: dialog.members || [] });
     } else {
       ok = await send("POST", { block: {
         kind: selectedSource?.kind || "task", refId: selectedSource?.id || "",
@@ -639,7 +645,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         project: selectedSource?.project || dialog.project || "",
         color: selectedSource?.color || colorFor(dialog.project || dialog.title),
         start, end, note: dialog.note || "",
-      } });
+      }, members: dialog.members || [] });
     }
     if (ok) { setDialog(null); setPicked(null); }
   };
@@ -675,7 +681,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     const pendingId = `pending-${crypto.randomUUID()}`;
     setGhosts((list) => [...list, { ...nextBlock, id: pendingId, member: me }]);
     setPicked(null);
-    send("POST", { block: nextBlock })
+    send("POST", { block: nextBlock, members: dialog?.members || [] })
       .finally(() => setGhosts((list) => list.filter((g) => g.id !== pendingId)));
   };
 
@@ -791,6 +797,28 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   const hoursList = [];
   for (let h = DAY_START / 60; h < DAY_END / 60; h++) hoursList.push(h);
   const lanes = view === "all" ? members : members.filter((m) => m.id === view);
+
+  /* Where each shared block sits across the lanes on screen. Only a run of
+     neighbouring people can be drawn as one card; anyone else keeps their own. */
+  const groupSpans = useMemo(() => {
+    const byGroup = new Map();
+    visibleBlocks.forEach((b) => {
+      if (!b.groupId) return;
+      const lane = lanes.findIndex((m) => m.id === b.member);
+      if (lane < 0) return;
+      const entry = byGroup.get(b.groupId) || [];
+      entry.push(lane);
+      byGroup.set(b.groupId, entry);
+    });
+
+    const spans = new Map();
+    byGroup.forEach((indices, groupId) => {
+      const sorted = [...new Set(indices)].sort((a, b) => a - b);
+      const contiguous = sorted.every((v, i) => i === 0 || v === sorted[i - 1] + 1);
+      spans.set(groupId, { from: sorted[0], count: sorted.length, contiguous });
+    });
+    return spans;
+  }, [visibleBlocks, lanes]);
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const showNow = dateKey(now) === key && nowMin >= DAY_START && nowMin <= DAY_END;
@@ -830,7 +858,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     return Math.max(DAY_START, Math.min(DAY_END - SLOT, Math.floor(minute / SLOT) * SLOT));
   };
 
-  const block = (b, interactive, position) => {
+  const block = (b, interactive, position, laneSpan = 1) => {
     /* Geometry is proportional to time, with one fixed gap, so the space
        between two blocks is the same whether they are ten minutes or two hours
        long. A minimum height used to be forced on short blocks, which made them
@@ -1188,6 +1216,49 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                     if (Number.isFinite(h) && Number.isFinite(m)) patchDialog2(d => ({ ...d, [k]: h * 60 + m })); }}/>
               </label>)}
             </div>
+            {dialog.mode === "edit" && groupMembers(dialog.block).length > 1 && (
+              <p className="text-xs rounded-xl px-3 py-2" style={{ background: "var(--col)", color: "var(--text-2)" }}>
+                Shared with {groupMembers(dialog.block).map((m) => m.name.split(" ")[0]).join(", ")}.
+                Changes here apply to all of them.
+              </p>
+            )}
+
+            {dialog.mode === "add" && members.length > 1 && (
+              <div className="text-xs space-y-1" style={{ color: "var(--text-2)" }}>
+                <span>Who is this for</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {members.map((m) => {
+                    const on = m.id === me || (dialog.members || []).includes(m.id);
+                    const locked = m.id === me;      // the author is always included
+                    return (
+                      <button key={m.id} type="button" disabled={locked}
+                        onClick={() => patchDialog2((d) => {
+                          const current = new Set(d.members || []);
+                          current.has(m.id) ? current.delete(m.id) : current.add(m.id);
+                          return { ...d, members: [...current] };
+                        })}
+                        className="rounded-full inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 text-xs font-medium"
+                        style={{
+                          background: on ? ACCENT : "var(--col)",
+                          color: on ? "var(--on-accent)" : "var(--text-2)",
+                          border: `1px solid ${on ? "transparent" : "var(--border)"}`,
+                          opacity: locked ? 0.9 : 1,
+                        }}>
+                        <span className="rounded-full flex items-center justify-center text-white font-extrabold"
+                          style={{ height: 20, width: 20, minWidth: 20, flex: "none", fontSize: 9, background: m.c, borderRadius: 999 }}>{m.i}</span>
+                        {m.name.split(" ")[0]}{locked ? " (you)" : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span className="block" style={{ color: "var(--faint)" }}>
+                  {(dialog.members || []).filter((id) => id !== me).length
+                    ? "The same block appears on each of their days, as one card across those columns."
+                    : "Pick others to put the same block on their day too."}
+                </span>
+              </div>
+            )}
+
             <label className="block text-xs space-y-1" style={{ color: "var(--text-2)" }}>
               <span>Notes (optional)</span>
               <textarea rows={3} maxLength={160} className="w-full rounded-xl px-3 py-2 text-sm border resize-y"
@@ -1513,7 +1584,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
           <div className="flex" style={{ borderBottom: "1px solid var(--border)", position: "sticky", top: 0, zIndex: 4, background: "var(--card)" }}>
             <div className="flex items-end justify-end text-[10px] pb-1.5 pr-2"
               style={{ width: 66, flex: "none", borderRight: "1px solid var(--border)", color: "var(--muted)" }}>GMT+8</div>
-            {lanes.map((m) => (
+            {lanes.map((m, laneIndex) => (
               <div key={m.id} className="flex-1 text-center py-2.5 px-2"
                 style={{ borderRight: "1px solid var(--border)" }}>
                 <div className="mx-auto mb-1.5 rounded-full flex items-center justify-center text-white font-bold"
@@ -1540,7 +1611,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                   }}>
                   {gutter(h)}
                 </div>
-                {lanes.map((m) => (
+                {lanes.map((m, laneIndex) => (
                   <div key={m.id} className="flex-1 flex" style={{ borderRight: "1px solid var(--border)" }}>
                     {editable && m.id === me
                       ? Array.from({ length: 60 / SLOT }, (_, i) => (
@@ -1576,11 +1647,20 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                     ))}
                     {(() => {
                       const positions = layoutFor(m.id);
-                      const items = blocksOf(m.id);
+                      const items = blocksOf(m.id).filter((b) => {
+                        // a shared block belongs to the first of its lanes
+                        if (!b.groupId) return true;
+                        const span = groupSpans.get(b.groupId);
+                        return !span || span.from === laneIndex;
+                      });
                       // the dragged one renders last, so it stays above the rest
                       const ordered = [...items].sort((a, b) =>
                         (a.id === draggingId ? 1 : 0) - (b.id === draggingId ? 1 : 0));
-                      return ordered.map((b) => block(b, m.id === me, b.id === draggingId ? null : positions.get(b.id)));
+                      return ordered.map((b) => {
+                        const span = b.groupId ? groupSpans.get(b.groupId) : null;
+                        const laneSpan = span && span.contiguous ? span.count : 1;
+                        return block(b, m.id === me, b.id === draggingId ? null : positions.get(b.id), laneSpan);
+                      });
                     })()}
                   </div>
                 </div>
