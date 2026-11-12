@@ -34,6 +34,9 @@ function normalizeBlock(block) {
     start,
     end,
     note: clean(block?.note).slice(0, 160),
+    // Copies of a block made for several people share this, so they move,
+    // change and disappear together and can be drawn as one card.
+    groupId: clean(block?.groupId),
     createdAt: block?.createdAt || new Date().toISOString(),
   };
 }
@@ -116,21 +119,41 @@ export async function listBlocks(date) {
   return isDate(date) ? state.blocks.filter((b) => b.date === date) : state.blocks;
 }
 
-export async function addBlock(memberId, data) {
-  const draft = normalizeBlock({ ...data, id: newId(), member: memberId, createdAt: new Date().toISOString() });
-  if (!draft.date) throw new Error("A date is required.");
-  if (!draft.title) throw new Error("Nothing was chosen to block.");
-  return mutate((blocks) => {
-    return [...blocks, draft];
-  });
+/* One block, or the same block for several people.
+
+   Each person still gets their own row, because a day belongs to a person;
+   the shared groupId is what keeps them in step and lets the board draw them
+   as a single card spanning those lanes. */
+export async function addBlock(memberId, data, members) {
+  const owners = Array.isArray(members) && members.length
+    ? [...new Set(members.map(clean).filter(Boolean))]
+    : [clean(memberId)];
+
+  const createdAt = new Date().toISOString();
+  const groupId = owners.length > 1 ? `grp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}` : "";
+
+  const drafts = owners.map((owner) =>
+    normalizeBlock({ ...data, id: newId(), member: owner, groupId, createdAt }));
+
+  const first = drafts[0];
+  if (!first?.date) throw new Error("A date is required.");
+  if (!first?.title) throw new Error("Nothing was chosen to block.");
+
+  return mutate((blocks) => [...blocks, ...drafts]);
 }
+
+// A member may change a block of their own, or one of a shared group they are
+// part of, since the group is the same piece of work for all of them.
+const inGroup = (blocks, found, memberId) =>
+  found.member === memberId ||
+  (found.groupId && blocks.some((b) => b.groupId === found.groupId && b.member === memberId));
 
 export async function moveBlock(memberId, id, { start, end, note, title }) {
   const target = clean(id);
   return mutate((blocks) => {
     const found = blocks.find((b) => b.id === target);
     if (!found) throw new Error("That block no longer exists.");
-    if (found.member !== memberId) throw new Error("That block belongs to someone else.");
+    if (!inGroup(blocks, found, memberId)) throw new Error("That block belongs to someone else.");
 
     const next = normalizeBlock({
       ...found,
@@ -140,7 +163,14 @@ export async function moveBlock(memberId, id, { start, end, note, title }) {
       title: title === undefined ? found.title : title,
       titleEdited: title === undefined ? found.titleEdited : (found.titleEdited || clean(title) !== found.title),
     });
-    return blocks.map((b) => (b.id === target ? next : b));
+    // every copy in the group follows the same change
+    const family = found.groupId
+      ? blocks.filter((b) => b.groupId === found.groupId).map((b) => b.id)
+      : [target];
+
+    return blocks.map((b) => (family.includes(b.id)
+      ? normalizeBlock({ ...b, start: next.start, end: next.end, note: next.note, title: next.title, titleEdited: next.titleEdited })
+      : b));
   });
 }
 
@@ -149,8 +179,11 @@ export async function removeBlock(memberId, id) {
   return mutate((blocks) => {
     const found = blocks.find((b) => b.id === target);
     if (!found) return blocks;
-    if (found.member !== memberId) throw new Error("That block belongs to someone else.");
-    return blocks.filter((b) => b.id !== target);
+    if (!inGroup(blocks, found, memberId)) throw new Error("That block belongs to someone else.");
+    // removing one copy removes the whole shared block
+    return found.groupId
+      ? blocks.filter((b) => b.groupId !== found.groupId)
+      : blocks.filter((b) => b.id !== target);
   });
 }
 
