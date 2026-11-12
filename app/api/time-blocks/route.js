@@ -83,7 +83,15 @@ export async function POST(request) {
     // The client sends the date alongside the block, so merge it in rather than
     // letting the store reject a block that looks dateless.
     const date = body.block?.date || body.date || "";
-    const result = await addBlock(actor.id, { ...(body.block || {}), date });
+    const scope = await visibleMembers(actor, request);
+    const allowed = new Set(scope.members.map((m) => m.id));
+
+    /* Blocking for other people is limited to those the viewer can already see,
+       and the author is always included. */
+    const requested = Array.isArray(body.members) ? body.members.filter((id) => allowed.has(id)) : [];
+    const members = [...new Set([actor.id, ...requested])];
+
+    const result = await addBlock(actor.id, { ...(body.block || {}), date }, members);
     return json({ blocks: await visibleForDate(actor, request, result.state, date) }, 201);
   } catch (error) {
     return json({ error: error.message || "Unable to add that block." }, 400);
