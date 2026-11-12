@@ -946,7 +946,11 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
       due: f.due instanceof Date ? toDateInput(f.due) : (f.due || null),
       start: f.start instanceof Date ? toDateInput(f.start) : (f.start || null),
       time: f.time || "", desc: f.desc || "", tags: f.tags || [],
-      subtasks: (f.subtasks || []).map((s) => ({ title: s.title, done: !!s.done })),
+      subtasks: (f.subtasks || []).map((s) => {
+        const sid = s.status || (s.done ? "done" : "todo");
+        const st = statuses.find((x) => x.id === sid) || {};
+        return { title: s.title, done: !!s.done, status: sid, statusName: st.name || "", statusColor: st.color || "#8E8A96", statusSoft: st.soft || "#ECEBEE" };
+      }),
       progress: typeof f.progress === "number" ? f.progress : null,
       statusName: (statuses.find((s) => s.id === f.status) || {}).name || "",
       statusColor: (statuses.find((s) => s.id === f.status) || {}).color || "#8E8A96",
