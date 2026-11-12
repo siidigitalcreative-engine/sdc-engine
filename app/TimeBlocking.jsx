@@ -383,11 +383,11 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       } else {
         failed = true; // refetch only when the response lacks confirmed blocks
       }
-      return true;
+      return { ok: true, blocks: Array.isArray(body.blocks) ? body.blocks : null };
     } catch (e) {
       failed = true;
       setError(e.message);
-      return false;
+      return { ok: false, blocks: null };
     } finally {
       activeWrites.current = Math.max(0, activeWrites.current - 1);
       setBusy(false);
@@ -685,7 +685,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         start, end, note: dialog.note || "",
       }, members: dialog.members || [] });
     }
-    if (ok) { setDialog(null); setPicked(null); }
+    if (ok?.ok) { setDialog(null); setPicked(null); }
   };
 
   // Keep drag selection in a ref: a React re-render on drag start makes the
@@ -773,12 +773,26 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         writeSeq.current += 1;
         setData((d) => ({ ...d, blocks: d.blocks.map((b) =>
           b.id === id ? { ...b, start: live.start, end: live.end } : b) }));
-        send("PATCH", { id, start: live.start, end: live.end })
-          .finally(() => setPending((p) => {
+        send("PATCH", { id, start: live.start, end: live.end }).then((result) => {
+          /* Release the held position only once the server's own copy carries
+             the new time. Letting go earlier is what made a block snap back to
+             where it started and then jump forward again. */
+          const saved = result?.blocks?.find((b) => b.id === id);
+          const settled = saved && saved.start === live.start && saved.end === live.end;
+          if (settled || result?.ok === false) {
+            setPending((p) => { const next = { ...p }; delete next[id]; return next; });
+            return;
+          }
+          // the server stored something different, so show that and let go
+          setPending((p) => (saved
+            ? { ...p, [id]: { start: saved.start, end: saved.end } }
+            : (() => { const next = { ...p }; delete next[id]; return next; })()));
+          setTimeout(() => setPending((p) => {
             const next = { ...p };
             delete next[id];
             return next;
-          }));
+          }), 400);
+        });
       }
     };
 
