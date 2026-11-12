@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // confirm the running deployment is the build you expect.
 export async function GET() {
   return NextResponse.json(
-    { version: "2026-11-12-mobile-timeblock", ok: true },
+    { version: "2026-11-12-subtask-edit-drag", ok: true },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
