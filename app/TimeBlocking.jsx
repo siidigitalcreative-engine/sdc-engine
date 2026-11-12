@@ -107,6 +107,21 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   // The block under the pointer. While it moves, it is lifted out of the
   // overlap layout so neither it nor its neighbours reflow mid-gesture.
   const [draggingId, setDraggingId] = useState(null);
+  // The panel starts folded on a narrow screen, where it would otherwise take
+  // the whole view and leave no room for the day itself.
+  const [wide, setWide] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(true);
+
+  useEffect(() => {
+    const check = () => {
+      const isWide = window.innerWidth >= 1024;
+      setWide(isWide);
+      setPanelOpen((open) => (window.innerWidth < 1024 ? false : open));
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
   const writeSeq = useRef(0);
   const activeWrites = useRef(0);
   const suppressBlockClick = useRef(false);
@@ -1367,9 +1382,20 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
 
       {error && <p className="text-xs" style={{ color: "#E5536E" }}>{error}</p>}
 
-      <div className="grid gap-3" style={{ gridTemplateColumns: editable ? "280px 1fr" : "1fr" }}>
-        {/* what to block */}
-        {editable && (
+      {editable && (
+        <button type="button" onClick={() => setPanelOpen((v) => !v)}
+          className="self-start rounded-full px-3 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
+          style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+          {panelOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          {panelOpen ? "Hide tasks and projects" : "Show tasks and projects"}
+        </button>
+      )}
+
+      {/* The panel folds away so the day can have the full width, which matters
+          most on a phone. Stacked below 1024px, side by side above it. */}
+      <div className="grid gap-3"
+        style={{ gridTemplateColumns: editable && panelOpen ? (wide ? "280px minmax(0,1fr)" : "minmax(0,1fr)") : "minmax(0,1fr)" }}>
+        {editable && panelOpen && (
           <div className="rounded-2xl p-3.5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <div className="flex gap-1.5 mb-2.5">
               {["tasks", "projects"].map((t) => (
@@ -1479,8 +1505,11 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
           </div>
         )}
 
-        {/* the board */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        {/* the board; it scrolls sideways so every lane stays readable rather
+            than being squeezed to a few pixels when several people are shown */}
+        <div className="rounded-2xl overflow-x-auto overflow-y-hidden min-w-0 tp-noscrollbar"
+          style={{ background: "var(--card)", border: "1px solid var(--border)", WebkitOverflowScrolling: "touch" }}>
+          <div style={{ minWidth: 66 + lanes.length * 200 }}>
           <div className="flex" style={{ borderBottom: "1px solid var(--border)", position: "sticky", top: 0, zIndex: 4, background: "var(--card)" }}>
             <div className="flex items-end justify-end text-[10px] pb-1.5 pr-2"
               style={{ width: 66, flex: "none", borderRight: "1px solid var(--border)", color: "var(--muted)" }}>GMT+8</div>
@@ -1579,6 +1608,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
               )}
             </div>
           </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1587,7 +1617,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
 
 function Chip({ on, onClick, label, note, avatar, color }) {
   return (
-    <button onClick={onClick} className="rounded-full inline-flex items-center gap-2 text-[12.5px] font-medium"
+    <button onClick={onClick} className="rounded-full inline-flex items-center gap-2 text-[12.5px] font-medium shrink-0 whitespace-nowrap"
       style={{
         padding: avatar ? "4px 12px 4px 4px" : "7px 13px",
         background: on ? ACCENT : "var(--card)",
@@ -1595,10 +1625,11 @@ function Chip({ on, onClick, label, note, avatar, color }) {
         border: `1px solid ${on ? "transparent" : "var(--border)"}`,
       }}>
       {avatar && (
+        // flex-none and a fixed size, or a narrow row squashes it into an oval
         <span className="rounded-full flex items-center justify-center text-white font-extrabold"
-          style={{ height: 24, width: 24, fontSize: 10, background: color }}>{avatar}</span>
+          style={{ height: 24, width: 24, minWidth: 24, flex: "none", fontSize: 10, background: color, borderRadius: 999 }}>{avatar}</span>
       )}
-      {label}
+      <span className="whitespace-nowrap">{label}</span>
       <span style={{ fontSize: 10.5, opacity: 0.72 }}>{note}</span>
     </button>
   );
