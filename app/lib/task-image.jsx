@@ -136,7 +136,12 @@ export function buildTaskImage(task = {}) {
                     <svg width="11" height="11" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" fill="none" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   ) : null}
                 </div>
-                <div style={{ display: "flex", fontSize: 14, color: s.done ? "#AEB1BA" : "#3A3743", textDecoration: s.done ? "line-through" : "none" }}>{String(s.title || "").slice(0, 70)}</div>
+                <div style={{ display: "flex", flex: 1, fontSize: 14, color: s.done ? "#AEB1BA" : "#3A3743", textDecoration: s.done ? "line-through" : "none" }}>{String(s.title || "").slice(0, 70)}</div>
+                {s.statusName ? (
+                  <div style={{ display: "flex", alignItems: "center", height: 20, paddingLeft: 9, paddingRight: 9, marginLeft: 10, borderRadius: 10, backgroundColor: s.statusSoft || "#ECEBEE" }}>
+                    <div style={{ display: "flex", fontSize: 11, fontWeight: 700, color: s.statusColor || "#8E8A96" }}>{s.statusName}</div>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
