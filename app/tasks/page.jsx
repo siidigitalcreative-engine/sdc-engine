@@ -3,197 +3,63 @@
 import PageAccess from "../PageAccess";
 import DepartmentView from "../DepartmentView";
 
-import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { upload as uploadToBlob } from "@vercel/blob/client";
-import { useAuth } from "../auth";
-import { useLarkSend } from "../LarkSend";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
-  Plus, X, Search, Paperclip, Clock, Flag, Trash2, Tag, Sparkles, List, MoreHorizontal,
-  Moon, Sun, ChevronDown, Archive, Check, CheckCircle2, Download, Send, GripVertical,
+  Plus, Search, MoreHorizontal, Pencil, Trash2, X, UserPlus, Save, AlertTriangle,
 } from "lucide-react";
+import { useAuth } from "../auth";
+import { useTheme } from "../theme";
 
-/* ---------- theme ---------- */
-const CANVAS = "var(--surface)";
-const SIDEBAR = "var(--sidebar)";
-const ACCENT = "#F26A3C";
-const ON_ACCENT = "var(--on-accent)";
 const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
-const PAGE_BG = "var(--page)";
-const ME = { i: "CN", name: "Che Navarro", role: "Digital Creative", c: "#7C6FF0" };
+const ON_ACCENT = "var(--on-accent)";
+const STRIP = ["#7C6FF0", "#3FA37A", "#F0784B", "#E0A93C", "#E5536E"];
+const STATUS_C = { Active: "#3FA37A", Online: "#3FA37A", Away: "#E0A93C", Offline: "#8E8A96" };
+const STATUS_OPTIONS = ["Active", "Online", "Away", "Offline"];
+const COLOR_OPTIONS = ["#7C6FF0", "#3FA37A", "#F0784B", "#E0A93C", "#E5536E", "#3E8ED0", "#A85AD7", "#29A7A1"];
 
-const DEFAULT_STATUSES = [
-  { id: "todo",       name: "To Do",       color: "#8E8A96", soft: "#ECEBEE", isDefault: true },
-  { id: "inprogress", name: "In Progress", color: "#3E8ED0", soft: "#E3EEF9", isDefault: true },
-  { id: "inreview",   name: "In Review",   color: "#E0A93C", soft: "#FAEFD6", isDefault: true },
-  { id: "revision",   name: "Revision",    color: "#7C5CD8", soft: "#EBE4FA", isDefault: true },
-  { id: "done",       name: "Done",        color: "#3FA37A", soft: "#DEF1E7", isDefault: true },
-];
-// Runtime list of statuses (defaults + any custom ones loaded from the API).
-// Kept in a module-level ref so the module-level statusOf() — used by TaskCard
-// and the list view — always resolves the latest custom statuses.
-let STATUS_RUNTIME = DEFAULT_STATUSES.slice();
-const setStatusRuntime = (list) => { STATUS_RUNTIME = (Array.isArray(list) && list.length) ? list : DEFAULT_STATUSES.slice(); };
-const PRIORITIES = [
-  { id: "low",    name: "Low",    color: "#3FA37A", soft: "#DEF1E7" },
-  { id: "medium", name: "Medium", color: "#E0A93C", soft: "#FAEFD6" },
-  { id: "high",   name: "High",   color: "#E5536E", soft: "#FBE1E7" },
-];
-const PROJECTS = ["Quencha", "CRYSALIS", "Website Revamp", "FITSPIRE", "SCRUBZ", "Sunbeams Lifestyle", "PRIMEO", "Nest Design Lab", "Daily Tasks"];
-const statusOf = (id) => STATUS_RUNTIME.find((s) => s.id === id) || STATUS_RUNTIME[0];
-const priorityOf = (id) => PRIORITIES.find((p) => p.id === id) || PRIORITIES[0];
+const EMPTY_FORM = {
+  name: "",
+  i: "",
+  role: "",
+  loc: "Manila",
+  status: "Active",
+  department: "",
+  accessLevel: "member",
+  projects: 0,
+  open: 0,
+  done: 0,
+  c: "#7C6FF0",
+  pin: "",
+};
 
-/* ---------- helpers ---------- */
-const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
-const dOff = (n) => { const d = startOfDay(new Date()); d.setDate(d.getDate() + n); return d; };
-const pad = (n) => String(n).padStart(2, "0");
-const toDateInput = (d) => d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : "";
-const fromDateInput = (s) => { if (!s) return null; const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
-const fmtDate = (d) => d ? d.toLocaleDateString("default", { month: "short", day: "numeric" }) : "—";
-const isOverdue = (t) => t.due && t.status !== "done" && startOfDay(t.due) < startOfDay(new Date());
-const formatBytes = (b) => { if (!b) return "0 KB"; const kb = b / 1024; return kb < 1024 ? `${Math.round(kb)} KB` : `${(kb / 1024).toFixed(1)} MB`; };
-const progressFor = (t) => t.progress != null ? t.progress : ({ todo: 0, inprogress: 45, inreview: 85, done: 100 }[t.status] || 0);
+function makeInitials(name) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("");
+}
 
-/* ---------- seed ---------- */
-const SEED = [
-  { id: 1, title: "Wireframe Quencha PDP", project: "Quencha", desc: "Two-column layout with sticky add-to-cart", status: "inprogress", priority: "high", assignees: ["CN", "RG"], start: dOff(-1), due: dOff(2), time: "", tags: ["web", "ux"], attachments: [{ name: "pdp-wireframe.fig", size: 2415000 }], progress: 45 },
-  { id: 2, title: "Update brand colors — CRYSALIS", project: "CRYSALIS", desc: "Apply rebrand palette across the catalog", status: "todo", priority: "medium", assignees: ["MA"], start: dOff(0), due: dOff(4), time: "", tags: ["brand"], attachments: [], progress: 0 },
-  { id: 3, title: "Checkout flow redesign", project: "Website Revamp", desc: "Reduce checkout from 4 steps to 2", status: "inreview", priority: "high", assignees: ["CN", "JL", "SP"], start: dOff(-4), due: dOff(1), time: "14:00", tags: ["web", "cro"], attachments: [{ name: "flow.pdf", size: 530000 }, { name: "specs.docx", size: 82000 }], progress: 85 },
-  { id: 4, title: "Reel edits — FITSPIRE", project: "FITSPIRE", desc: "Three reels for launch week", status: "done", priority: "low", assignees: ["SP"], start: dOff(-6), due: dOff(-2), time: "", tags: ["content"], attachments: [], progress: 100 },
-  { id: 5, title: "Email template QA", project: "Daily Tasks", desc: "Check rendering in Outlook and mobile", status: "inreview", priority: "medium", assignees: ["RG"], start: dOff(-2), due: dOff(0), time: "", tags: ["email", "qa"], attachments: [], progress: 80 },
-  { id: 6, title: "Product shoot — SCRUBZ", project: "SCRUBZ", desc: "Studio booking and shot list", status: "todo", priority: "medium", assignees: ["RG", "SP"], start: dOff(1), due: dOff(5), time: "09:00", tags: ["shoot"], attachments: [], progress: 0 },
-  { id: 7, title: "Design system audit", project: "Sunbeams Lifestyle", desc: "Consolidate button and form tokens", status: "inprogress", priority: "medium", assignees: ["CN", "MA"], start: dOff(-3), due: dOff(3), time: "", tags: ["design", "system"], attachments: [{ name: "audit.xlsx", size: 120000 }], progress: 50 },
-  { id: 8, title: "Fix nav overflow bug", project: "Website Revamp", desc: "Mobile menu clips on iOS Safari", status: "todo", priority: "high", assignees: ["JL"], start: dOff(-2), due: dOff(-1), time: "", tags: ["bug", "web"], attachments: [], progress: 0 },
-  { id: 9, title: "Landing hero animation", project: "PRIMEO", desc: "Subtle parallax on scroll", status: "inprogress", priority: "low", assignees: ["CN"], start: dOff(0), due: dOff(6), time: "", tags: ["web", "motion"], attachments: [], progress: 35 },
-  { id: 10, title: "Publish blog — Nest Design Lab", project: "Nest Design Lab", desc: "SEO pass and hero image", status: "done", priority: "low", assignees: ["MA"], start: dOff(-8), due: dOff(-5), time: "", tags: ["content", "seo"], attachments: [], progress: 100 },
-];
-
-const NAV = [
-  { id: "dashboard", name: "Dashboard", icon: LayoutGrid },
-  { id: "calendar", name: "Calendar", icon: Calendar },
-  { id: "tasks", name: "Tasks", icon: CheckSquare },
-  { id: "projects", name: "Projects", icon: Folder },
-  { id: "team", name: "Team Members", icon: Users },
-  { id: "reports", name: "Reports", icon: BarChart },
-];
-
-
-
-function TasksPageInner() {
-  const { members, departments, currentMember: authCurrentMember, member, department } = useAuth();
-  const currentMember = authCurrentMember || member || members.find((m) => m.id === "cn" || m.i === "CN") || null;
-  const memberByRef = useMemo(() => {
-    const map = {};
-    members.forEach((member) => {
-      map[member.id] = member;
-      map[member.i] = member; // supports old seed references until they are migrated
-    });
-    return map;
-  }, [members]);
-  const normalizeMemberRefs = useCallback((refs = []) => [...new Set(
-    refs
-      .map((ref) => {
-        const key = String(ref || "").trim();
-        if (!key) return null;
-        return memberByRef[key]?.id || key;
+function TeamPageInner() {
+  const { members, departments, currentMember, addMember, updateMember, deleteMember, canSwitchDepartments, department } = useAuth();
+  // Start on the viewer's own department; "All departments" stays available in
+  // the picker for Management, Admin and HOD Admin.
+  const [departmentNames, setDepartmentNames] = useState({});
+  useEffect(() => {
+    fetch("/api/departments", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!body?.departments) return;
+        setDepartmentNames(Object.fromEntries(body.departments.map((d) => [d.id, d.name])));
       })
-      .filter(Boolean)
-  )], [memberByRef]);
-
-  const [active, setActive] = useState("tasks");
-  const [tasks, setTasks] = useState([]);
-  const taskSnapshotRef = useRef([]);
-  taskSnapshotRef.current = tasks;
-  const subtaskWriteQueuesRef = useRef(new Map());
-  const [projects, setProjects] = useState([]);
-  const [statuses, setStatuses] = useState(DEFAULT_STATUSES);
-
-  const applyStatuses = useCallback((list) => {
-    const next = (Array.isArray(list) && list.length) ? list : DEFAULT_STATUSES;
-    setStatusRuntime(next);   // keep module-level statusOf in sync before re-render
-    setStatuses(next);
+      .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    fetch("/api/projects", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { projects: [] }))
-      .then((b) => { if (active) setProjects(Array.isArray(b.projects) ? b.projects : []); })
-      .catch(() => {});
-    fetch("/api/statuses", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { statuses: DEFAULT_STATUSES }))
-      .then((b) => { if (active) applyStatuses(Array.isArray(b.statuses) ? b.statuses : DEFAULT_STATUSES); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, [applyStatuses]);
-
-  const addStatus = async (name) => {
-    const res = await fetch("/api/statuses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Unable to add status.");
-    const list = Array.isArray(body.statuses) ? body.statuses : [];
-    applyStatuses(list);
-    return list;
-  };
-  const deleteStatus = async (id) => {
-    const res = await fetch("/api/statuses", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Unable to delete status.");
-    const list = Array.isArray(body.statuses) ? body.statuses : [];
-    applyStatuses(list);
-    // a deleted status sends its tasks back to "todo" server-side — refresh tasks
-    loadTasks({ force: true });
-    return list;
-  };
-
-  const addProject = async (name) => {
-    const res = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Unable to add project.");
-    const list = Array.isArray(body.projects) ? body.projects : [];
-    setProjects(list);
-    return list;
-  };
-  const deleteProject = async (name) => {
-    const res = await fetch("/api/projects", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Unable to delete project.");
-    const list = Array.isArray(body.projects) ? body.projects : [];
-    setProjects(list);
-    return list;
-  };
-  const [taskError, setTaskError] = useState("");
-  const [savingTask, setSavingTask] = useState(false);
-  const taskEtagRef = useRef(null);
-  const loadingTasksRef = useRef(false);
-  const mutationGenerationRef = useRef(0);
-  // How many writes are waiting on the server. While any is in flight, a poll
-  // that comes back is already out of date, so applying it would undo the
-  // change on screen and then let the write put it back: the flicker.
-  const pendingWritesRef = useRef(0);
-  const [view, setView] = useState("board");
-  const [query, setQuery] = useState("");
-  const [modal, setModal] = useState(null);
-  const [dragId, setDragId] = useState(null);
-  const [overCol, setOverCol] = useState(null);
-
-  const hydrateTasks = useCallback((items = []) => (
-    items.map((task) => ({
-      ...task,
-      start: task.start ? fromDateInput(task.start) : null,
-      due: task.due ? fromDateInput(task.due) : null,
-      assignees: Array.isArray(task.assignees) ? task.assignees : [],
-      tags: Array.isArray(task.tags) ? task.tags : [],
-      attachments: Array.isArray(task.attachments) ? task.attachments : [],
-    }))
-  ), []);
-
-  // Default to the signed-in member's assigned department, not an earlier
-  // department view. Preserve explicit department selections made by the user.
   const [deptView, setDeptView] = useState("");
   const deptTouchedRef = useRef(false);
-  const assignedDepartment = authCurrentMember?.department || member?.department || department?.id || "";
+  const assignedDepartment = currentMember?.department || department?.id || "";
   const ownDepartmentId = useMemo(() => {
     const assigned = String(assignedDepartment).trim();
     if (!assigned) return "";
@@ -202,1111 +68,434 @@ function TasksPageInner() {
   }, [assignedDepartment, departments, department]);
   useEffect(() => {
     if (deptTouchedRef.current || !ownDepartmentId || deptView === ownDepartmentId) return;
-    taskEtagRef.current = null;
     setDeptView(ownDepartmentId);
   }, [ownDepartmentId, deptView]);
-  const changeDeptView = (next) => {
-    deptTouchedRef.current = true;
-    taskEtagRef.current = null; // the cached ETag belongs to the previous view
-    setDeptView(next);
-  };
-
-  const loadTasks = useCallback(async ({ force = false } = {}) => {
-    if (!deptView || loadingTasksRef.current) return;
-    loadingTasksRef.current = true;
-    const generationAtStart = mutationGenerationRef.current;
-    try {
-      const headers = {};
-      // An ETag belongs to the department view it came from, so a switch forces a fresh read.
-      if (!force && taskEtagRef.current) headers["If-None-Match"] = taskEtagRef.current;
-      const response = await fetch(`/api/tasks${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, { headers, cache: "no-store" });
-      if (response.status === 304) return;
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || "Unable to load tasks.");
-      }
-      const body = await response.json();
-
-      // Ignore a GET that started before a create/edit/delete operation, or one
-      // that lands while a write is still in flight. Either can undo a change
-      // the server has already accepted.
-      if (generationAtStart !== mutationGenerationRef.current) return;
-      if (pendingWritesRef.current > 0) return;
-
-      const etag = response.headers.get("etag");
-      if (etag) taskEtagRef.current = etag;
-      setTasks(hydrateTasks(Array.isArray(body.tasks) ? body.tasks : []));
-      setTaskError("");
-    } catch (error) {
-      if (generationAtStart === mutationGenerationRef.current) {
-        setTaskError(error.message || "Unable to load tasks.");
-      }
-    } finally {
-      loadingTasksRef.current = false;
-    }
-  }, [hydrateTasks, deptView]);
-
-  const applyTaskResponse = useCallback(async (response, fallback) => {
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.error || fallback);
-    }
-    const body = await response.json();
-    const etag = response.headers.get("etag");
-    if (etag) taskEtagRef.current = etag;
-    setTasks(hydrateTasks(Array.isArray(body.tasks) ? body.tasks : []));
-    setTaskError("");
-    return body;
-  }, [hydrateTasks]);
+  const changeDeptView = (next) => { deptTouchedRef.current = true; setDeptView(next); };
+  const { dark } = useTheme();
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [pageError, setPageError] = useState("");
+  const [tasks, setTasks] = useState([]);
 
   useEffect(() => {
-    loadTasks({ force: true });
-    const poll = () => {
-      if (document.visibilityState === "visible") loadTasks();
-    };
-    const id = window.setInterval(poll, 3000);
-    const onFocus = () => loadTasks({ force: true });
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", poll);
-    return () => {
-      window.clearInterval(id);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", poll);
-    };
-  }, [loadTasks]);
+    let on = true;
+    fetch("/api/tasks", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { tasks: [] }))
+      .then((b) => { if (on) setTasks(Array.isArray(b.tasks) ? b.tasks : []); })
+      .catch(() => {});
+    return () => { on = false; };
+  }, []);
 
-  // Member references are normalized only when opening/saving a task.
-  // Do not rewrite task state merely because the member list refreshed; doing
-  // so can make an unsaved local transformation look like persisted data.
+  // Live counts from actual tasks (replaces the stored static numbers).
+  const statsFor = (m) => {
+    const mine = tasks.filter((t) => {
+      if (t.archived) return false;
+      const a = Array.isArray(t.assignees) ? t.assignees : [];
+      return a.includes(m.id) || a.includes(m.i);
+    });
+    const done = mine.filter((t) => t.status === "done").length;
+    const projects = new Set(mine.map((t) => t.project).filter(Boolean)).size;
+    return { projects, open: mine.length - done, done };
+  };
 
-
-  const [archivingDone, setArchivingDone] = useState(false);
-  const { openLarkSend, larkPicker } = useLarkSend();
-
-  // Sweeps everything currently in Done into the archive, on demand.
-  const archiveDoneNow = useCallback(async () => {
-    if (archivingDone) return;
-    const count = tasks.filter((t) => !t.archived && String(t.status) === "done").length;
-    if (!count) {
-      window.alert("Nothing in Done to archive.");
-      return;
-    }
-    if (!window.confirm(`Archive ${count} completed task${count === 1 ? "" : "s"}? They stay available on the Archive page.`)) return;
-
-    setArchivingDone(true);
-    try {
-      const response = await fetch("/api/tasks/archive-done", { method: "POST" });
-      await applyTaskResponse(response, "Unable to archive the completed tasks.");
-    } catch (e) {
-      setTaskError(e.message || "Unable to archive the completed tasks.");
-    } finally {
-      setArchivingDone(false);
-    }
-  }, [archivingDone, tasks, applyTaskResponse]);
-
-  // Archived tasks live on their own page (/archive) and never show on the board.
-  const visibleTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
-
-  const filtered = useMemo(() => {
+  /* The member list itself is public, because the sign-in screen needs it.
+     This page is what narrows it: your own department, unless you are
+     Management, Admin or HOD Admin and switch the view. */
+  const effectiveDept = canSwitchDepartments ? (deptView || ownDepartmentId) : (ownDepartmentId || deptView);
+  const list = members.filter((m) => {
+    if (effectiveDept && effectiveDept !== "all" && (m.department || "") !== effectiveDept) return false;
     const q = query.trim().toLowerCase();
-    if (!q) return visibleTasks;
-    return visibleTasks.filter((t) =>
-      t.title.toLowerCase().includes(q) || t.project.toLowerCase().includes(q) || t.tags.some((g) => g.toLowerCase().includes(q)));
-  }, [visibleTasks, query]);
-
-  const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
-  const stats = useMemo(() => ({
-    total: activeTasks.length,
-    inprogress: activeTasks.filter((t) => t.status === "inprogress").length,
-    done: activeTasks.filter((t) => t.status === "done").length,
-    overdue: activeTasks.filter(isOverdue).length,
-  }), [activeTasks]);
-
-  const modalRef = useRef(null);
-  useEffect(() => { modalRef.current = modal; }, [modal]);
-
-  const blank = (status = "todo") => ({
-    id: null, title: "", project: projects[0] || "", desc: "", notes: "", status, priority: "medium",
-    assignees: [], department: ownDepartmentId || "", start: toDateInput(dOff(0)), due: "", time: "", tags: [], attachments: [], subtasks: [], doneDate: "",
+    if (!q) return true;
+    return `${m.name} ${m.role} ${m.loc} ${m.status}`.toLowerCase().includes(q);
   });
-  const openCreate = (status) => setModal({ mode: "create", form: blank(status) });
-  const openEdit = (t) => setModal({ mode: "edit", form: { ...t, assignees: normalizeMemberRefs(t.assignees), start: toDateInput(t.start), due: toDateInput(t.due), doneDate: t.doneAt ? toDateInput(new Date(Number(t.doneAt))) : "", tags: [...t.tags], attachments: [...t.attachments], subtasks: (t.subtasks || []).map((s) => ({ ...s })) } });
-  const setForm = (patch) => setModal((m) => ({ ...m, form: { ...m.form, ...patch } }));
-  const patchForm = (fn) => setModal((m) => (m ? { ...m, form: { ...m.form, ...fn(m.form) } } : m));
-
-  // Builds and sends the current modal form to the server. Reads from
-  // modalRef (not the closed-over `modal`) so it always saves the latest
-  // form even when called from a stale closure — e.g. an upload callback
-  // whose enclosing render happened several patchForm updates ago.
-  // `attachmentsOverride`, when given, is used verbatim instead of
-  // modalRef's attachments — needed because an auto-save fires immediately
-  // after the patchForm call that adds the finished upload, before that
-  // state update has necessarily flushed through to the ref.
-  const persistTask = useCallback(async ({ close, attachmentsOverride } = {}) => {
-    const m = modalRef.current;
-    if (!m) return;
-    const f = m.form;
-    const base = {
-      title: f.title.trim() || "Untitled task",
-      project: f.project,
-      desc: f.desc,
-      notes: f.notes || "",
-      status: f.status,
-      priority: f.priority,
-      // The modal stores stable member IDs. Save those exact IDs instead of
-      // resolving them again through a possibly-refreshing member map.
-      assignees: [...new Set((f.assignees || []).map((id) => String(id)).filter(Boolean))],
-      start: f.start || "",
-      due: f.due || "",
-      time: f.time || "",
-      tags: [...f.tags],
-      attachments: attachmentsOverride ? [...attachmentsOverride] : [...f.attachments],
-      subtasks: [...(f.subtasks || [])],
-      progress: f.progress,
-      // Only an admin's modal offers this; the API ignores it from anyone else.
-      ...(f.department ? { department: f.department } : {}),
-    };
-    // A completion date typed in by hand. Only sent when it was actually
-    // changed, so saving a done task doesn't overwrite its recorded time.
-    if (f.status === "done" && f.doneDate && f.doneDate !== (f.doneAt ? toDateInput(new Date(Number(f.doneAt))) : "")) {
-      const when = fromDateInput(f.doneDate);
-      when.setHours(12, 0, 0, 0);
-      base.doneAt = when.getTime();
-    }
-
-    const isEdit = !!f.id;
-    setSavingTask(true);
-    setTaskError("");
-    mutationGenerationRef.current += 1;
-    pendingWritesRef.current += 1;
-    try {
-      const response = await fetch("/api/tasks", {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isEdit ? { id: f.id, data: base } : { data: base }),
-      });
-      const body = await applyTaskResponse(response, isEdit ? "Unable to update task." : "Unable to create task.");
-      if (!isEdit && body?.task?.id != null) {
-        // Just created — switch the modal to edit mode targeting the new id
-        // so a later save (including an auto-save from another upload)
-        // patches this task instead of creating a duplicate.
-        setModal((mm) => (mm ? { mode: "edit", form: { ...mm.form, id: body.task.id } } : mm));
-      }
-      if (close) setModal(null);
-    } catch (error) {
-      setTaskError(error.message || "Unable to save task.");
-    } finally {
-      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
-      setSavingTask(false);
-    }
-  }, [applyTaskResponse]);
-
-  const save = () => persistTask({ close: true });
-  // Fires once a file finishes uploading, so an attachment isn't lost if the
-  // person forgets to hit "Save task" (or closes the modal). Modal stays open.
-  const autoSaveAttachments = (attachments) => persistTask({ close: false, attachmentsOverride: attachments });
-
-  const remove = async () => {
-    if (savingTask || !modal?.form?.id) return;
-    setSavingTask(true);
-    setTaskError("");
-    mutationGenerationRef.current += 1;
-    pendingWritesRef.current += 1;
-    try {
-      const response = await fetch("/api/tasks", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: modal.form.id }),
-      });
-      await applyTaskResponse(response, "Unable to delete task.");
-      setModal(null);
-    } catch (error) {
-      setTaskError(error.message || "Unable to delete task.");
-    } finally {
-      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
-      setSavingTask(false);
-    }
-  };
-
-  const archive = async (archived) => {
-    if (savingTask || !modal?.form?.id) return;
-    setSavingTask(true);
-    setTaskError("");
-    mutationGenerationRef.current += 1;
-    pendingWritesRef.current += 1;
-    try {
-      const response = await fetch("/api/tasks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: modal.form.id, data: { archived } }),
-      });
-      await applyTaskResponse(response, "Unable to archive task.");
-      setModal(null);
-    } catch (error) {
-      setTaskError(error.message || "Unable to archive task.");
-    } finally {
-      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
-      setSavingTask(false);
-    }
-  };
-
-  const toggleSubtask = (task, subId) => {
-    // Use the latest optimistic state, not the card props captured before a
-    // previous checkbox click. Rapid changes must not overwrite one another.
-    const latestTask = taskSnapshotRef.current.find((t) => t.id === task.id) || task;
-    const current = Array.isArray(latestTask.subtasks) ? latestTask.subtasks : [];
-    const next = current.map((s) => (s.id === subId
-      ? { ...s, done: !s.done, status: !s.done ? "done" : (s.status === "done" || !s.status ? "inprogress" : s.status) }
-      : s));
-    const optimistic = taskSnapshotRef.current.map((t) => (
-      t.id === task.id ? { ...t, subtasks: next } : t
-    ));
-    taskSnapshotRef.current = optimistic;
-    setTasks(optimistic);
-    setTaskError("");
-    mutationGenerationRef.current += 1;
-    pendingWritesRef.current += 1;
-
-    // PATCH sends the entire subtask array. Serialize writes for the same
-    // task so an older response cannot undo a more recent checkbox change.
-    const previousWrite = subtaskWriteQueuesRef.current.get(task.id) || Promise.resolve();
-    const write = previousWrite.catch(() => {}).then(async () => {
-      const response = await fetch("/api/tasks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: task.id, data: { subtasks: next } }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || "Unable to update subtask.");
-      }
-      // Do not replace the entire board with this response: a newer checkbox
-      // change may already be displayed, or another write may be queued.
-    }).catch((error) => {
-      setTaskError(error.message || "Unable to update subtask.");
-    }).finally(() => {
-      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
-      if (subtaskWriteQueuesRef.current.get(task.id) === write) {
-        subtaskWriteQueuesRef.current.delete(task.id);
-      }
-      if (pendingWritesRef.current === 0) {
-        // Reconcile with the server only after all optimistic writes settle.
-        taskEtagRef.current = null;
-        mutationGenerationRef.current += 1;
-        loadTasks({ force: true });
-      }
-    });
-    subtaskWriteQueuesRef.current.set(task.id, write);
-  };
-
-  // Which column a drag is over. Resolved from the pointer's position across the
-  // whole board, so letting go in the empty space beside or below a short column
-  // (e.g. when scrolled to the bottom of a long one) still lands in that column.
-  const columnAt = (e) => {
-    let best = null, bestDistance = Infinity;
-    e.currentTarget.querySelectorAll("[data-status-col]").forEach((el) => {
-      const r = el.getBoundingClientRect();
-      const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right);
-      const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
-      if (dx + dy < bestDistance) { bestDistance = dx + dy; best = el.getAttribute("data-status-col"); }
-    });
-    return best;
-  };
-
-  const drop = async (statusId) => {
-    const id = dragId;
-    setDragId(null);
-    setOverCol(null);
-    if (id == null) return;
-
-    const previous = tasks;
-    mutationGenerationRef.current += 1;
-    pendingWritesRef.current += 1;
-    setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, status: statusId } : t)));
-    setTaskError("");
-    try {
-      const response = await fetch("/api/tasks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, data: { status: statusId } }),
-      });
-      await applyTaskResponse(response, "Unable to move task.");
-    } catch (error) {
-      setTasks(previous);
-      setTaskError(error.message || "Unable to move task.");
-      loadTasks({ force: true });
-    } finally {
-      pendingWritesRef.current = Math.max(0, pendingWritesRef.current - 1);
-    }
-  };
-
-  const buildTasksPayload = () => ({
-    statuses: (statuses || []).map((s) => ({ id: s.id, name: s.name, color: s.color })),
-    tasks: (filtered || []).map((t) => ({
-      title: t.title,
-      project: t.project,
-      status: t.status,
-      priority: t.priority,
-      due: t.due instanceof Date ? toDateInput(t.due) : (t.due || null),
-      overdue: isOverdue(t),
-      desc: t.desc || "",
-      subtasks: (t.subtasks || []).map((s) => ({ title: s.title, done: !!s.done })),
-      assignees: (t.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean).map((m) => ({ i: m.i, c: m.c, name: m.name })),
-    })),
-  });
-
-  const exportTasksPng = async () => {
-    try {
-      setTaskError("");
-      const res = await fetch("/api/tasks-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildTasksPayload()) });
-      if (!res.ok) throw new Error("Unable to render tasks image.");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.download = "sdc-task-board.png";
-      link.href = url; link.click(); URL.revokeObjectURL(url);
-    } catch (e) { setTaskError(e.message || "Unable to export tasks image."); }
-  };
 
   return (
     <>
-      <main className="flex-1 min-w-0 flex flex-col overflow-y-auto">
-          {/* toolbar */}
-          <header className="flex items-center gap-3 px-4 sm:px-7 pt-6 pb-4 shrink-0 flex-wrap">
-            <div className="mr-auto">
-              <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Tasks</h1>
-              <p className="text-sm" style={{ color: "var(--muted)" }}>Add and track work across the team</p>
-              {taskError && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{taskError}</p>}
-            </div>
-            <div className="relative">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tasks"
-                className="pl-8 pr-3 py-2 text-sm rounded-full outline-none shadow-sm w-44" style={{ background: "var(--card)", border: "1px solid var(--border)" }} />
-            </div>
-            <div className="flex items-center gap-1 rounded-full p-1 shadow-sm" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              {[["board", LayoutGrid], ["list", List]].map(([v, Icon]) => (
-                <button key={v} onClick={() => setView(v)} className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm capitalize font-medium"
-                  style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}><Icon size={15} />{v}</button>
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        <header className="flex items-center gap-2 sm:gap-3 px-4 sm:px-7 pt-5 sm:pt-6 pb-4 shrink-0 flex-wrap">
+          <div className="mr-auto">
+            <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Team Members</h1>
+            <p className="text-sm" style={{ color: "var(--muted)" }}>{list.length} {list.length === 1 ? "person" : "people"}</p>
+          </div>
+          <DepartmentView value={deptView} onChange={changeDeptView} />
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search"
+              className="pl-8 pr-3 py-2 text-sm rounded-full outline-none shadow-sm w-40"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+            />
+          </div>
+          <button onClick={() => setAdding(true)} className="tm-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
+            <Plus size={17} /> Add member
+          </button>
+        </header>
+
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-7 pb-6">
+          {pageError && (
+            <div className="mb-4 rounded-xl px-4 py-3 text-sm" style={{ color: "#E5536E", background: "rgba(229,83,110,0.10)", border: "1px solid rgba(229,83,110,0.25)" }}>{pageError}</div>
+          )}
+          {list.length ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(285px, 1fr))", gap: 20 }}>
+              {list.map((m) => (
+                <MemberCard
+                  key={m.id}
+                  m={{ ...m, ...statsFor(m) }}
+                  dark={dark}
+                  departmentNames={departmentNames}
+                  isCurrent={currentMember?.id === m.id}
+                  onEdit={() => setEditing(m)}
+                  onDelete={() => setDeleting(m)}
+                />
               ))}
             </div>
-            <DepartmentView value={deptView} onChange={changeDeptView} />
-            <button onClick={archiveDoneNow} disabled={archivingDone}
-              title="Move everything in Done to the archive"
-              className="tp-ib rounded-full px-3 py-2 text-sm font-medium shadow-sm inline-flex items-center gap-1.5 disabled:opacity-60"
-              style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
-              <CheckCircle2 size={15} /> {archivingDone ? "Archiving…" : "Archive done"}
-            </button>
-            <Link href="/archive" title="Open the archive"
-              className="tp-ib rounded-full px-3 py-2 text-sm font-medium shadow-sm inline-flex items-center gap-1.5"
-              style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
-              <Archive size={15} /> Archive
-            </Link>
-            <div className="flex items-center gap-2 shrink-0">
-              <button onClick={exportTasksPng} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>🖼️ Export PNG</button>
-              <button onClick={() => openLarkSend("/api/lark/tasks-image", buildTasksPayload(), { label: "the task board" })} className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium shadow-sm" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>📤 Send to Lark</button>
-            </div>
-            <button onClick={() => openCreate("todo")} className="tp-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium shadow-md" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
-              <Plus size={17} /> New task
-            </button>
-          </header>
-
-          {/* stat cards */}
-          <div className="px-4 sm:px-7 pb-4 grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
-            <StatCard icon={CheckSquare} tint="#F26A3C" soft="#FCE3D6" label="Total tasks" value={stats.total} note="all tasks" />
-            <StatCard icon={Clock} tint="#3E8ED0" soft="#E3EEF9" label="In progress" value={stats.inprogress} note="being worked on" />
-            <StatCard icon={CheckSquare} tint="#3FA37A" soft="#DEF1E7" label="Completed" value={stats.done} note="finished" />
-            <StatCard icon={Flag} tint="#E5536E" soft="#FBE1E7" label="Overdue" value={stats.overdue} note="past due date" />
-          </div>
-
-          {/* body */}
-          {view === "board" ? (
-            <div className="px-4 sm:px-7 pb-6">
-              <div className="flex flex-col md:flex-row gap-4 items-stretch"
-                onDragOver={(e) => { e.preventDefault(); setOverCol(columnAt(e)); }}
-                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOverCol(null); }}
-                onDrop={(e) => { e.preventDefault(); const col = columnAt(e); if (col) drop(col); else { setDragId(null); setOverCol(null); } }}>
-                {statuses.map((s) => {
-                  const items = filtered.filter((t) => t.status === s.id);
-                  const isOver = overCol === s.id;
-                  return (
-                    <div key={s.id} data-status-col={s.id} className="flex flex-col rounded-2xl w-full md:flex-1 md:min-w-0" style={{ background: isOver ? "var(--grid)" : "var(--col)", outline: isOver ? `2px dashed ${ACCENT}` : "none" }}>
-                      <div className="flex items-center gap-2 px-3 py-3 shrink-0">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
-                        <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>{s.name}</span>
-                        <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: "var(--card)", color: "var(--text-2)" }}>{items.length}</span>
-                      </div>
-                      <div className="px-2.5 pb-2 space-y-2.5">
-                        {items.map((t) => (
-                          <TaskCard key={t.id} t={t} memberByRef={memberByRef} onClick={() => openEdit(t)} onToggleSubtask={toggleSubtask}
-                            onDragStart={() => setDragId(t.id)} onDragEnd={() => { setDragId(null); setOverCol(null); }} dragging={dragId === t.id} />
-                        ))}
-                      </div>
-                      <button onClick={() => openCreate(s.id)} className="tp-ib m-2.5 flex items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-medium shrink-0" style={{ color: "var(--text-2)", background: "var(--dim)" }}>
-                        <Plus size={15} /> Add task
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           ) : (
-            <div className="overflow-x-auto px-4 sm:px-7 pb-6">
-              <div className="rounded-2xl overflow-hidden shadow-sm" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ color: "var(--muted)" }} className="text-left">
-                      {["Task", "Project", "Assignees", "Priority", "Status", "Due date"].map((h) => (
-                        <th key={h} className="px-4 py-3 font-semibold text-xs uppercase tracking-wide" style={{ borderBottom: "1px solid var(--border)" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((t) => {
-                      const s = statusOf(t.status), p = priorityOf(t.priority), od = isOverdue(t);
-                      return (
-                        <tr key={t.id} onClick={() => openEdit(t)} className="tp-row cursor-pointer" style={{ borderBottom: "1px solid var(--grid)" }}>
-                          <td className="px-4 py-3">
-                            <div className="font-medium" style={{ color: "var(--text)" }}>{t.title}</div>
-                            {t.attachments.length > 0 && <div className="flex items-center gap-1 text-xs mt-0.5" style={{ color: "var(--muted)" }}><Paperclip size={11} />{t.attachments.length}</div>}
-                          </td>
-                          <td className="px-4 py-3" style={{ color: "var(--text-2)" }}>{t.project}</td>
-                          <td className="px-4 py-3"><AttendeeStack list={t.assignees} memberByRef={memberByRef} ring="var(--card)" size={22} /></td>
-                          <td className="px-4 py-3"><Pill label={p.name} color={p.color} soft={p.soft} /></td>
-                          <td className="px-4 py-3"><Pill label={s.name} color={s.color} soft={s.soft} /></td>
-                          <td className="px-4 py-3" style={{ color: od ? "#E5536E" : "var(--text-2)", fontWeight: od ? 600 : 400 }}>{fmtDate(t.due)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+            <div className="h-48 rounded-2xl flex items-center justify-center text-sm" style={{ color: "var(--muted)", border: "1px dashed var(--border)" }}>
+              No team members match your search.
             </div>
           )}
-        </main>
+        </div>
+      </main>
 
-      {larkPicker}
+      {(adding || editing) && (
+        <MemberModal
+          member={editing}
+          onClose={() => { setAdding(false); setEditing(null); }}
+          onSave={async (data) => {
+            setPageError("");
+            try {
+              if (editing) await updateMember(editing.id, data);
+              else await addMember(data);
+              setAdding(false);
+              setEditing(null);
+              return { ok: true };
+            } catch (error) {
+              return { ok: false, message: error.message || "Unable to save member." };
+            }
+          }}
+        />
+      )}
 
-      {modal && <TaskModal modal={modal} members={members} setForm={setForm} patchForm={patchForm} onClose={() => !savingTask && setModal(null)} onSave={save} onAutoSave={autoSaveAttachments} onDelete={remove} onArchive={archive} onSendToLark={openLarkSend} saving={savingTask} projects={projects} onAddProject={addProject} onDeleteProject={deleteProject} statuses={statuses} onAddStatus={addStatus} onDeleteStatus={deleteStatus} memberByRef={memberByRef} />}
+      {deleting && (
+        <DeleteModal
+          member={deleting}
+          blocked={currentMember?.id === deleting.id}
+          onClose={() => setDeleting(null)}
+          onDelete={async () => {
+            setPageError("");
+            try {
+              await deleteMember(deleting.id);
+              setDeleting(null);
+            } catch (error) {
+              setPageError(error.message || "Unable to delete member.");
+              setDeleting(null);
+            }
+          }}
+        />
+      )}
     </>
   );
 }
 
-/* ---------- bits ---------- */
-function StatCard({ icon: Icon, tint, soft, label, value, note }) {
-  return (
-    <div className="rounded-2xl p-4 shadow-sm" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-      <div className="flex items-center gap-2 mb-3">
-        <span className="h-8 w-8 rounded-xl flex items-center justify-center" style={{ background: soft }}><Icon size={16} style={{ color: tint }} /></span>
-        <span className="text-sm font-medium" style={{ color: "var(--text-2)" }}>{label}</span>
-      </div>
-      <div className="text-3xl font-semibold" style={{ color: "var(--text)" }}>{value}</div>
-      <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>{note}</div>
-    </div>
-  );
-}
-
-function Pill({ label, color, soft }) {
-  return <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: soft, color }}>{label}</span>;
-}
-
-function AttendeeStack({ list, memberByRef, ring = "var(--card)", size = 22 }) {
-  const visible = (list || []).map((ref) => memberByRef[ref]).filter(Boolean);
-  if (!visible.length) return <span style={{ color: "var(--faint)" }} className="text-xs">—</span>;
-  return (
-    <div className="flex items-center">
-      {visible.slice(0, 4).map((member, i) => (
-        <span key={member.id} title={member.name} className="rounded-full flex items-center justify-center font-semibold shrink-0"
-          style={{ width: size, height: size, background: member.c, color: "#fff", fontSize: size * 0.36, border: `2px solid ${ring}`, marginLeft: i ? -7 : 0 }}>{member.i}</span>
-      ))}
-    </div>
-  );
-}
-
-function TaskCard({ t, memberByRef, onClick, onDragStart, onDragEnd, dragging, onToggleSubtask }) {
-  const p = priorityOf(t.priority), s = statusOf(t.status), prog = progressFor(t), od = isOverdue(t);
-  const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
-  const subDone = subs.filter((x) => x.done).length;
-  return (
-    <div draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onClick}
-      className="tp-card rounded-2xl p-3 cursor-pointer" style={{ background: "var(--card)", border: "1px solid var(--border)", opacity: dragging ? 0.4 : 1 }}>
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <Pill label={p.name} color={p.color} soft={p.soft} />
-        {t.project && <span className="rounded-full px-2 py-0.5 text-xs truncate min-w-0" style={{ background: "var(--col)", color: "var(--text-2)" }}>{t.project}</span>}
-        <span className="ml-auto shrink-0" style={{ color: "var(--faint)" }}><MoreHorizontal size={16} /></span>
-      </div>
-      <div className="font-semibold leading-snug" style={{ color: "var(--text)", fontSize: 14 }}>{t.title}</div>
-      {t.desc && <div className="text-xs mt-1" style={{ color: "var(--muted)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.desc}</div>}
-      {t.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {t.tags.map((g) => <span key={g} className="rounded-md px-1.5 py-0.5 text-xs" style={{ background: "var(--col)", color: "var(--muted)" }}>#{g}</span>)}
-        </div>
-      )}
-      {subs.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {subs.slice(0, 5).map((st) => (
-            <div key={st.id} onClick={(e) => { e.stopPropagation(); onToggleSubtask?.(t, st.id); }}
-              className="flex items-center gap-1.5 text-xs" style={{ color: st.done ? "var(--faint)" : "var(--text-2)" }}>
-              <span className="shrink-0 flex items-center justify-center rounded" style={{ width: 14, height: 14, border: `1.5px solid ${st.done ? "#3FA37A" : "var(--border)"}`, background: st.done ? "#3FA37A" : "transparent", color: "#fff" }}>
-                {st.done ? <Check size={9} /> : null}
-              </span>
-              <span className="truncate" style={{ textDecoration: st.done ? "line-through" : "none" }}>{st.title}</span>
-            </div>
-          ))}
-          {subs.length > 5 && <div className="text-xs" style={{ color: "var(--faint)" }}>+{subs.length - 5} more</div>}
-        </div>
-      )}
-      <div className="mt-2.5">
-        <div className="flex items-center justify-between text-xs mb-1" style={{ color: "var(--muted)" }}><span>Progress</span><span>{prog}%</span></div>
-        <div className="rounded-full overflow-hidden" style={{ height: 5, background: "var(--grid)" }}><div style={{ width: `${prog}%`, height: "100%", background: s.color }} /></div>
-      </div>
-      <div className="flex items-center justify-between mt-3 pt-2.5" style={{ borderTop: "1px solid var(--grid)" }}>
-        <AttendeeStack list={t.assignees} memberByRef={memberByRef} size={20} />
-        <div className="flex items-center gap-2.5 text-xs" style={{ color: od ? "#E5536E" : "var(--muted)", fontWeight: od ? 600 : 400 }}>
-          {subs.length > 0 && <span className="flex items-center gap-0.5" style={{ color: "var(--muted)" }}><CheckCircle2 size={12} />{subDone}/{subs.length}</span>}
-          {t.attachments.length > 0 && <span className="flex items-center gap-0.5" style={{ color: "var(--muted)" }}><Paperclip size={12} />{t.attachments.length}</span>}
-          <span className="flex items-center gap-1"><Clock size={12} />{fmtDate(t.due)}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------- modal ---------- */
-function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAutoSave, onDelete, onArchive, onSendToLark, saving = false, projects = [], onAddProject, onDeleteProject, statuses = [], onAddStatus, onDeleteStatus, memberByRef = {} }) {
-  const { canSwitchDepartments, department } = useAuth();
-  const [allDepartments, setAllDepartments] = useState([]);
+function MemberCard({ m, dark, isCurrent, onEdit, onDelete, departmentNames = {} }) {
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef(null);
+  const total = m.open + m.done;
+  const pct = total ? Math.round((m.done / total) * 100) : 0;
+  const featured = !!m.featured && dark;
+  const t = featured
+    ? { bg: "#101014", border: "1px solid rgba(255,255,255,0.08)", text: "#FFFFFF", muted: "rgba(255,255,255,0.45)", inner: "#101014", track: "rgba(255,255,255,0.08)", ibbg: "rgba(255,255,255,0.10)", ibcolor: "#fff" }
+    : { bg: "var(--card)", border: "1px solid var(--border)", text: "var(--text)", muted: "var(--muted)", inner: "var(--card)", track: "var(--grid)", ibbg: "var(--col)", ibcolor: "var(--text-2)" };
 
   useEffect(() => {
-    if (!canSwitchDepartments) return;
-    fetch("/api/departments", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => setAllDepartments(body?.departments || []))
-      .catch(() => {});
-  }, [canSwitchDepartments]);
-  const f = modal.form;
-  const fileRef = useRef(null);
-  const [tagDraft, setTagDraft] = useState("");
-  const [subDraft, setSubDraft] = useState("");
-  const subtasks = f.subtasks || [];
-  const addSubtask = () => {
-    const title = subDraft.trim();
-    if (!title) return;
-    setForm({ subtasks: [...subtasks, { id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, title, done: false }] });
-    setSubDraft("");
-  };
-  const toggleSubtask = (id) => setForm({
-    subtasks: subtasks.map((s) => (s.id === id
-      ? { ...s, done: !s.done, status: !s.done ? "done" : (s.status === "done" || !s.status ? "inprogress" : s.status) }
-      : s)),
-  });
-  const setSubtaskStatus = (id, status) => setForm({
-    subtasks: subtasks.map((s) => (s.id === id ? { ...s, status, done: status === "done" } : s)),
-  });
-  const setSubtaskDue = (id, due) => setForm({
-    subtasks: subtasks.map((s) => (s.id === id ? { ...s, due } : s)),
-  });
-
-  // What one subtask's PNG is built from: itself, its parent and its siblings.
-  const subtaskPayload = (s) => ({
-    subtask: { id: s.id, title: s.title, status: s.status || (s.done ? "done" : "todo"), due: s.due || "", note: "" },
-    task: { title: f.title || "Untitled task", project: f.project || "", status: f.status },
-    siblings: subtasks.map((x) => ({ id: x.id, title: x.title, status: x.status || (x.done ? "done" : "todo") })),
-    statusNames: Object.fromEntries(statuses.map((x) => [x.id, x.name])),
-    assignees: (f.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean)
-      .map((m) => ({ i: m.i, name: m.name, c: m.c })),
-    footer: new Date().toLocaleDateString("default", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
-  });
-
-  const exportSubtaskPng = async (s) => {
-    setTaskImgMsg("");
-    try {
-      const res = await fetch("/api/subtask-image", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(subtaskPayload(s)),
-      });
-      if (!res.ok) throw new Error("Unable to render that subtask.");
-      const url = URL.createObjectURL(await res.blob());
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `subtask-${String(s.title || "subtask").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (e) {
-      setTaskImgMsg(e.message || "Export failed.");
-    }
-  };
-
-  const sendSubtaskToLark = (s) => {
-    setTaskImgMsg("");
-    onSendToLark("/api/lark/subtask-image", subtaskPayload(s), { label: `the subtask “${s.title}”` });
-  };
-  const deleteSubtask = (id) => setForm({ subtasks: subtasks.filter((s) => s.id !== id) });
-  const setSubtaskTitle = (id, title) => setForm({
-    subtasks: subtasks.map((s) => (s.id === id ? { ...s, title } : s)),
-  });
-
-  /* Reordering. The pointer events work the same with a mouse or a finger,
-     unlike HTML5 drag and drop, which does nothing on touch. The live list is
-     held in a ref because the move handler would otherwise close over the
-     order as it was when the drag began. */
-  const subtasksRef = useRef(subtasks);
-  subtasksRef.current = subtasks;
-  const [dragSubtask, setDragSubtask] = useState(null);
-
-  const startSubtaskDrag = (event, index) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragSubtask(index);
-    let from = index;
-
-    const move = (ev) => {
-      const point = ev.touches?.[0] || ev;
-      const el = document.elementFromPoint(point.clientX, point.clientY);
-      const row = el && el.closest ? el.closest("[data-subtask-index]") : null;
-      if (!row) return;
-      const to = Number(row.dataset.subtaskIndex);
-      if (Number.isNaN(to) || to === from) return;
-
-      const next = [...subtasksRef.current];
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
-      subtasksRef.current = next;
-      setForm({ subtasks: next });
-      from = to;
-      setDragSubtask(to);
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenu(false);
     };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
-    const end = () => {
-      setDragSubtask(null);
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      window.removeEventListener("touchmove", move);
-      window.removeEventListener("touchend", end);
-    };
-
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end);
-    window.addEventListener("touchmove", move, { passive: false });
-    window.addEventListener("touchend", end);
-  };
-  const subDone = subtasks.filter((s) => s.done).length;
-  const [projDraft, setProjDraft] = useState("");
-  const [projError, setProjError] = useState("");
-  const [projBusy, setProjBusy] = useState(false);
-  const handleAddProject = async () => {
-    const name = projDraft.trim();
-    if (!name) return;
-    setProjBusy(true); setProjError("");
-    try { await onAddProject(name); setForm({ project: name }); setProjDraft(""); }
-    catch (e) { setProjError(e.message || "Unable to add project."); }
-    finally { setProjBusy(false); }
-  };
-  const handleDeleteProject = async () => {
-    if (!f.project) return;
-    setProjBusy(true); setProjError("");
-    const removed = f.project;
-    try { const list = await onDeleteProject(removed); if (Array.isArray(list) && !list.includes(removed)) setForm({ project: list[0] || "" }); }
-    catch (e) { setProjError(e.message || "Unable to delete project."); }
-    finally { setProjBusy(false); }
-  };
-
-  const [statusDraft, setStatusDraft] = useState("");
-  const [statusError, setStatusError] = useState("");
-  const [statusBusy, setStatusBusy] = useState(false);
-  const currentStatus = statuses.find((s) => s.id === f.status);
-  const canDeleteStatus = currentStatus && !currentStatus.isDefault;
-  const handleAddStatus = async () => {
-    const name = statusDraft.trim();
-    if (!name) return;
-    setStatusBusy(true); setStatusError("");
-    try {
-      const list = await onAddStatus(name);
-      const added = Array.isArray(list) ? list.find((s) => s.name.toLowerCase() === name.toLowerCase()) : null;
-      if (added) setForm({ status: added.id });
-      setStatusDraft("");
-    } catch (e) { setStatusError(e.message || "Unable to add status."); }
-    finally { setStatusBusy(false); }
-  };
-  const handleDeleteStatus = async () => {
-    if (!canDeleteStatus) return;
-    setStatusBusy(true); setStatusError("");
-    try { await onDeleteStatus(f.status); setForm({ status: "todo" }); }
-    catch (e) { setStatusError(e.message || "Unable to delete status."); }
-    finally { setStatusBusy(false); }
-  };
-
-  // Per-task Export PNG / Send to Lark
-  const [taskImgBusy, setTaskImgBusy] = useState("");   // "" | "png" | "lark"
-  const [taskImgMsg, setTaskImgMsg] = useState("");
-  const singleTaskPayload = () => ({
-    task: {
-      title: f.title, project: f.project, status: f.status, priority: f.priority,
-      due: f.due instanceof Date ? toDateInput(f.due) : (f.due || null),
-      start: f.start instanceof Date ? toDateInput(f.start) : (f.start || null),
-      time: f.time || "", desc: f.desc || "", tags: f.tags || [],
-      subtasks: (f.subtasks || []).map((s) => ({ title: s.title, done: !!s.done })),
-      progress: typeof f.progress === "number" ? f.progress : null,
-      statusName: (statuses.find((s) => s.id === f.status) || {}).name || "",
-      statusColor: (statuses.find((s) => s.id === f.status) || {}).color || "#8E8A96",
-      assignees: (f.assignees || []).map((ref) => memberByRef[ref]).filter(Boolean).map((m) => ({ i: m.i, c: m.c, name: m.name })),
-      attachments: (f.attachments || []).map((a) => ({ name: a.name, url: a.url || "", contentType: a.contentType || "" })),
-    },
-  });
-  const exportTaskPng = async () => {
-    setTaskImgBusy("png"); setTaskImgMsg("");
-    try {
-      const res = await fetch("/api/task-image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(singleTaskPayload()) });
-      if (!res.ok) throw new Error("Unable to render task image.");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.download = `sdc-task-${(f.title || "task").replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40)}.png`;
-      link.href = url; link.click(); URL.revokeObjectURL(url);
-    } catch (e) { setTaskImgMsg(e.message || "Unable to export."); }
-    finally { setTaskImgBusy(""); }
-  };
-  const sendTaskToLark = () => {
-    setTaskImgMsg("");
-    onSendToLark("/api/lark/task-image", singleTaskPayload(), { label: "this task" });
-  };
-
-  const toggleAssignee = (id) => setForm({ assignees: f.assignees.includes(id) ? f.assignees.filter((a) => a !== id) : [...f.assignees, id] });
-  const addTag = () => { const v = tagDraft.trim().replace(/^#/, ""); if (v && !f.tags.includes(v)) setForm({ tags: [...f.tags, v] }); setTagDraft(""); };
-  // Direct browser → Blob upload via a short-lived client token (see
-  // /api/upload-token). This bypasses Vercel's ~4.5 MB serverless request-body
-  // limit entirely, since the bytes never pass through our own server — the
-  // previous approach proxied fixed 3 MB chunks through a server route, which
-  // silently failed above ~3 MB because Vercel Blob requires every multipart
-  // part except the last to be at least 5 MB.
-  const uploadDirect = async (file, key) => {
-    const safe = String(file.name || "file").replace(/[^\w.\-]+/g, "_").slice(0, 120);
-    const pathname = `sdc/attachments/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
-    const blob = await uploadToBlob(pathname, file, {
-      access: "private",
-      handleUploadUrl: "/api/upload-token",
-      multipart: true,
-      contentType: file.type || undefined,
-      onUploadProgress: ({ percentage }) => {
-        patchForm((form) => ({ attachments: (form.attachments || []).map((a) => (a.key === key ? { ...a, progress: Math.round(percentage) } : a)) }));
-      },
-    });
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return { url: `${origin}/api/attachments/${blob.pathname}`, contentType: file.type || "" };
-  };
-
-  const onFiles = async (e) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = "";
-    const HARD_MAX = 50 * 1024 * 1024; // 50 MB
-    // Tracked locally (not read back from React state) so the auto-save
-    // right after a file finishes always has the exact just-committed
-    // attachments, with no dependency on when that state update flushes.
-    let attachments = [...(f.attachments || [])];
-    const commit = (next) => { attachments = next; patchForm(() => ({ attachments: next })); };
-    for (const file of files) {
-      const key = `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      if (file.size > HARD_MAX) {
-        commit([...attachments, { key, name: file.name, size: file.size, uploading: false, error: true }]);
-        continue;
-      }
-      commit([...attachments, { key, name: file.name, size: file.size, uploading: true, progress: 0 }]);
-      try {
-        const result = await uploadDirect(file, key);
-        commit(attachments.map((a) => (a.key === key ? { name: a.name, size: a.size, url: result.url, contentType: result.contentType || "" } : a)));
-        onAutoSave?.(attachments);
-      } catch (err) {
-        commit(attachments.map((a) => (a.key === key ? { ...a, uploading: false, error: true } : a)));
-      }
-    }
-  };
-  const uploadingCount = (f.attachments || []).filter((a) => a.uploading).length;
-  const field = { border: "1px solid var(--border)", background: "var(--card)" };
+  const cells = [
+    { v: m.projects, l: "Projects" },
+    { v: m.open, l: "Open tasks" },
+    { v: m.done, l: "Completed" },
+    { v: m.loc, l: "Based in" },
+    { v: m.status, l: "Status", dot: STATUS_C[m.status] },
+    { v: pct + "%", l: "Completion" },
+  ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      style={{ background: "rgba(20,18,26,0.4)" }} onClick={onClose}>
-      {/* A column: the header and footer stay put and only the middle scrolls,
-          so the save button can never be pushed off a phone screen. dvh keeps
-          the browser's own chrome out of the calculation. */}
-      <div className="shadow-2xl w-full max-w-lg flex flex-col rounded-t-2xl sm:rounded-2xl"
+    <div className="tm-card rounded-2xl p-5 relative overflow-visible" style={{ background: t.bg, border: t.border }}>
+      <div className="flex gap-1 mb-5">
+        {STRIP.map((c, i) => <span key={i} style={{ height: 4, width: 20, borderRadius: 4, background: c, opacity: 0.9 }} />)}
+      </div>
+
+      <div ref={menuRef} className="absolute" style={{ top: 16, right: 16, zIndex: 20 }}>
+        <button
+          onClick={() => setMenu((v) => !v)}
+          className="tm-ib rounded-full flex items-center justify-center"
+          title="Member options"
+          style={{ height: 32, width: 32, background: t.ibbg, color: t.ibcolor, border: featured ? "none" : "1px solid var(--border)" }}
+        >
+          <MoreHorizontal size={17} />
+        </button>
+        {menu && (
+          <div className="absolute right-0 mt-2 rounded-xl p-1.5 shadow-xl" style={{ width: 145, background: "var(--card)", border: "1px solid var(--border)" }}>
+            <button onClick={() => { setMenu(false); onEdit(); }} className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-left" style={{ color: "var(--text-2)" }}>
+              <Pencil size={14} /> Edit member
+            </button>
+            <button onClick={() => { setMenu(false); onDelete(); }} className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-left" style={{ color: isCurrent ? "var(--faint)" : "#E5536E" }}>
+              <Trash2 size={14} /> {isCurrent ? "Current account" : "Delete member"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col items-center text-center">
+        <div style={{ width: 76, height: 76, borderRadius: "50%", padding: 4, background: `conic-gradient(from -90deg, ${m.c} 0% ${pct}%, ${t.track} ${pct}% 100%)` }}>
+          <div style={{ width: "100%", height: "100%", borderRadius: "50%", padding: 3, background: t.inner }}>
+            <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: m.c, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 600 }}>{m.i}</div>
+          </div>
+        </div>
+        <p className="font-semibold mt-3" style={{ color: t.text, fontSize: 16 }}>{m.name}</p>
+        <p className="text-xs mt-0.5" style={{ color: t.muted }}>{m.role}</p>
+        <p className="text-[11px] mt-0.5" style={{ color: "var(--faint)" }}>
+          {departmentNames[m.department] || "No department set"}
+          {m.accessLevel === "admin" ? " · Management / Admin" : m.accessLevel === "hod" ? " · HOD" : ""}
+        </p>
+        {isCurrent && <span className="mt-2 rounded-full px-2 py-0.5 text-xs font-medium" style={{ background: "rgba(242,106,60,0.13)", color: "#F26A3C" }}>You</span>}
+      </div>
+
+      <div className="grid grid-cols-3 gap-y-4 mt-5">
+        {cells.map((c, i) => (
+          <div key={i} className="text-center px-1 min-w-0">
+            <div
+              className="font-semibold flex items-center justify-center gap-1 leading-tight min-w-0"
+              style={{
+                color: t.text,
+                fontSize: i >= 3 ? 13 : 14,
+                minHeight: 20,
+                whiteSpace: "nowrap",
+                overflowWrap: "normal",
+              }}
+            >
+              {c.dot && <span style={{ height: 7, width: 7, borderRadius: "50%", background: c.dot, display: "inline-block", flex: "0 0 auto" }} />}
+              <span className="min-w-0">{c.v}</span>
+            </div>
+            <div className="text-xs mt-0.5" style={{ color: t.muted }}>{c.l}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MemberModal({ member, onClose, onSave }) {
+  // The access level field is read-only unless the viewer may change it.
+  const { canSwitchDepartments } = useAuth();
+  const [form, setForm] = useState(() => member ? { ...member, pin: "" } : { ...EMPTY_FORM });
+  const [departments, setDepartments] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/departments", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled || !body?.departments) return;
+        setDepartments(body.departments);
+        // A new member defaults to the first department rather than an empty value.
+        setForm((f) => (f.department ? f : { ...f, department: body.departments[0]?.id || "" }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return setError("Member name is required.");
+    if (!form.role.trim()) return setError("Role is required.");
+    if (!member && !form.pin.trim()) return setError("Create a login PIN for this member.");
+    if (form.pin && form.pin.length < 4) return setError("PIN must be at least 4 digits.");
+
+    setSaving(true);
+    try {
+      const result = await onSave({
+        ...form,
+        i: (form.i || makeInitials(form.name) || "TM").toUpperCase().slice(0, 3),
+        pin: form.pin,
+        projects: Math.max(0, Number(form.projects) || 0),
+        open: Math.max(0, Number(form.open) || 0),
+        done: Math.max(0, Number(form.done) || 0),
+      });
+      if (result?.ok === false) setError(result.message || "Unable to save member.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}>
+      {/* Header, scrolling middle, footer: the same column as the task modal so
+          the buttons stay reachable on a phone. */}
+      <form onSubmit={submit} className="w-full rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col"
         style={{
-          background: "var(--card)",
-          maxHeight: "min(92dvh, 100dvh - 16px)",
+          maxWidth: 650, maxHeight: "min(92dvh, 100dvh - 16px)",
+          background: "var(--card)", border: "1px solid var(--border)",
           paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        }}
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 shrink-0" style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-          <h3 className="font-semibold" style={{ color: "var(--text)" }}>{modal.mode === "edit" ? "Edit task" : "New task"}</h3>
-          <button onClick={onClose} className="tp-ib h-8 w-8 flex items-center justify-center rounded-full" style={{ color: "var(--text-2)" }}><X size={18} /></button>
+        }}>
+        <div className="flex items-center gap-3 px-4 sm:px-6 py-4 sm:py-5 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
+          <span className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(242,106,60,0.14)", color: "#F26A3C" }}>
+            {member ? <Pencil size={18} /> : <UserPlus size={18} />}
+          </span>
+          <div className="mr-auto">
+            <h2 className="font-semibold" style={{ color: "var(--text)", fontSize: 18 }}>{member ? "Edit team member" : "Add team member"}</h2>
+            <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>{member ? "Update the member card and login details." : "Create a member card and a simple PIN login."}</p>
+          </div>
+          <button type="button" onClick={onClose} className="h-9 w-9 rounded-full flex items-center justify-center" style={{ color: "var(--text-2)", background: "var(--col)" }}><X size={17} /></button>
         </div>
 
-        <div className="p-4 sm:p-5 space-y-4 flex-1 min-h-0 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
-          <input autoFocus value={f.title} onChange={(e) => setForm({ title: e.target.value })} placeholder="Task title"
-            className="w-full text-lg outline-none pb-1" style={{ borderBottom: "2px solid var(--border)" }} />
-
-          <textarea value={f.desc} onChange={(e) => setForm({ desc: e.target.value })} rows={2} placeholder="Description / note"
-            className="w-full rounded-lg px-3 py-2 text-sm resize-none outline-none" style={field} />
-
-          {canSwitchDepartments && (
-            <Labeled label="Department">
-              <div className="relative">
-                <select value={f.department || department?.id || ""} onChange={(e) => setForm({ department: e.target.value })}
-                  className="appearance-none w-full rounded-lg pl-2.5 pr-9 py-2 text-sm outline-none"
-                  style={{ ...field, color: "var(--text)" }}>
-                  {allDepartments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-                <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
-              </div>
-              <span className="block text-[11px] mt-1" style={{ color: "var(--faint)" }}>
-                Which department's board this task appears on.
-              </span>
-            </Labeled>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Labeled label="Project">
-              <div className="flex gap-1.5">
-                <div className="relative flex-1 min-w-0">
-                  <select value={f.project} onChange={(e) => setForm({ project: e.target.value })} className="appearance-none w-full rounded-lg pl-2.5 pr-9 py-2 text-sm outline-none" style={{ ...field, color: "var(--text)" }}>
-                    {projects.length === 0 && <option value="">No projects yet</option>}
-                    {projects.map((p) => <option key={p}>{p}</option>)}
-                  </select>
-                  <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
-                </div>
-                <button type="button" title="Delete this project" onClick={handleDeleteProject} disabled={!f.project || projBusy}
-                  className="tp-ib rounded-lg flex items-center justify-center shrink-0" style={{ width: 34, border: "1px solid var(--border)", color: "#E5536E" }}>
-                  <Trash2 size={14} />
-                </button>
-              </div>
-              <div className="flex gap-1.5 mt-1.5">
-                <input value={projDraft} onChange={(e) => setProjDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddProject(); } }}
-                  placeholder="New project…" className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm outline-none" style={field} />
-                <button type="button" title="Add project" onClick={handleAddProject} disabled={!projDraft.trim() || projBusy}
-                  className="tp-ib rounded-lg flex items-center justify-center shrink-0" style={{ width: 34, border: "1px solid var(--border)", color: "var(--text-2)" }}>
-                  <Plus size={16} />
-                </button>
-              </div>
-              {projError && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{projError}</p>}
-            </Labeled>
-            <Labeled label="Status">
-              <div className="flex gap-1.5">
-                <div className="relative flex-1 min-w-0">
-                  <select value={f.status} onChange={(e) => setForm({ status: e.target.value })} className="appearance-none w-full rounded-lg pl-2.5 pr-9 py-2 text-sm outline-none" style={{ ...field, color: "var(--text)" }}>
-                    {statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                  <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-2)" }} />
-                </div>
-                <button type="button" title={canDeleteStatus ? "Delete this status" : "Default statuses can't be deleted"} onClick={handleDeleteStatus} disabled={!canDeleteStatus || statusBusy}
-                  className="tp-ib rounded-lg flex items-center justify-center shrink-0 disabled:opacity-40" style={{ width: 34, border: "1px solid var(--border)", color: "#E5536E" }}>
-                  <Trash2 size={14} />
-                </button>
-              </div>
-              <div className="flex gap-1.5 mt-1.5">
-                <input value={statusDraft} onChange={(e) => setStatusDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddStatus(); } }}
-                  placeholder="New status…" className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm outline-none" style={field} />
-                <button type="button" title="Add status" onClick={handleAddStatus} disabled={!statusDraft.trim() || statusBusy}
-                  className="tp-ib rounded-lg flex items-center justify-center shrink-0" style={{ width: 34, border: "1px solid var(--border)", color: "var(--text-2)" }}>
-                  <Plus size={16} />
-                </button>
-              </div>
-              {statusError && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{statusError}</p>}
-            </Labeled>
-          </div>
-
-          <Labeled label="Priority">
-            <div className="flex gap-1.5">
-              {PRIORITIES.map((p) => (
-                <button key={p.id} onClick={() => setForm({ priority: p.id })} className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                  style={{ background: p.soft, color: p.color, outline: f.priority === p.id ? `2px solid ${p.color}` : "none", outlineOffset: 1 }}>{p.name}</button>
-              ))}
-            </div>
-          </Labeled>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Labeled label="Start"><input type="date" value={f.start} onChange={(e) => setForm({ start: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} /></Labeled>
-            <Labeled label="Due"><input type="date" value={f.due} onChange={(e) => setForm({ due: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} /></Labeled>
-            <Labeled label="Time"><input type="time" value={f.time} onChange={(e) => setForm({ time: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} /></Labeled>
-          </div>
-
-          {f.status === "done" && (
-            <Labeled label="Date completed">
-              <input type="date" value={f.doneDate || ""} max={toDateInput(new Date())} onChange={(e) => setForm({ doneDate: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} />
-              <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Forgot to mark it done on the day? Set the actual date. Leave blank to use today.</p>
-            </Labeled>
-          )}
-
-          <Labeled label="Assignees">
-            <div className="flex flex-wrap gap-1.5">
-              {members.map((t) => {
-                const on = f.assignees.includes(t.id);
-                return (
-                  <button key={t.id} onClick={() => toggleAssignee(t.id)} title={t.name} className="h-8 w-8 rounded-full flex items-center justify-center text-white font-semibold"
-                    style={{ background: t.c, fontSize: 11, opacity: on ? 1 : 0.35, outline: on ? `2px solid ${t.c}` : "none", outlineOffset: 1 }}>{t.i}</button>
-                );
-              })}
-            </div>
-          </Labeled>
-
-          <Labeled label="Tags">
-            <div className="flex flex-wrap items-center gap-1.5 rounded-lg px-2 py-1.5" style={field}>
-              {f.tags.map((g) => (
-                <span key={g} className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs" style={{ background: "var(--col)", color: "var(--text-2)" }}>
-                  #{g}<button onClick={() => setForm({ tags: f.tags.filter((x) => x !== g) })} className="tp-chip-x" style={{ opacity: 0.5 }}><X size={11} /></button>
+        <div className="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Field label="Full name">
+              <input value={form.name} onChange={(e) => { set("name", e.target.value); setError(""); }} placeholder="e.g. Che Navarro" className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle} />
+            </Field>
+            <Field label="Initials / code">
+              <input value={form.i} onChange={(e) => set("i", e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 3))} placeholder="CN" className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle} />
+            </Field>
+            <Field label="Role">
+              <input value={form.role} onChange={(e) => { set("role", e.target.value); setError(""); }} placeholder="Digital Creative" className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle} />
+            </Field>
+            <Field label="Location">
+              <input value={form.loc} onChange={(e) => set("loc", e.target.value)} placeholder="Manila" className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle} />
+            </Field>
+            <Field label="Department">
+              <select value={form.department || ""} onChange={(e) => set("department", e.target.value)} className="w-full rounded-xl px-3 py-2.5 outline-none" style={selectStyle}>
+                {!departments.length && <option value="">Loading…</option>}
+                {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Access level">
+              <select value={form.accessLevel || "member"} onChange={(e) => set("accessLevel", e.target.value)}
+                disabled={!canSwitchDepartments} className="w-full rounded-xl px-3 py-2.5 outline-none" style={selectStyle}>
+                <option value="admin">Management / Admin / HOD Admin</option>
+                <option value="hod">HOD</option>
+                <option value="member">Member</option>
+              </select>
+              {!canSwitchDepartments && (
+                <span className="block text-[11px] mt-1" style={{ color: "var(--faint)" }}>
+                  Only Management, Admin or HOD Admin can change this.
                 </span>
-              ))}
-              <input value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
-                placeholder="Add tag…" className="flex-1 text-sm outline-none py-0.5" style={{ minWidth: 80 }} />
-            </div>
-          </Labeled>
-
-          <Labeled label={`Subtasks${subtasks.length ? ` · ${subDone}/${subtasks.length}` : ""}`}>
-            {subtasks.length > 0 && (
-              <div className="space-y-1 mb-1.5">
-                {subtasks.map((s, index) => {
-                  const st = statuses.find((x) => x.id === (s.status || (s.done ? "done" : "todo")))
-                    || { id: "todo", name: "To Do", color: "#8E8A96", soft: "#ECEBEE" };
-                  return (
-                    <div key={s.id} data-subtask-index={index}
-                      className="flex flex-wrap items-center gap-1.5 rounded-lg px-1.5 sm:px-2.5 py-1.5 text-sm"
-                      style={{
-                        background: "var(--col)",
-                        opacity: dragSubtask === index ? 0.65 : 1,
-                        boxShadow: dragSubtask === index ? "0 2px 10px rgba(0,0,0,.18)" : "none",
-                      }}>
-                      {/* drag by the grip, so dragging never fights with editing the title */}
-                      <button type="button" aria-label="Reorder subtask"
-                        onPointerDown={(e) => startSubtaskDrag(e, index)}
-                        onTouchStart={(e) => startSubtaskDrag(e, index)}
-                        className="shrink-0 px-0.5" style={{ color: "var(--faint)", cursor: "grab", touchAction: "none" }}>
-                        <GripVertical size={14} />
-                      </button>
-                      <button type="button" onClick={() => toggleSubtask(s.id)} className="shrink-0 flex items-center justify-center rounded" style={{ width: 16, height: 16, border: `1.5px solid ${s.done ? "#3FA37A" : "var(--border)"}`, background: s.done ? "#3FA37A" : "transparent", color: "#fff" }}>
-                        {s.done ? <Check size={11} /> : null}
-                      </button>
-                      <input value={s.title} onChange={(e) => setSubtaskTitle(s.id, e.target.value)}
-                        placeholder="Subtask"
-                        className="flex-1 min-w-0 bg-transparent outline-none"
-                        style={{
-                          color: s.done ? "var(--faint)" : "var(--text)",
-                          textDecoration: s.done ? "line-through" : "none",
-                        }} />
-
-                      <button type="button" onClick={() => deleteSubtask(s.id)} className="shrink-0 order-last sm:order-none" style={{ color: "var(--faint)" }}><X size={13} /></button>
-
-                      {/* On a phone these drop to their own line instead of
-                          squeezing the title and overflowing the row. */}
-                      <div className="flex items-center gap-1.5 w-full sm:w-auto min-w-0">
-                        <select value={st.id} onChange={(e) => setSubtaskStatus(s.id, e.target.value)}
-                          className="shrink-0 rounded-full text-xs font-semibold outline-none appearance-none text-center"
-                          style={{ background: st.soft, color: st.color, border: "none", padding: "3px 8px", maxWidth: 108 }}>
-                          {statuses.map((x) => <option key={x.id} value={x.id} style={{ background: "var(--card)", color: "var(--text)" }}>{x.name}</option>)}
-                        </select>
-
-                        <input type="date" value={s.due || ""} onChange={(e) => setSubtaskDue(s.id, e.target.value)}
-                          title="Subtask due date"
-                          className="flex-1 sm:flex-none min-w-0 rounded-lg text-xs outline-none"
-                          style={{ background: "var(--card)", border: "1px solid var(--border)", color: s.due ? "var(--text-2)" : "var(--faint)", padding: "3px 6px", width: "auto", maxWidth: 140 }} />
-
-                        <button type="button" title="Export this subtask as PNG" onClick={() => exportSubtaskPng(s)}
-                          className="shrink-0 p-1" style={{ color: "var(--faint)" }}><Download size={14} /></button>
-                        <button type="button" title="Send this subtask to Lark" onClick={() => sendSubtaskToLark(s)}
-                          className="shrink-0 p-1" style={{ color: "var(--faint)" }}><Send size={14} /></button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <div className="flex gap-1.5">
-              <input value={subDraft} onChange={(e) => setSubDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSubtask(); } }}
-                placeholder="Add a subtask…" className="flex-1 min-w-0 rounded-lg px-2.5 py-2 text-sm outline-none" style={field} />
-              <button type="button" onClick={addSubtask} disabled={!subDraft.trim()}
-                className="tp-ib rounded-lg flex items-center justify-center shrink-0" style={{ width: 34, border: "1px solid var(--border)", color: "var(--text-2)" }}>
-                <Plus size={16} />
-              </button>
-            </div>
-          </Labeled>
-
-          <Labeled label="Notes (long details — not shown on cards)">
-            <textarea value={f.notes || ""} onChange={(e) => setForm({ notes: e.target.value })} rows={5} placeholder="Full details, checklists, specs… kept on the task only."
-              className="w-full rounded-lg px-2.5 py-2 text-sm outline-none resize-y" style={field} />
-          </Labeled>
-
-          <Labeled label="Attachments">
-            <div className="space-y-1.5">
-              {f.attachments.map((a, i) => (
-                <div key={a.key || i} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm" style={{ background: "var(--col)" }}>
-                  <Paperclip size={14} style={{ color: a.error ? "#E5536E" : "var(--muted)" }} />
-                  {a.url ? (
-                    <a href={a.url} target="_blank" rel="noopener noreferrer" className="truncate flex-1 hover:underline" style={{ color: "var(--text)" }}>{a.name}</a>
-                  ) : (
-                    <span className="truncate flex-1" style={{ color: "var(--text)" }}>{a.name}</span>
-                  )}
-                  {a.uploading ? (
-                    <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>{a.progress ? `${a.progress}%` : "Uploading…"}</span>
-                  ) : a.error ? (
-                    <span className="text-xs shrink-0" style={{ color: "#E5536E" }}>Failed</span>
-                  ) : a.url ? (
-                    <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>{formatBytes(a.size)}</span>
-                  ) : (
-                    <span className="text-xs shrink-0" title="Uploaded before file storage was enabled — re-attach to get a link" style={{ color: "var(--faint)" }}>no link</span>
-                  )}
-                  <button onClick={() => setForm({ attachments: f.attachments.filter((_, x) => x !== i) })} style={{ color: "var(--faint)" }}><X size={14} /></button>
-                </div>
-              ))}
-              <input ref={fileRef} type="file" multiple onChange={onFiles} style={{ display: "none" }} />
-              <button onClick={() => fileRef.current?.click()} className="tp-ib flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium w-full justify-center" style={{ color: "var(--text-2)", background: "var(--col)" }}>
-                <Plus size={15} /> Attach files
-              </button>
-            </div>
-          </Labeled>
-        </div>
-
-        <div className="px-5 pb-3 flex flex-wrap items-center gap-2">
-          <button type="button" disabled={!f.title || !!taskImgBusy || uploadingCount > 0} onClick={exportTaskPng}
-            className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium disabled:opacity-50" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
-            🖼️ {taskImgBusy === "png" ? "Rendering…" : "Export PNG"}
-          </button>
-          <button type="button" disabled={!f.title || !!taskImgBusy || uploadingCount > 0} onClick={sendTaskToLark}
-            className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium disabled:opacity-50" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
-            📤 {taskImgBusy === "lark" ? "Sending…" : "Send to Lark"}
-          </button>
-          {taskImgMsg && <span className="text-xs" style={{ color: taskImgMsg.includes("✓") ? "#3FA37A" : "#E5536E" }}>{taskImgMsg}</span>}
-        </div>
-
-        <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 shrink-0 flex-wrap" style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}>
-          {modal.mode === "edit" ? (
-            <div className="flex items-center gap-1">
-              <button disabled={saving} onClick={onDelete} className="tp-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "#E5536E" }}><Trash2 size={16} /> Delete</button>
-              <button disabled={saving} onClick={() => onArchive(!f.archived)} className="tp-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "var(--text-2)" }}><Archive size={16} /> {f.archived ? "Unarchive" : "Archive"}</button>
-            </div>
-          ) : <span />}
-          <div className="flex gap-2 ml-auto shrink-0">
-            <button disabled={saving} onClick={onClose} className="tp-ib text-sm px-4 py-2 rounded-full disabled:opacity-50 whitespace-nowrap" style={{ color: "var(--text-2)" }}>Cancel</button>
-            <button disabled={saving || uploadingCount > 0} onClick={onSave} className="tp-pill text-sm px-5 py-2 rounded-full font-medium shadow-md disabled:opacity-60 whitespace-nowrap" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>{saving ? "Saving…" : uploadingCount > 0 ? "Uploading…" : "Save task"}</button>
+              )}
+            </Field>
+            <Field label="Status">
+              <select value={form.status} onChange={(e) => set("status", e.target.value)} className="w-full rounded-xl px-3 py-2.5 outline-none" style={selectStyle}>
+                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Field>
+            <Field label={member ? "New PIN (optional)" : "Login PIN"} hint={member ? "Leave blank to keep the current PIN." : "Minimum 4 digits."}>
+              <input value={form.pin} onChange={(e) => { set("pin", e.target.value.replace(/\D/g, "").slice(0, 8)); setError(""); }} inputMode="numeric" type="password" placeholder={member ? "Keep current PIN" : "4–8 digits"} className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle} />
+            </Field>
           </div>
+
+          <div className="mt-5">
+            <p className="text-sm font-medium mb-2" style={{ color: "var(--text)" }}>Card color</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {COLOR_OPTIONS.map((c) => (
+                <button key={c} type="button" onClick={() => set("c", c)} className="h-8 w-8 rounded-full" style={{ background: c, boxShadow: form.c === c ? "0 0 0 3px var(--card), 0 0 0 5px #F26A3C" : "none" }} aria-label={`Use color ${c}`} />
+              ))}
+              <input type="color" value={form.c} onChange={(e) => set("c", e.target.value)} className="h-8 w-10 rounded-lg p-0 border-0 cursor-pointer" title="Custom color" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 mt-5">
+            <NumberField label="Projects" value={form.projects} onChange={(v) => set("projects", v)} />
+            <NumberField label="Open tasks" value={form.open} onChange={(v) => set("open", v)} />
+            <NumberField label="Completed" value={form.done} onChange={(v) => set("done", v)} />
+          </div>
+
+          {error && <p className="text-sm mt-4" style={{ color: "#E5536E" }}>{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-2 px-4 sm:px-6 py-3 sm:py-4 shrink-0 flex-wrap" style={{ borderTop: "1px solid var(--border)" }}>
+          <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm font-medium" style={{ color: "var(--text-2)", background: "var(--col)" }}>Cancel</button>
+          <button disabled={saving} type="submit" className="rounded-full px-4 py-2 text-sm font-medium flex items-center gap-2 shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
+            <Save size={15} /> {saving ? "Saving…" : (member ? "Save changes" : "Add member")}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function DeleteModal({ member, blocked, onClose, onDelete }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}>
+      <div className="w-full rounded-3xl p-6 shadow-2xl" style={{ maxWidth: 430, background: "var(--card)", border: "1px solid var(--border)" }}>
+        <span className="h-11 w-11 rounded-2xl flex items-center justify-center" style={{ background: "rgba(229,83,110,0.13)", color: "#E5536E" }}><AlertTriangle size={20} /></span>
+        <h2 className="font-semibold mt-4" style={{ color: "var(--text)", fontSize: 19 }}>{blocked ? "You can't delete this account" : "Delete team member?"}</h2>
+        <p className="text-sm mt-2 leading-6" style={{ color: "var(--muted)" }}>
+          {blocked
+            ? "This is the account you're currently signed in with. Sign in as another member first if you need to delete it."
+            : `This will remove ${member.name}'s member card and login from this SDC workspace.`}
+        </p>
+        <div className="flex justify-end gap-2 mt-6">
+          <button onClick={onClose} className="rounded-full px-4 py-2 text-sm font-medium" style={{ color: "var(--text-2)", background: "var(--col)" }}>{blocked ? "Close" : "Cancel"}</button>
+          {!blocked && <button onClick={onDelete} className="rounded-full px-4 py-2 text-sm font-medium text-white" style={{ background: "#E5536E" }}>Delete member</button>}
         </div>
       </div>
     </div>
   );
 }
 
-function Labeled({ label, children }) {
+function Field({ label, hint, children }) {
   return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--muted)" }}>{label}</p>
-      {children}
-    </div>
+    <label className="block">
+      <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{label}</span>
+      {hint && <span className="text-xs ml-2" style={{ color: "var(--muted)" }}>{hint}</span>}
+      <div className="mt-2">{children}</div>
+    </label>
   );
 }
 
-
-export default function TasksPage(props) {
+function NumberField({ label, value, onChange }) {
   return (
-    <PageAccess page="tasks">
-      <TasksPageInner {...props} />
+    <label className="block">
+      <span className="text-xs" style={{ color: "var(--muted)" }}>{label}</span>
+      <input type="number" min="0" value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle} />
+    </label>
+  );
+}
+
+const inputStyle = { background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" };
+const CHEVRON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238C8398' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`;
+
+
+// The browser pins its own dropdown arrow to the right edge and ignores padding,
+// so selects draw their own and leave room for it.
+const selectStyle = {
+  ...inputStyle,
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  appearance: "none",
+  backgroundImage: CHEVRON,
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 14px center",
+  paddingRight: 38,
+};
+
+
+export default function TeamPage(props) {
+  return (
+    <PageAccess page="team">
+      <TeamPageInner {...props} />
     </PageAccess>
   );
 }
