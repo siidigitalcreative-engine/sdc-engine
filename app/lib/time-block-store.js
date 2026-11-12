@@ -174,6 +174,43 @@ export async function moveBlock(memberId, id, { start, end, note, title }) {
   });
 }
 
+/* Change who a block is for, from the edit dialog.
+
+   Copies are added for anyone newly chosen and removed for anyone dropped,
+   with the rest left exactly as they are, so times and notes survive. */
+export async function setBlockMembers(memberId, id, members) {
+  const target = clean(id);
+  const wanted = [...new Set((Array.isArray(members) ? members : []).map(clean).filter(Boolean))];
+  if (!wanted.length) throw new Error("A block needs at least one person.");
+
+  return mutate((blocks) => {
+    const found = blocks.find((b) => b.id === target);
+    if (!found) throw new Error("That block no longer exists.");
+    if (!inGroup(blocks, found, memberId)) throw new Error("That block belongs to someone else.");
+
+    const family = found.groupId
+      ? blocks.filter((b) => b.groupId === found.groupId)
+      : [found];
+    const current = family.map((b) => b.member);
+
+    const groupId = wanted.length > 1
+      ? (found.groupId || `grp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`)
+      : "";
+
+    const kept = blocks
+      .filter((b) => !family.some((f) => f.id === b.id) || wanted.includes(b.member))
+      .map((b) => (family.some((f) => f.id === b.id) ? normalizeBlock({ ...b, groupId }) : b));
+
+    const added = wanted
+      .filter((owner) => !current.includes(owner))
+      .map((owner) => normalizeBlock({
+        ...found, id: newId(), member: owner, groupId, createdAt: new Date().toISOString(),
+      }));
+
+    return [...kept, ...added];
+  });
+}
+
 export async function removeBlock(memberId, id) {
   const target = clean(id);
   return mutate((blocks) => {
