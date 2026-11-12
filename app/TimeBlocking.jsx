@@ -398,6 +398,15 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     }
   };
 
+  // A task shared by several people belongs on each of their timelines, so
+  // blocking it puts the same block on the other assignees' days too.
+  const assigneeIds = (kind, refId) => {
+    if (kind !== "task") return [];
+    const refs = (tasks.find((t) => t.id === refId) || {}).assignees;
+    if (!Array.isArray(refs) || refs.length < 2) return [];
+    return members.filter((m) => m.id !== me && (refs.includes(m.id) || refs.includes(m.i))).map((m) => m.id);
+  };
+
   // Clicking a time slot or existing block opens an editor. Dropping a task
   // from the left still places it directly, just as before.
   const openAdd = (start, chosen = picked) => {
@@ -408,6 +417,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       title: candidate?.title || "", project: candidate?.project || "",
       taskDescription: "", taskStatus: "todo", taskPriority: "medium", createdTask: null,
       start, end: Math.min(DAY_END, start + Math.max(SLOT, candidate?.est || 60)), note: "",
+      members: assigneeIds(candidate?.kind, candidate?.id),
     });
   };
 
@@ -709,7 +719,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     const pendingId = `pending-${crypto.randomUUID()}`;
     setGhosts((list) => [...list, { ...nextBlock, id: pendingId, member: me }]);
     setPicked(null);
-    send("POST", { block: nextBlock, members: dialog?.members || [] })
+    send("POST", { block: nextBlock, members: [...new Set([...(dialog?.members || []), ...assigneeIds(chosen.kind, chosen.id)])] })
       .finally(() => setGhosts((list) => list.filter((g) => g.id !== pendingId)));
   };
 
@@ -1125,7 +1135,8 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                         value={dialog.sourceId} onChange={e => {
                           const src = allSources.find(s => `${s.kind}:${s.id}` === e.target.value);
                           patchDialog2(d => ({ ...d, sourceId: e.target.value,
-                            title: src?.title || "", project: src?.project || "", createdTask: null }));
+                            title: src?.title || "", project: src?.project || "", createdTask: null,
+                            members: assigneeIds(src?.kind, src?.id) }));
                         }}>
                         {/* grouped, so a subtask is never mistaken for a task */}
                         <optgroup label="Tasks">
@@ -1281,6 +1292,17 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                       ? "The same block appears on each of their days, as one card across those columns."
                       : "Pick others to put the same block on their day too."}
                 </span>
+                {dialog.mode === "edit" && (() => {
+                  const missing = assigneeIds(dialog.block?.kind, dialog.block?.refId).filter((id) => !(dialog.members || []).includes(id));
+                  return missing.length ? (
+                    <button type="button"
+                      onClick={() => patchDialog2((d) => ({ ...d, members: [...new Set([...(d.members || []), ...missing])] }))}
+                      className="mt-1 rounded-full px-3 py-1 text-xs font-semibold"
+                      style={{ border: "1px solid var(--border)", color: "var(--text)", background: "var(--col)" }}>
+                      Add everyone assigned to this task
+                    </button>
+                  ) : null;
+                })()}
               </div>
             )}
 
