@@ -60,3 +60,16 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
 /* Time Blocking: a slot lights up on hover and while something is dragged over it. */
 .tp-slot:hover { background: var(--dim); }
 .tp-slot { transition: background .08s ease; }
+
+/* A row that scrolls sideways on a phone without showing a scrollbar. */
+.tp-noscrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.tp-noscrollbar::-webkit-scrollbar { display: none; }
+
+/* iOS zooms the page when a focused field's text is under 16px, which leaves
+   the layout shifted. Fields keep their size visually but are large enough
+   not to trigger it on touch devices. */
+@media (max-width: 640px) {
+  input, select, textarea { font-size: 16px; }
+  input[type="date"], input[type="time"] { min-width: 0; }
+  /* 16px on touch */
+}
