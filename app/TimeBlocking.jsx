@@ -174,6 +174,20 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   useEffect(() => { setView("all"); }, [departmentView]);
   useEffect(() => { setGhosts([]); setPending({}); }, [key, departmentView]);
   useEffect(() => { load(); }, [load]);
+
+  /* A block someone else puts on your day would otherwise only appear after a
+     manual refresh, which is why a shared block looked like it never arrived.
+     The page now re-reads every 30 seconds while it is visible, and never in
+     the middle of a drag or a save. */
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      if (dragRef.current || activeWrites.current > 0 || dialog || detailBlock) return;
+      load();
+    };
+    const timer = setInterval(tick, 30000);
+    return () => clearInterval(timer);
+  }, [load, dialog, detailBlock]);
   useEffect(() => {
     if (!detailBlock) return;
     const onKey = e => { if (e.key === "Escape") setDetailBlock(null); };
@@ -358,6 +372,10 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || "That did not save.");
+      if (Array.isArray(body.dropped) && body.dropped.length) {
+        // someone chosen who is not in the department being viewed
+        setError(`${body.dropped.length} of the people chosen are not in this department, so the block was not added to their day.`);
+      }
       if (Array.isArray(body.blocks)) {
         // These server-confirmed blocks replace the optimistic copy without
         // a second loading state or a transient jump to the previous duration.
