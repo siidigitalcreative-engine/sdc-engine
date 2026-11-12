@@ -91,8 +91,16 @@ export async function POST(request) {
     const requested = Array.isArray(body.members) ? body.members.filter((id) => allowed.has(id)) : [];
     const members = [...new Set([actor.id, ...requested])];
 
+    const asked = Array.isArray(body.members) ? [...new Set(body.members)] : [];
+    const dropped = asked.filter((id) => !allowed.has(id));
+
     const result = await addBlock(actor.id, { ...(body.block || {}), date }, members);
-    return json({ blocks: await visibleForDate(actor, request, result.state, date) }, 201);
+    return json({
+      blocks: await visibleForDate(actor, request, result.state, date),
+      members,
+      // anyone the viewer cannot see is not silently ignored
+      dropped,
+    }, 201);
   } catch (error) {
     return json({ error: error.message || "Unable to add that block." }, 400);
   }
@@ -105,15 +113,20 @@ export async function PATCH(request) {
     const body = await request.json();
     /* An edit can also change who the block is for; only people the viewer can
        see may be added, and the list is applied before the times. */
+    let droppedMembers = [];
     if (Array.isArray(body.members)) {
       const scope = await visibleMembers(actor, request);
       const allowed = new Set(scope.members.map((m) => m.id));
       const wanted = body.members.filter((id) => allowed.has(id));
+      droppedMembers = body.members.filter((id) => !allowed.has(id));
       if (wanted.length) await setBlockMembers(actor.id, body.id, wanted);
     }
 
     const result = await moveBlock(actor.id, body.id, body);
-    return json({ blocks: await visibleForDate(actor, request, result.state, body.date) });
+    return json({
+      blocks: await visibleForDate(actor, request, result.state, body.date),
+      dropped: droppedMembers,
+    });
   } catch (error) {
     return json({ error: error.message || "Unable to move that block." }, 400);
   }
