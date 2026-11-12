@@ -941,10 +941,14 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         return (
           <div role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setDetailBlock(null); }}
             style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.64)",
-              display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
             <div role="dialog" aria-modal="true" aria-label="Time block details"
               className="rounded-2xl p-5 w-full max-w-md space-y-3"
-              style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)", maxHeight: "90vh", overflowY: "auto" }}>
+              style={{
+              background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)",
+              maxHeight: "min(90dvh, 100dvh - 16px)", overflowY: "auto", WebkitOverflowScrolling: "touch",
+              paddingBottom: "max(20px, env(safe-area-inset-bottom, 0px))",
+            }}>
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-semibold">Task Details</h3>
                 <button type="button" aria-label="Close" onClick={() => setDetailBlock(null)}><X size={18}/></button>
@@ -972,10 +976,14 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       {dialog && (editable || (dialog.mode === "edit" && dialog.block?.member === me)) && (
         <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setDialog(null); }}
           style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.64)",
-            display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
           <div role="dialog" aria-modal="true" aria-label={dialog.mode === "edit" ? "Edit time block" : "Add time block"}
             className="rounded-2xl p-5 w-full max-w-md space-y-3"
-            style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)", maxHeight: "90vh", overflowY: "auto" }}>
+            style={{
+              background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)",
+              maxHeight: "min(90dvh, 100dvh - 16px)", overflowY: "auto", WebkitOverflowScrolling: "touch",
+              paddingBottom: "max(20px, env(safe-area-inset-bottom, 0px))",
+            }}>
             <div className="flex justify-between items-center gap-2">
               <h3 className="text-lg font-semibold">{dialog.mode === "edit" ? "Edit Time Block" : "Add Time Block"}</h3>
               <button type="button" aria-label="Close" onClick={() => setDialog(null)}><X size={18}/></button>
@@ -1200,7 +1208,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
               </p>
             )}
             {error && <p className="text-xs" style={{ color: "#E5536E" }}>{error}</p>}
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
               {dialog.mode === "edit" && <button type="button" onClick={() => openAdd(dialog.start)}
                 className="rounded-xl px-3 py-2 text-xs font-semibold inline-flex items-center gap-1"
                 style={{ border: "1px solid var(--border)", color: "var(--text-2)" }}><Plus size={14}/> Add Another at This Time</button>}
@@ -1223,7 +1231,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
       {projectDialog && editable && (
         <div role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setProjectDialog(null); }}
           style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.64)",
-            display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
           <div role="dialog" aria-modal="true" aria-label="Create project"
             className="rounded-2xl p-5 w-full max-w-sm space-y-3"
             style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
@@ -1258,33 +1266,39 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
 
       {/* who you are looking at */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Chip on={view === "all"} onClick={() => setView("all")} label="Everyone" note={hours(totalMinutes)} />
-        {members.map((m) => (
-          <Chip key={m.id} on={view === m.id} onClick={() => setView(m.id)}
-            label={m.name.split(" ")[0] + (m.id === me ? " (you)" : "")}
-            note={hours(minutesOf(m.id))} avatar={m.i} color={m.c} />
-        ))}
-        <span className="text-xs ml-1" style={{ color: "var(--faint)" }}>
+        {/* One scrolling row on a phone, so five people do not become five
+            stacked rows before the day is even visible. */}
+        <div className="flex items-center gap-2 min-w-0 w-full lg:w-auto overflow-x-auto lg:overflow-visible lg:flex-wrap tp-noscrollbar"
+          style={{ WebkitOverflowScrolling: "touch" }}>
+          <Chip on={view === "all"} onClick={() => setView("all")} label="Everyone" note={hours(totalMinutes)} />
+          {members.map((m) => (
+            <Chip key={m.id} on={view === m.id} onClick={() => setView(m.id)}
+              label={m.name.split(" ")[0] + (m.id === me ? " (you)" : "")}
+              note={hours(minutesOf(m.id))} avatar={m.i} color={m.c} />
+          ))}
+        </div>
+        <span className="text-xs hidden lg:inline ml-1" style={{ color: "var(--faint)" }}>
           Everyone here can see these. Only you can change yours.
         </span>
-        <div className="flex gap-2 ml-auto flex-wrap">
+        <div className="flex gap-2 lg:ml-auto w-full lg:w-auto overflow-x-auto lg:overflow-visible lg:flex-wrap tp-noscrollbar"
+          style={{ WebkitOverflowScrolling: "touch" }}>
           <button type="button" onClick={() => setShareOpen(v => !v)}
-            className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+            className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
             style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
             <Globe2 size={15}/> Public Link {shareSettings.enabled ? "· On" : "· Off"}
           </button>
-          <button onClick={exportPng} disabled={busy} className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+          <button onClick={exportPng} disabled={busy} className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
             style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
             <Download size={15} /> {view === "all" ? "Export everyone" : "Export this day"}
           </button>
-          <button onClick={sendToLark} disabled={busy} className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+          <button onClick={sendToLark} disabled={busy} className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
             style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
             <Send size={15} /> {view === "all" ? "Send everyone" : "Send this day"}
           </button>
           {editable && (
             <>
               <button onClick={() => send("DELETE", { all: true })} disabled={busy}
-                className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
                 style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
                 <Trash2 size={15} /> Clear my day
               </button>
