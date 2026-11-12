@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   DAY_END_MIN, DAY_START_MIN, SLOT_MIN,
-  addBlock, clearDay, listBlocks, moveBlock, removeBlock,
+  addBlock, clearDay, listBlocks, moveBlock, removeBlock, setBlockMembers,
 } from "../../lib/time-block-store";
 import { readMembersState, sanitizeMembers } from "../../lib/member-store";
 import { departmentForMember, listDepartments } from "../../lib/department-store";
@@ -103,6 +103,15 @@ export async function PATCH(request) {
     const actor = await getAuthenticatedMember(request);
     if (!actor) return json({ error: "Unauthorized." }, 401);
     const body = await request.json();
+    /* An edit can also change who the block is for; only people the viewer can
+       see may be added, and the list is applied before the times. */
+    if (Array.isArray(body.members)) {
+      const scope = await visibleMembers(actor, request);
+      const allowed = new Set(scope.members.map((m) => m.id));
+      const wanted = body.members.filter((id) => allowed.has(id));
+      if (wanted.length) await setBlockMembers(actor.id, body.id, wanted);
+    }
+
     const result = await moveBlock(actor.id, body.id, body);
     return json({ blocks: await visibleForDate(actor, request, result.state, body.date) });
   } catch (error) {
