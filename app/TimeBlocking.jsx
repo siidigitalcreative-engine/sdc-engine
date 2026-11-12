@@ -489,7 +489,11 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     setError("");
     setShowInvalid(false);
     const link = linkedWork(b);
+    const sharedWith = b.groupId
+      ? visibleBlocks.filter((x) => x.groupId === b.groupId).map((x) => x.member)
+      : [b.member];
     setDialog({ mode: "edit", id: b.id, title: b.title, originalTitle: b.title, start: b.start,
+      members: sharedWith, originalMembers: sharedWith,
       end: b.end, note: b.note || "", block: b,
       // so the status of the real task or subtask can be changed from here
       workKind: link?.kind || null, workTaskId: link?.taskId || null, workSubtaskId: link?.subtaskId || null,
@@ -553,8 +557,14 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         const saved = await saveWorkStatus(dialog);
         if (!saved) return;
       }
+      // only send the member list when it actually changed
+      const before = [...(dialog.originalMembers || [])].sort().join(",");
+      const after = [...(dialog.members || [])].sort().join(",");
+      if (after && !after.length) { setError("A block needs at least one person."); return; }
+
       ok = await send("PATCH", { id: dialog.id, start, end,
         ...(dialog.title.trim() !== dialog.originalTitle ? { title: dialog.title.trim() } : {}),
+        ...(before !== after && (dialog.members || []).length ? { members: dialog.members } : {}),
         note: dialog.note || "" });
     } else if (dialog.sourceId === "new-task") {
       // Use the existing authenticated Tasks API and the regular Time Blocks API.
@@ -1216,20 +1226,15 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                     if (Number.isFinite(h) && Number.isFinite(m)) patchDialog2(d => ({ ...d, [k]: h * 60 + m })); }}/>
               </label>)}
             </div>
-            {dialog.mode === "edit" && groupMembers(dialog.block).length > 1 && (
-              <p className="text-xs rounded-xl px-3 py-2" style={{ background: "var(--col)", color: "var(--text-2)" }}>
-                Shared with {groupMembers(dialog.block).map((m) => m.name.split(" ")[0]).join(", ")}.
-                Changes here apply to all of them.
-              </p>
-            )}
-
-            {dialog.mode === "add" && members.length > 1 && (
+            {members.length > 1 && (
               <div className="text-xs space-y-1" style={{ color: "var(--text-2)" }}>
-                <span>Who is this for</span>
+                <span>{dialog.mode === "edit" ? "Who this is for" : "Who is this for"}</span>
                 <div className="flex flex-wrap gap-1.5">
                   {members.map((m) => {
-                    const on = m.id === me || (dialog.members || []).includes(m.id);
-                    const locked = m.id === me;      // the author is always included
+                    const chosen = dialog.members || [];
+                    const on = dialog.mode === "edit" ? chosen.includes(m.id) : (m.id === me || chosen.includes(m.id));
+                    // adding always includes the author; editing only needs one person left
+                    const locked = dialog.mode === "add" ? m.id === me : (on && chosen.length === 1);
                     return (
                       <button key={m.id} type="button" disabled={locked}
                         onClick={() => patchDialog2((d) => {
@@ -1246,15 +1251,17 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                         }}>
                         <span className="rounded-full flex items-center justify-center text-white font-extrabold"
                           style={{ height: 20, width: 20, minWidth: 20, flex: "none", fontSize: 9, background: m.c, borderRadius: 999 }}>{m.i}</span>
-                        {m.name.split(" ")[0]}{locked ? " (you)" : ""}
+                        {m.name.split(" ")[0]}{m.id === me ? " (you)" : ""}
                       </button>
                     );
                   })}
                 </div>
                 <span className="block" style={{ color: "var(--faint)" }}>
-                  {(dialog.members || []).filter((id) => id !== me).length
-                    ? "The same block appears on each of their days, as one card across those columns."
-                    : "Pick others to put the same block on their day too."}
+                  {dialog.mode === "edit"
+                    ? "Adding someone copies this block to their day; removing someone takes it off theirs. Times and notes stay in step."
+                    : (dialog.members || []).filter((id) => id !== me).length
+                      ? "The same block appears on each of their days, as one card across those columns."
+                      : "Pick others to put the same block on their day too."}
                 </span>
               </div>
             )}
