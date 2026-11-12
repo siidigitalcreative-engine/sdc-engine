@@ -114,7 +114,7 @@ function TeamPageInner() {
   return (
     <>
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <header className="flex items-center gap-3 px-6 pt-6 pb-4 shrink-0 flex-wrap">
+        <header className="flex items-center gap-2 sm:gap-3 px-4 sm:px-7 pt-5 sm:pt-6 pb-4 shrink-0 flex-wrap">
           <div className="mr-auto">
             <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Team Members</h1>
             <p className="text-sm" style={{ color: "var(--muted)" }}>{list.length} {list.length === 1 ? "person" : "people"}</p>
@@ -135,7 +135,7 @@ function TeamPageInner() {
           </button>
         </header>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-7 pb-6">
           {pageError && (
             <div className="mb-4 rounded-xl px-4 py-3 text-sm" style={{ color: "#E5536E", background: "rgba(229,83,110,0.10)", border: "1px solid rgba(229,83,110,0.25)" }}>{pageError}</div>
           )}
@@ -342,9 +342,16 @@ function MemberModal({ member, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}>
-      <form onSubmit={submit} className="w-full rounded-3xl shadow-2xl overflow-hidden" style={{ maxWidth: 650, maxHeight: "90vh", background: "var(--card)", border: "1px solid var(--border)" }}>
-        <div className="flex items-center gap-3 px-6 py-5" style={{ borderBottom: "1px solid var(--border)" }}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}>
+      {/* Header, scrolling middle, footer: the same column as the task modal so
+          the buttons stay reachable on a phone. */}
+      <form onSubmit={submit} className="w-full rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+        style={{
+          maxWidth: 650, maxHeight: "min(92dvh, 100dvh - 16px)",
+          background: "var(--card)", border: "1px solid var(--border)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }}>
+        <div className="flex items-center gap-3 px-4 sm:px-6 py-4 sm:py-5 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
           <span className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(242,106,60,0.14)", color: "#F26A3C" }}>
             {member ? <Pencil size={18} /> : <UserPlus size={18} />}
           </span>
@@ -355,7 +362,7 @@ function MemberModal({ member, onClose, onSave }) {
           <button type="button" onClick={onClose} className="h-9 w-9 rounded-full flex items-center justify-center" style={{ color: "var(--text-2)", background: "var(--col)" }}><X size={17} /></button>
         </div>
 
-        <div className="p-6 overflow-y-auto" style={{ maxHeight: "calc(90vh - 150px)" }}>
+        <div className="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Full name">
               <input value={form.name} onChange={(e) => { set("name", e.target.value); setError(""); }} placeholder="e.g. Che Navarro" className="w-full rounded-xl px-3 py-2.5 outline-none" style={inputStyle} />
@@ -417,7 +424,7 @@ function MemberModal({ member, onClose, onSave }) {
           {error && <p className="text-sm mt-4" style={{ color: "#E5536E" }}>{error}</p>}
         </div>
 
-        <div className="flex justify-end gap-2 px-6 py-4" style={{ borderTop: "1px solid var(--border)" }}>
+        <div className="flex justify-end gap-2 px-4 sm:px-6 py-3 sm:py-4 shrink-0 flex-wrap" style={{ borderTop: "1px solid var(--border)" }}>
           <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-sm font-medium" style={{ color: "var(--text-2)", background: "var(--col)" }}>Cancel</button>
           <button disabled={saving} type="submit" className="rounded-full px-4 py-2 text-sm font-medium flex items-center gap-2 shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>
             <Save size={15} /> {saving ? "Saving…" : (member ? "Save changes" : "Add member")}
