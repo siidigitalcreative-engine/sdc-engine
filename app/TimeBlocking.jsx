@@ -1591,7 +1591,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
           <div className="flex" style={{ borderBottom: "1px solid var(--border)", position: "sticky", top: 0, zIndex: 4, background: "var(--card)" }}>
             <div className="flex items-end justify-end text-[10px] pb-1.5 pr-2"
               style={{ width: 66, flex: "none", borderRight: "1px solid var(--border)", color: "var(--muted)" }}>GMT+8</div>
-            {lanes.map((m, laneIndex) => (
+            {lanes.map((m) => (
               <div key={m.id} className="flex-1 text-center py-2.5 px-2"
                 style={{ borderRight: "1px solid var(--border)" }}>
                 <div className="mx-auto mb-1.5 rounded-full flex items-center justify-center text-white font-bold"
@@ -1618,7 +1618,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                   }}>
                   {gutter(h)}
                 </div>
-                {lanes.map((m, laneIndex) => (
+                {lanes.map((m) => (
                   <div key={m.id} className="flex-1 flex" style={{ borderRight: "1px solid var(--border)" }}>
                     {editable && m.id === me
                       ? Array.from({ length: 60 / SLOT }, (_, i) => (
@@ -1658,7 +1658,10 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                         // a shared block belongs to the first of its lanes
                         if (!b.groupId) return true;
                         const span = groupSpans.get(b.groupId);
-                        return !span || span.from === laneIndex;
+                        // only a run of neighbours collapses into one card; if the
+                        // people are not adjacent each keeps their own
+                        if (!span || !span.contiguous) return true;
+                        return span.from === i;
                       });
                       // the dragged one renders last, so it stays above the rest
                       const ordered = [...items].sort((a, b) =>
