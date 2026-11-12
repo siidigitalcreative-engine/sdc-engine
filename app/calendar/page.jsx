@@ -389,10 +389,11 @@ function TeamCalendarInner() {
                   className="pl-8 pr-3 py-2 text-sm rounded-full w-40 outline-none shadow-sm"
                   style={{ background: "var(--card)" }} />
               </div>
-              <div className="flex items-center gap-1 rounded-full p-1 shadow-sm" style={{ background: "var(--card)" }}>
+              <div className="flex items-center gap-1 rounded-full p-1 shadow-sm max-w-full overflow-x-auto tp-noscrollbar"
+                style={{ background: "var(--card)", WebkitOverflowScrolling: "touch" }}>
                 {["month", "week", "day", "blocking"].map((v) => (
                   <button key={v} onClick={() => changeView(v)}
-                    className="rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors whitespace-nowrap"
+                    className="rounded-full px-3 sm:px-3.5 py-1.5 text-sm font-medium transition-colors whitespace-nowrap shrink-0"
                     style={view === v ? { background: ACCENT_GRAD, color: ON_ACCENT } : { color: "var(--text-2)" }}>
                     {v === "blocking" ? "Time Blocking" : v.charAt(0).toUpperCase() + v.slice(1)}
                   </button>
