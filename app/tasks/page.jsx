@@ -977,14 +977,24 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
   const field = { border: "1px solid var(--border)", background: "var(--card)" };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(20,18,26,0.4)" }} onClick={onClose}>
-      <div className="rounded-2xl shadow-2xl w-full max-w-lg overflow-y-auto" style={{ background: "var(--card)", maxHeight: "92vh" }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-3.5 sticky top-0" style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ background: "rgba(20,18,26,0.4)" }} onClick={onClose}>
+      {/* A column: the header and footer stay put and only the middle scrolls,
+          so the save button can never be pushed off a phone screen. dvh keeps
+          the browser's own chrome out of the calculation. */}
+      <div className="shadow-2xl w-full max-w-lg flex flex-col rounded-t-2xl sm:rounded-2xl"
+        style={{
+          background: "var(--card)",
+          maxHeight: "min(92dvh, 100dvh - 16px)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 shrink-0" style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
           <h3 className="font-semibold" style={{ color: "var(--text)" }}>{modal.mode === "edit" ? "Edit task" : "New task"}</h3>
           <button onClick={onClose} className="tp-ib h-8 w-8 flex items-center justify-center rounded-full" style={{ color: "var(--text-2)" }}><X size={18} /></button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-4 sm:p-5 space-y-4 flex-1 min-h-0 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
           <input autoFocus value={f.title} onChange={(e) => setForm({ title: e.target.value })} placeholder="Task title"
             className="w-full text-lg outline-none pb-1" style={{ borderBottom: "2px solid var(--border)" }} />
 
@@ -1007,7 +1017,7 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
             </Labeled>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Labeled label="Project">
               <div className="flex gap-1.5">
                 <div className="relative flex-1 min-w-0">
@@ -1066,7 +1076,7 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
             </div>
           </Labeled>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Labeled label="Start"><input type="date" value={f.start} onChange={(e) => setForm({ start: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} /></Labeled>
             <Labeled label="Due"><input type="date" value={f.due} onChange={(e) => setForm({ due: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} /></Labeled>
             <Labeled label="Time"><input type="time" value={f.time} onChange={(e) => setForm({ time: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm outline-none" style={field} /></Labeled>
@@ -1110,29 +1120,33 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
                   const st = statuses.find((x) => x.id === (s.status || (s.done ? "done" : "todo")))
                     || { id: "todo", name: "To Do", color: "#8E8A96", soft: "#ECEBEE" };
                   return (
-                    <div key={s.id} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--col)" }}>
+                    <div key={s.id} className="flex flex-wrap items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--col)" }}>
                       <button type="button" onClick={() => toggleSubtask(s.id)} className="shrink-0 flex items-center justify-center rounded" style={{ width: 16, height: 16, border: `1.5px solid ${s.done ? "#3FA37A" : "var(--border)"}`, background: s.done ? "#3FA37A" : "transparent", color: "#fff" }}>
                         {s.done ? <Check size={11} /> : null}
                       </button>
                       <span className="flex-1 min-w-0 truncate" style={{ color: s.done ? "var(--faint)" : "var(--text)", textDecoration: s.done ? "line-through" : "none" }}>{s.title}</span>
 
-                      {/* its own status, from the same list the task uses */}
-                      <select value={st.id} onChange={(e) => setSubtaskStatus(s.id, e.target.value)}
-                        className="shrink-0 rounded-full text-xs font-semibold outline-none appearance-none text-center"
-                        style={{ background: st.soft, color: st.color, border: "none", padding: "3px 8px", maxWidth: 108 }}>
-                        {statuses.map((x) => <option key={x.id} value={x.id} style={{ background: "var(--card)", color: "var(--text)" }}>{x.name}</option>)}
-                      </select>
+                      <button type="button" onClick={() => deleteSubtask(s.id)} className="shrink-0 order-last sm:order-none" style={{ color: "var(--faint)" }}><X size={13} /></button>
 
-                      <input type="date" value={s.due || ""} onChange={(e) => setSubtaskDue(s.id, e.target.value)}
-                        title="Subtask due date"
-                        className="shrink-0 rounded-lg text-xs outline-none"
-                        style={{ background: "var(--card)", border: "1px solid var(--border)", color: s.due ? "var(--text-2)" : "var(--faint)", padding: "3px 6px", width: 124 }} />
+                      {/* On a phone these drop to their own line instead of
+                          squeezing the title and overflowing the row. */}
+                      <div className="flex items-center gap-1.5 w-full sm:w-auto min-w-0">
+                        <select value={st.id} onChange={(e) => setSubtaskStatus(s.id, e.target.value)}
+                          className="shrink-0 rounded-full text-xs font-semibold outline-none appearance-none text-center"
+                          style={{ background: st.soft, color: st.color, border: "none", padding: "3px 8px", maxWidth: 108 }}>
+                          {statuses.map((x) => <option key={x.id} value={x.id} style={{ background: "var(--card)", color: "var(--text)" }}>{x.name}</option>)}
+                        </select>
 
-                      <button type="button" title="Export this subtask as PNG" onClick={() => exportSubtaskPng(s)}
-                        className="shrink-0" style={{ color: "var(--faint)" }}><Download size={13} /></button>
-                      <button type="button" title="Send this subtask to Lark" onClick={() => sendSubtaskToLark(s)}
-                        className="shrink-0" style={{ color: "var(--faint)" }}><Send size={13} /></button>
-                      <button type="button" onClick={() => deleteSubtask(s.id)} style={{ color: "var(--faint)" }}><X size={13} /></button>
+                        <input type="date" value={s.due || ""} onChange={(e) => setSubtaskDue(s.id, e.target.value)}
+                          title="Subtask due date"
+                          className="flex-1 sm:flex-none min-w-0 rounded-lg text-xs outline-none"
+                          style={{ background: "var(--card)", border: "1px solid var(--border)", color: s.due ? "var(--text-2)" : "var(--faint)", padding: "3px 6px", width: "auto", maxWidth: 140 }} />
+
+                        <button type="button" title="Export this subtask as PNG" onClick={() => exportSubtaskPng(s)}
+                          className="shrink-0 p-1" style={{ color: "var(--faint)" }}><Download size={14} /></button>
+                        <button type="button" title="Send this subtask to Lark" onClick={() => sendSubtaskToLark(s)}
+                          className="shrink-0 p-1" style={{ color: "var(--faint)" }}><Send size={14} /></button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1195,16 +1209,16 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
           {taskImgMsg && <span className="text-xs" style={{ color: taskImgMsg.includes("✓") ? "#3FA37A" : "#E5536E" }}>{taskImgMsg}</span>}
         </div>
 
-        <div className="flex items-center justify-between px-5 py-3.5 sticky bottom-0" style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 shrink-0 flex-wrap" style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}>
           {modal.mode === "edit" ? (
             <div className="flex items-center gap-1">
               <button disabled={saving} onClick={onDelete} className="tp-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "#E5536E" }}><Trash2 size={16} /> Delete</button>
               <button disabled={saving} onClick={() => onArchive(!f.archived)} className="tp-ib inline-flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ color: "var(--text-2)" }}><Archive size={16} /> {f.archived ? "Unarchive" : "Archive"}</button>
             </div>
           ) : <span />}
-          <div className="flex gap-2">
-            <button disabled={saving} onClick={onClose} className="tp-ib text-sm px-4 py-2 rounded-full disabled:opacity-50" style={{ color: "var(--text-2)" }}>Cancel</button>
-            <button disabled={saving || uploadingCount > 0} onClick={onSave} className="tp-pill text-sm px-5 py-2 rounded-full font-medium shadow-md disabled:opacity-60" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>{saving ? "Saving…" : uploadingCount > 0 ? "Uploading…" : "Save task"}</button>
+          <div className="flex gap-2 ml-auto shrink-0">
+            <button disabled={saving} onClick={onClose} className="tp-ib text-sm px-4 py-2 rounded-full disabled:opacity-50 whitespace-nowrap" style={{ color: "var(--text-2)" }}>Cancel</button>
+            <button disabled={saving || uploadingCount > 0} onClick={onSave} className="tp-pill text-sm px-5 py-2 rounded-full font-medium shadow-md disabled:opacity-60 whitespace-nowrap" style={{ background: ACCENT_GRAD, color: ON_ACCENT }}>{saving ? "Saving…" : uploadingCount > 0 ? "Uploading…" : "Save task"}</button>
           </div>
         </div>
       </div>
