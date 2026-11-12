@@ -1268,7 +1268,8 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
           </Labeled>
         </div>
 
-        <div className="px-5 pb-3 flex flex-wrap items-center gap-2">
+        <div className="px-4 sm:px-5 pt-3 pb-3 mt-1 flex flex-wrap items-center gap-2 shrink-0"
+          style={{ borderTop: "1px solid var(--border)" }}>
           <button type="button" disabled={!f.title || !!taskImgBusy || uploadingCount > 0} onClick={exportTaskPng}
             className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium disabled:opacity-50" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
             🖼️ {taskImgBusy === "png" ? "Rendering…" : "Export PNG"}
