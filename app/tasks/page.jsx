@@ -11,7 +11,7 @@ import { useLarkSend } from "../LarkSend";
 import {
   LayoutGrid, Calendar, CheckSquare, Folder, Users, BarChart, Settings,
   Plus, X, Search, Paperclip, Clock, Flag, Trash2, Tag, Sparkles, List, MoreHorizontal,
-  Moon, Sun, ChevronDown, Archive, Check, CheckCircle2, Download, Send,
+  Moon, Sun, ChevronDown, Archive, Check, CheckCircle2, Download, Send, GripVertical,
 } from "lucide-react";
 
 /* ---------- theme ---------- */
@@ -843,6 +843,54 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
     onSendToLark("/api/lark/subtask-image", subtaskPayload(s), { label: `the subtask “${s.title}”` });
   };
   const deleteSubtask = (id) => setForm({ subtasks: subtasks.filter((s) => s.id !== id) });
+  const setSubtaskTitle = (id, title) => setForm({
+    subtasks: subtasks.map((s) => (s.id === id ? { ...s, title } : s)),
+  });
+
+  /* Reordering. The pointer events work the same with a mouse or a finger,
+     unlike HTML5 drag and drop, which does nothing on touch. The live list is
+     held in a ref because the move handler would otherwise close over the
+     order as it was when the drag began. */
+  const subtasksRef = useRef(subtasks);
+  subtasksRef.current = subtasks;
+  const [dragSubtask, setDragSubtask] = useState(null);
+
+  const startSubtaskDrag = (event, index) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragSubtask(index);
+    let from = index;
+
+    const move = (ev) => {
+      const point = ev.touches?.[0] || ev;
+      const el = document.elementFromPoint(point.clientX, point.clientY);
+      const row = el && el.closest ? el.closest("[data-subtask-index]") : null;
+      if (!row) return;
+      const to = Number(row.dataset.subtaskIndex);
+      if (Number.isNaN(to) || to === from) return;
+
+      const next = [...subtasksRef.current];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      subtasksRef.current = next;
+      setForm({ subtasks: next });
+      from = to;
+      setDragSubtask(to);
+    };
+
+    const end = () => {
+      setDragSubtask(null);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("touchmove", move);
+      window.removeEventListener("touchend", end);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("touchmove", move, { passive: false });
+    window.addEventListener("touchend", end);
+  };
   const subDone = subtasks.filter((s) => s.done).length;
   const [projDraft, setProjDraft] = useState("");
   const [projError, setProjError] = useState("");
@@ -1116,15 +1164,34 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
           <Labeled label={`Subtasks${subtasks.length ? ` · ${subDone}/${subtasks.length}` : ""}`}>
             {subtasks.length > 0 && (
               <div className="space-y-1 mb-1.5">
-                {subtasks.map((s) => {
+                {subtasks.map((s, index) => {
                   const st = statuses.find((x) => x.id === (s.status || (s.done ? "done" : "todo")))
                     || { id: "todo", name: "To Do", color: "#8E8A96", soft: "#ECEBEE" };
                   return (
-                    <div key={s.id} className="flex flex-wrap items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm" style={{ background: "var(--col)" }}>
+                    <div key={s.id} data-subtask-index={index}
+                      className="flex flex-wrap items-center gap-1.5 rounded-lg px-1.5 sm:px-2.5 py-1.5 text-sm"
+                      style={{
+                        background: "var(--col)",
+                        opacity: dragSubtask === index ? 0.65 : 1,
+                        boxShadow: dragSubtask === index ? "0 2px 10px rgba(0,0,0,.18)" : "none",
+                      }}>
+                      {/* drag by the grip, so dragging never fights with editing the title */}
+                      <button type="button" aria-label="Reorder subtask"
+                        onPointerDown={(e) => startSubtaskDrag(e, index)}
+                        onTouchStart={(e) => startSubtaskDrag(e, index)}
+                        className="shrink-0 px-0.5" style={{ color: "var(--faint)", cursor: "grab", touchAction: "none" }}>
+                        <GripVertical size={14} />
+                      </button>
                       <button type="button" onClick={() => toggleSubtask(s.id)} className="shrink-0 flex items-center justify-center rounded" style={{ width: 16, height: 16, border: `1.5px solid ${s.done ? "#3FA37A" : "var(--border)"}`, background: s.done ? "#3FA37A" : "transparent", color: "#fff" }}>
                         {s.done ? <Check size={11} /> : null}
                       </button>
-                      <span className="flex-1 min-w-0 truncate" style={{ color: s.done ? "var(--faint)" : "var(--text)", textDecoration: s.done ? "line-through" : "none" }}>{s.title}</span>
+                      <input value={s.title} onChange={(e) => setSubtaskTitle(s.id, e.target.value)}
+                        placeholder="Subtask"
+                        className="flex-1 min-w-0 bg-transparent outline-none"
+                        style={{
+                          color: s.done ? "var(--faint)" : "var(--text)",
+                          textDecoration: s.done ? "line-through" : "none",
+                        }} />
 
                       <button type="button" onClick={() => deleteSubtask(s.id)} className="shrink-0 order-last sm:order-none" style={{ color: "var(--faint)" }}><X size={13} /></button>
 
