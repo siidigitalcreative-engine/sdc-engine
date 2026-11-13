@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Download, Send, Trash2, X, Plus, Globe2, Copy, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Send, Trash2, X, Plus, Globe2, Copy, ExternalLink, Users } from "lucide-react";
 import { useAuth } from "./auth";
 import { useLarkSend } from "./LarkSend";
 
@@ -850,27 +850,15 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   for (let h = DAY_START / 60; h < DAY_END / 60; h++) hoursList.push(h);
   const lanes = view === "all" ? members : members.filter((m) => m.id === view);
 
-  /* Where each shared block sits across the lanes on screen. Only a run of
-     neighbouring people can be drawn as one card; anyone else keeps their own. */
-  const groupSpans = useMemo(() => {
-    const byGroup = new Map();
+  // How many people a shared block belongs to, for the marker on the card.
+  const groupSize = useMemo(() => {
+    const counts = new Map();
     visibleBlocks.forEach((b) => {
       if (!b.groupId) return;
-      const lane = lanes.findIndex((m) => m.id === b.member);
-      if (lane < 0) return;
-      const entry = byGroup.get(b.groupId) || [];
-      entry.push(lane);
-      byGroup.set(b.groupId, entry);
+      counts.set(b.groupId, (counts.get(b.groupId) || 0) + 1);
     });
-
-    const spans = new Map();
-    byGroup.forEach((indices, groupId) => {
-      const sorted = [...new Set(indices)].sort((a, b) => a - b);
-      const contiguous = sorted.every((v, i) => i === 0 || v === sorted[i - 1] + 1);
-      spans.set(groupId, { from: sorted[0], count: sorted.length, contiguous });
-    });
-    return spans;
-  }, [visibleBlocks, lanes]);
+    return counts;
+  }, [visibleBlocks]);
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const showNow = dateKey(now) === key && nowMin >= DAY_START && nowMin <= DAY_END;
@@ -910,7 +898,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     return Math.max(DAY_START, Math.min(DAY_END - SLOT, Math.floor(minute / SLOT) * SLOT));
   };
 
-  const block = (b, interactive, position, laneSpan = 1) => {
+  const block = (b, interactive, position) => {
     /* Geometry is proportional to time, with one fixed gap, so the space
        between two blocks is the same whether they are ten minutes or two hours
        long. A minimum height used to be forced on short blocks, which made them
@@ -963,6 +951,16 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         }}>
         {interactive && showTime && (
           <BlockRemoveButton floating onRemove={() => send("DELETE", { id: b.id })} />
+        )}
+        {b.groupId && groupSize.get(b.groupId) > 1 && !sliver && (
+          // the same block sits on each of these people's timelines
+          <span title={`Shared with ${groupSize.get(b.groupId) - 1} other${groupSize.get(b.groupId) > 2 ? "s" : ""}`}
+            style={{
+              position: "absolute", bottom: 3, right: 6, fontSize: 9, fontWeight: 800, lineHeight: 1,
+              opacity: 0.85, display: "inline-flex", alignItems: "center", gap: 2, pointerEvents: "none",
+            }}>
+            <Users size={9} />{groupSize.get(b.groupId)}
+          </span>
         )}
         {showParent && (
           <div style={{ fontSize: 9, fontWeight: 700, lineHeight: "12px", letterSpacing: ".03em",
@@ -1708,23 +1706,13 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                     ))}
                     {(() => {
                       const positions = layoutFor(m.id);
-                      const items = blocksOf(m.id).filter((b) => {
-                        // a shared block belongs to the first of its lanes
-                        if (!b.groupId) return true;
-                        const span = groupSpans.get(b.groupId);
-                        // only a run of neighbours collapses into one card; if the
-                        // people are not adjacent each keeps their own
-                        if (!span || !span.contiguous) return true;
-                        return span.from === i;
-                      });
+                      // a shared block appears on every member's own timeline
+                      const items = blocksOf(m.id);
                       // the dragged one renders last, so it stays above the rest
                       const ordered = [...items].sort((a, b) =>
                         (a.id === draggingId ? 1 : 0) - (b.id === draggingId ? 1 : 0));
-                      return ordered.map((b) => {
-                        const span = b.groupId ? groupSpans.get(b.groupId) : null;
-                        const laneSpan = span && span.contiguous ? span.count : 1;
-                        return block(b, m.id === me, b.id === draggingId ? null : positions.get(b.id), laneSpan);
-                      });
+                      return ordered.map((b) =>
+                        block(b, m.id === me, b.id === draggingId ? null : positions.get(b.id)));
                     })()}
                   </div>
                 </div>
