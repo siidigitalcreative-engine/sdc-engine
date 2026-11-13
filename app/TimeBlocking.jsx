@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Download, Send, Trash2, X, Plus, Globe2, Copy, ExternalLink, Users } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Send, Trash2, X, Plus, Globe2, Copy, ExternalLink } from "lucide-react";
 import { useAuth } from "./auth";
 import { useLarkSend } from "./LarkSend";
 
@@ -850,15 +850,6 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   for (let h = DAY_START / 60; h < DAY_END / 60; h++) hoursList.push(h);
   const lanes = view === "all" ? members : members.filter((m) => m.id === view);
 
-  // How many people a shared block belongs to, for the marker on the card.
-  const groupSize = useMemo(() => {
-    const counts = new Map();
-    visibleBlocks.forEach((b) => {
-      if (!b.groupId) return;
-      counts.set(b.groupId, (counts.get(b.groupId) || 0) + 1);
-    });
-    return counts;
-  }, [visibleBlocks]);
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const showNow = dateKey(now) === key && nowMin >= DAY_START && nowMin <= DAY_END;
@@ -951,16 +942,6 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
         }}>
         {interactive && showTime && (
           <BlockRemoveButton floating onRemove={() => send("DELETE", { id: b.id })} />
-        )}
-        {b.groupId && groupSize.get(b.groupId) > 1 && !sliver && (
-          // the same block sits on each of these people's timelines
-          <span title={`Shared with ${groupSize.get(b.groupId) - 1} other${groupSize.get(b.groupId) > 2 ? "s" : ""}`}
-            style={{
-              position: "absolute", bottom: 3, right: 6, fontSize: 9, fontWeight: 800, lineHeight: 1,
-              opacity: 0.85, display: "inline-flex", alignItems: "center", gap: 2, pointerEvents: "none",
-            }}>
-            <Users size={9} />{groupSize.get(b.groupId)}
-          </span>
         )}
         {showParent && (
           <div style={{ fontSize: 9, fontWeight: 700, lineHeight: "12px", letterSpacing: ".03em",
