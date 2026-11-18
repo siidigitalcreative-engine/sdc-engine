@@ -1244,9 +1244,30 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                 <span>{k === "start" ? "Start time" : "End time"}</span>
                 <input type="time" step={SLOT * 60} className="w-full rounded-xl px-3 py-2 text-sm border"
                   style={{ background: "var(--col)", color: "var(--text)", borderColor: "var(--border)" }}
-                  value={hhmm(dialog[k])} onChange={e => { const [h, m] = e.target.value.split(":").map(Number);
-                    if (Number.isFinite(h) && Number.isFinite(m)) patchDialog2(d => ({ ...d, [k]: h * 60 + m })); }}/>
+                  value={hhmm(dialog[k])} onChange={e => {
+                    const [h, m] = e.target.value.split(":").map(Number);
+                    if (!Number.isFinite(h) || !Number.isFinite(m)) return;
+                    const picked = h * 60 + m;
+
+                    patchDialog2(d => {
+                      if (!d) return d;
+                      if (k === "start") {
+                        /* Moving the start carries the end with it, the way a
+                           calendar does, so changing one field can no longer
+                           leave the pair invalid. */
+                        const length = Math.max(SLOT, Number(d.end) - Number(d.start));
+                        const start = Math.min(Math.max(picked, DAY_START), DAY_END - length);
+                        return { ...d, start, end: Math.min(DAY_END, start + length) };
+                      }
+                      // the end stays after the start and inside the day
+                      const end = Math.min(Math.max(picked, Number(d.start) + SLOT), DAY_END);
+                      return { ...d, end };
+                    });
+                  }}/>
               </label>)}
+              <p className="col-span-2 text-[11px] -mt-1" style={{ color: "var(--faint)" }}>
+                The day runs {clock(DAY_START)} to {clock(DAY_END)}.
+              </p>
             </div>
             {members.length > 1 && (
               <div className="text-xs space-y-1" style={{ color: "var(--text-2)" }}>
@@ -1330,7 +1351,13 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
             </p>
             {showInvalid && !dialogValid && (
               <p className="text-xs" style={{ color: "#E5536E" }}>
-                Enter a title and valid times within the workday, with end after start.
+                {!String(dialog.title || "").trim()
+                  ? "Give this block a title."
+                  : dialog.sourceId === "new-subtask" && !dialog.parentTaskId
+                    ? "Pick the task this subtask belongs to."
+                    : dialog.newProject && !String(dialog.project || "").trim()
+                      ? "Name the new project."
+                      : `Set times inside the working day, ${clock(DAY_START)} to ${clock(DAY_END)}, with the end after the start.`}
               </p>
             )}
             {error && <p className="text-xs" style={{ color: "#E5536E" }}>{error}</p>}
