@@ -4,8 +4,13 @@ import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
 
 const PATHNAME = "sdc/time-blocks.json";
 
-export const DAY_START_MIN = 7 * 60;    // the board runs 07:00 to 20:00
+/* The hours the board shows by default. A block may sit outside them: the
+   grid stretches to cover whatever exists, so an early start or evening work
+   is kept rather than dragged back into office hours. */
+export const DAY_START_MIN = 7 * 60;
 export const DAY_END_MIN = 20 * 60;
+const LIMIT_START_MIN = 0;
+const LIMIT_END_MIN = 24 * 60;
 export const SLOT_MIN = 5;
 
 const KINDS = ["task", "subtask", "project"];
@@ -16,8 +21,8 @@ const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
 const snap = (v) => Math.round(Number(v) / SLOT_MIN) * SLOT_MIN;
 
 function normalizeBlock(block) {
-  const start = Math.max(DAY_START_MIN, Math.min(DAY_END_MIN - SLOT_MIN, snap(block?.start)));
-  const end = Math.max(start + SLOT_MIN, Math.min(DAY_END_MIN, snap(block?.end)));
+  const start = Math.max(LIMIT_START_MIN, Math.min(LIMIT_END_MIN - SLOT_MIN, snap(block?.start)));
+  const end = Math.max(start + SLOT_MIN, Math.min(LIMIT_END_MIN, snap(block?.end)));
   return {
     id: clean(block?.id),
     member: clean(block?.member),
