@@ -137,7 +137,21 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
   const { openLarkSend, larkPicker } = useLarkSend();
   const key = dateKey(day);
   const departmentParam = departmentView ? `&department=${encodeURIComponent(departmentView)}` : "";
-  const DAY_START = data.day.start, DAY_END = data.day.end, SLOT = data.day.slot;
+  const SLOT = data.day.slot;
+
+  /* The grid covers office hours by default and stretches, in whole hours, to
+     cover anything outside them, so an evening or early-morning block is
+     visible instead of being clipped away. */
+  const { DAY_START, DAY_END } = useMemo(() => {
+    const blocks = Array.isArray(data.blocks) ? data.blocks : [];
+    let from = data.day.start;
+    let to = data.day.end;
+    blocks.forEach((b) => {
+      if (Number.isFinite(b.start)) from = Math.min(from, Math.floor(b.start / 60) * 60);
+      if (Number.isFinite(b.end)) to = Math.max(to, Math.ceil(b.end / 60) * 60);
+    });
+    return { DAY_START: Math.max(0, from), DAY_END: Math.min(24 * 60, Math.max(to, from + 60)) };
+  }, [data.blocks, data.day.start, data.day.end]);
   const me = currentMember?.id;
 
   const load = useCallback(async () => {
@@ -541,7 +555,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
     (dialog.sourceId !== "new-subtask" || !!dialog.parentTaskId) &&
     (!dialog.newProject || String(dialog.project || "").trim()) &&
     Number.isFinite(Number(dialog.start)) && Number.isFinite(Number(dialog.end)) &&
-    Number(dialog.start) >= DAY_START && Number(dialog.end) <= DAY_END &&
+    Number(dialog.start) >= 0 && Number(dialog.end) <= 24 * 60 &&
     Number(dialog.end) > Number(dialog.start);
 
   // Writes a status change back to the task, or to the subtask inside it.
@@ -1247,26 +1261,21 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                   value={hhmm(dialog[k])} onChange={e => {
                     const [h, m] = e.target.value.split(":").map(Number);
                     if (!Number.isFinite(h) || !Number.isFinite(m)) return;
-                    const picked = h * 60 + m;
-
+                    /* Whatever is typed is kept. Correcting mid-keystroke made
+                       it impossible to type some times at all. The end is only
+                       nudged when the start passes it, and the duration goes
+                       with it, which is what a calendar does. */
                     patchDialog2(d => {
                       if (!d) return d;
-                      if (k === "start") {
-                        /* Moving the start carries the end with it, the way a
-                           calendar does, so changing one field can no longer
-                           leave the pair invalid. */
-                        const length = Math.max(SLOT, Number(d.end) - Number(d.start));
-                        const start = Math.min(Math.max(picked, DAY_START), DAY_END - length);
-                        return { ...d, start, end: Math.min(DAY_END, start + length) };
-                      }
-                      // the end stays after the start and inside the day
-                      const end = Math.min(Math.max(picked, Number(d.start) + SLOT), DAY_END);
-                      return { ...d, end };
+                      const picked = h * 60 + m;
+                      if (k === "end") return { ...d, end: picked };
+                      const length = Math.max(SLOT, Number(d.end) - Number(d.start));
+                      return { ...d, start: picked, end: picked + length };
                     });
                   }}/>
               </label>)}
               <p className="col-span-2 text-[11px] -mt-1" style={{ color: "var(--faint)" }}>
-                The day runs {clock(DAY_START)} to {clock(DAY_END)}.
+                Any time of day. The board shows {clock(DAY_START)} to {clock(DAY_END)} and stretches to fit anything outside it.
               </p>
             </div>
             {members.length > 1 && (
@@ -1357,7 +1366,7 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
                     ? "Pick the task this subtask belongs to."
                     : dialog.newProject && !String(dialog.project || "").trim()
                       ? "Name the new project."
-                      : `Set times inside the working day, ${clock(DAY_START)} to ${clock(DAY_END)}, with the end after the start.`}
+                      : "The end time has to be after the start time."}
               </p>
             )}
             {error && <p className="text-xs" style={{ color: "#E5536E" }}>{error}</p>}
