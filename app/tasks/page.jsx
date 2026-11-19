@@ -246,6 +246,15 @@ function TasksPageInner() {
     }
   }, [hydrateTasks, deptView]);
 
+  /* A write returns the task list filtered to a department. Without saying
+     which one, the server answers for the viewer's own department, so a board
+     showing another one was replaced by the wrong list and the card appeared
+     to jump back. */
+  const taskUrl = useCallback(
+    () => `/api/tasks${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`,
+    [deptView]
+  );
+
   const applyTaskResponse = useCallback(async (response, fallback) => {
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
@@ -380,7 +389,7 @@ function TasksPageInner() {
     mutationGenerationRef.current += 1;
     pendingWritesRef.current += 1;
     try {
-      const response = await fetch("/api/tasks", {
+      const response = await fetch(taskUrl(), {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isEdit ? { id: f.id, data: base } : { data: base }),
@@ -413,7 +422,7 @@ function TasksPageInner() {
     mutationGenerationRef.current += 1;
     pendingWritesRef.current += 1;
     try {
-      const response = await fetch("/api/tasks", {
+      const response = await fetch(taskUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: modal.form.id }),
@@ -435,7 +444,7 @@ function TasksPageInner() {
     mutationGenerationRef.current += 1;
     pendingWritesRef.current += 1;
     try {
-      const response = await fetch("/api/tasks", {
+      const response = await fetch(taskUrl(), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: modal.form.id, data: { archived } }),
@@ -471,7 +480,7 @@ function TasksPageInner() {
     // task so an older response cannot undo a more recent checkbox change.
     const previousWrite = subtaskWriteQueuesRef.current.get(task.id) || Promise.resolve();
     const write = previousWrite.catch(() => {}).then(async () => {
-      const response = await fetch("/api/tasks", {
+      const response = await fetch(taskUrl(), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: task.id, data: { subtasks: next } }),
@@ -525,7 +534,7 @@ function TasksPageInner() {
     setTasks((ts) => ts.map((t) => (t.id === id ? { ...t, status: statusId } : t)));
     setTaskError("");
     try {
-      const response = await fetch("/api/tasks", {
+      const response = await fetch(taskUrl(), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, data: { status: statusId } }),
@@ -1268,8 +1277,7 @@ function TaskModal({ modal, members, setForm, patchForm, onClose, onSave, onAuto
           </Labeled>
         </div>
 
-        <div className="px-4 sm:px-5 pt-3 pb-3 mt-1 flex flex-wrap items-center gap-2 shrink-0"
-          style={{ borderTop: "1px solid var(--border)" }}>
+        <div className="px-5 pb-3 flex flex-wrap items-center gap-2">
           <button type="button" disabled={!f.title || !!taskImgBusy || uploadingCount > 0} onClick={exportTaskPng}
             className="tp-ib rounded-full px-3.5 py-2 text-sm font-medium disabled:opacity-50" style={{ background: "var(--card)", color: "var(--text)", border: "1px solid var(--border)" }}>
             🖼️ {taskImgBusy === "png" ? "Rendering…" : "Export PNG"}
