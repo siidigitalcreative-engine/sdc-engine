@@ -4,6 +4,7 @@ import PageAccess from "../PageAccess";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth";
+import DepartmentView from "../DepartmentView";
 import {
   Archive, Search, RotateCcw, Clock, Folder, CalendarDays, Trash2, X,
 } from "lucide-react";
@@ -42,7 +43,14 @@ function taskDate(task) {
 }
 
 function ArchivePageInner() {
-  const { members } = useAuth();
+  const { members, department } = useAuth();
+
+  /* The archive follows the department picker like the board does: your own
+     department by default, and Management, Admin or HOD Admin can switch. */
+  const [deptView, setDeptView] = useState("");
+  useEffect(() => {
+    if (!deptView && department?.id) setDeptView(department.id);
+  }, [department, deptView]);
   const memberByRef = useMemo(() => {
     const map = {};
     (members || []).forEach((m) => { map[m.id] = m; map[m.i] = m; });
@@ -71,7 +79,8 @@ function ArchivePageInner() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/tasks", { cache: "no-store" });
+      const res = await fetch(`/api/tasks${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`,
+        { cache: "no-store" });
       if (!res.ok) throw new Error("Unable to load archived tasks.");
       const body = await res.json();
       setTasks(hydrate(Array.isArray(body.tasks) ? body.tasks : []));
@@ -81,7 +90,7 @@ function ArchivePageInner() {
     } finally {
       setLoading(false);
     }
-  }, [hydrate]);
+  }, [hydrate, deptView]);
 
   useEffect(() => {
     load();
@@ -202,7 +211,7 @@ function ArchivePageInner() {
     setBusyId(task.id);
     setError("");
     try {
-      const res = await fetch("/api/tasks", {
+      const res = await fetch(`/api/tasks${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: task.id, data: { archived: false } }),
@@ -226,7 +235,7 @@ function ArchivePageInner() {
     setBusyId(task.id);
     setError("");
     try {
-      const res = await fetch("/api/tasks", {
+      const res = await fetch(`/api/tasks${deptView && deptView !== "all" ? `?department=${encodeURIComponent(deptView)}` : ""}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: task.id }),
@@ -259,6 +268,7 @@ function ArchivePageInner() {
           <p className="text-sm" style={{ color: "var(--muted)" }}>Completed work, cleared from the board every Monday</p>
           {error && <p className="text-xs mt-1" style={{ color: "#E5536E" }}>{error}</p>}
         </div>
+        <DepartmentView value={deptView} onChange={setDeptView} />
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search archive"
