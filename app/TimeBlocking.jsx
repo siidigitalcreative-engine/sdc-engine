@@ -640,6 +640,15 @@ export default function TimeBlocking({ day, onDayChange, departmentView = "" }) 
           if (!response.ok || !result.task?.id) throw new Error(result.error || "Unable to create the task.");
           created = result.task;
           setDialog(d => d ? { ...d, createdTask: created } : d);
+
+          /* Put it straight into the panel's list. The response already carries
+             the full set, so the new task is pickable immediately instead of
+             only after a reload. */
+          if (Array.isArray(result.tasks)) {
+            setTasks(result.tasks.filter((t) => !t.archived));
+          } else {
+            setTasks((list) => [...list, created]);
+          }
         } catch (err) {
           setError(err.message || "Unable to create the task.");
           setBusy(false);
