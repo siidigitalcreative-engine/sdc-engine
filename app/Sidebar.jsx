@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutGrid, Calendar, CheckSquare, Folder, Users, Printer, Send, BarChart, Settings, Sparkles, Moon, Sun, LogOut, Megaphone } from "lucide-react";
+import { LayoutGrid, Calendar, CheckSquare, Folder, Users, Printer, Send, BarChart, Settings, Sparkles, Moon, Sun, LogOut, Megaphone, Puzzle } from "lucide-react";
 import { useTheme } from "./theme";
 import { useAuth } from "./auth";
 import { useAppSettings } from "./useAppSettings";
@@ -18,6 +18,7 @@ const NAV = [
   { href: "/team", name: "Team Members", icon: Users, page: "team" },
   { href: "/lark", name: "Lark Groups", icon: Send, page: "lark" },
   { href: "/reports", name: "Reports", icon: BarChart, page: "reports" },
+  { href: "/plugplay", name: "Plug & Play", icon: Puzzle, page: "plugplay" },
   { href: "/ads", name: "Ads", icon: Megaphone, page: "ads" },
 ];
 
