@@ -95,6 +95,7 @@ const minuteOf = (d) => d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60
 
 export function minutesOfDuration(duration) {
   const value = Number(duration?.value) || 0;
+  if (duration?.unit === "m") return value;
   if (duration?.unit === "h") return value * 60;
   if (duration?.unit === "w") return value * WEEK_MINUTES;
   return value * DAY_MINUTES;
