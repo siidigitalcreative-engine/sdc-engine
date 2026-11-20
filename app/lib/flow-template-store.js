@@ -12,7 +12,7 @@ import { deptBlobPath, LEGACY_DEPT } from "./dept-path";
 const FILE = "flow-templates";
 const pathFor = (dept) => deptBlobPath(dept, FILE);
 
-export const DURATION_UNITS = ["h", "d", "w"];
+export const DURATION_UNITS = ["m", "h", "d", "w"];
 export const PRIORITIES = ["low", "medium", "high"];
 
 const clean = (value, max) => String(value ?? "").trim().replace(/\s+/g, " ").slice(0, max);
