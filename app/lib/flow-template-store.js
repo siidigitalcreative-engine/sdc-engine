@@ -47,10 +47,17 @@ const DEFAULT_TEMPLATES = [
   { title: "Handover", type: "approval", duration: { value: 2, unit: "h" }, priority: "low", desc: "Files, links and notes passed to the next department." },
 ];
 
+/* An estimate, optionally a range.
+
+   `value` is the low estimate and `max` the high one. A plug with no range
+   leaves `max` at 0 and behaves exactly as before, so nothing already saved
+   changes. A high estimate below the low one is lifted to match it. */
 export function normalizeDuration(duration) {
   const value = Math.min(999, Math.max(0, Number(duration?.value) || 0));
   const unit = DURATION_UNITS.includes(duration?.unit) ? duration.unit : "d";
-  return { value, unit };
+  const rawMax = Math.min(999, Math.max(0, Number(duration?.max) || 0));
+  const max = rawMax && rawMax !== value ? Math.max(rawMax, value) : 0;
+  return { value, unit, max };
 }
 
 export function normalizeLinks(links) {
