@@ -93,6 +93,14 @@ export function sanitizeMember(member) {
   return safe;
 }
 
+/* The slim shape the sign-in picker and Plug & Play use: no PIN, no contact
+   details. `dept` is included alongside `department` because the ported pages
+   expect that name. */
+export function loginMember(member) {
+  const m = normalizeStoredMember(member);
+  return { id: m.id, i: m.i, name: m.name, role: m.role, c: m.c, department: m.department, dept: m.department };
+}
+
 export function sanitizeMembers(members) {
   return members.map(sanitizeMember);
 }
