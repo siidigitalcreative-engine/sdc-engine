@@ -16,6 +16,7 @@ export const PAGES = [
   { id: "team",      name: "Team Members", href: "/team",      note: "People and their stats" },
   { id: "lark",      name: "Lark Groups",  href: "/lark",      note: "Where exports get sent" },
   { id: "reports",   name: "Reports",      href: "/reports",   note: "Reporting" },
+  { id: "plugplay",  name: "Plug & Play",  href: "/plugplay",  note: "Reusable playbooks and flows" },
   { id: "settings",  name: "Settings",     href: "/settings",  note: "Departments, access and app settings", adminOnly: true },
 ];
 
@@ -119,6 +120,17 @@ async function mutate(mutator, maxAttempts = 12) {
   } catch (error) {
     throw lastError || error;
   }
+}
+
+// The fields safe to hand to a page: no page-access rules.
+export function publicDepartment(d) {
+  return d ? { id: d.id, name: d.name, color: d.color } : null;
+}
+
+// One department by id, or null. Used by the ported Plug & Play routes.
+export async function getDepartment(id) {
+  const { state } = await readDepartmentsState();
+  return state.departments.find((d) => d.id === String(id || "").trim()) || null;
 }
 
 export async function listDepartments() {
