@@ -19,8 +19,11 @@ const PRI = {
   high: { name: "High", color: "#E5536E", soft: "rgba(229,83,110,0.14)" },
 };
 const PRIORITIES = ["low", "medium", "high"];
-const UNITS = [{ id: "h", name: "hours" }, { id: "d", name: "days" }, { id: "w", name: "weeks" }];
-const UNIT_SHORT = { h: "hr", d: "day", w: "week" };
+const UNITS = [
+  { id: "m", name: "minutes" }, { id: "h", name: "hours" },
+  { id: "d", name: "days" }, { id: "w", name: "weeks" },
+];
+const UNIT_SHORT = { m: "min", h: "hr", d: "day", w: "week" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const FALLBACK_STATUS = { id: "todo", name: "To Do", color: "#8E8A96", soft: "#ECEBEE" };
 
@@ -485,7 +488,14 @@ function PlugPlayPageInner() {
   const countOfType = (id) => lib.templates.filter((t) => (id === "" ? !t.type : t.type === id)).length;
   const shownPlugs = lib.templates.filter((t) => !tplFilter || (tplFilter === "__none" ? !t.type : t.type === tplFilter));
 
+  /* The whole library is written at once, so two saves close together can
+     answer out of order: an earlier reply would then restore a plug that was
+     just deleted. Each save takes a number and only the newest may apply its
+     response. */
+  const librarySeq = useRef(0);
+
   const saveLibrary = useCallback(async (dept, types, templates) => {
+    const seq = (librarySeq.current += 1);
     setLibs((cur) => ({ ...cur, [dept]: { ...cur[dept], types, templates } }));
     try {
       const res = await fetch("/api/plugplay/templates", {
@@ -494,8 +504,11 @@ function PlugPlayPageInner() {
       });
       if (!res.ok) throw new Error(await readError(res, "Unable to save the plugs."));
       const body = await res.json();
+      if (seq !== librarySeq.current) return;        // a newer save has taken over
       setLibs((cur) => ({ ...cur, [body.dept]: { types: body.types, templates: body.templates, canEdit: true } }));
-    } catch (e) { setErr(e.message || "Unable to save the plugs."); }
+    } catch (e) {
+      if (seq === librarySeq.current) setErr(e.message || "Unable to save the plugs.");
+    }
   }, []);
 
   const plugSet = (id, patch) => saveLibrary(tplDept, lib.types, lib.templates.map((t) => (t.id === id ? { ...t, ...patch } : t)));
