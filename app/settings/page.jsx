@@ -345,7 +345,12 @@ function SettingsInner() {
                       <select value={m.department || departments[0]?.id || ""} disabled={busy}
                         onChange={(e) => setMemberField(m.id, { department: e.target.value })}
                         className="rounded-full px-3 py-1.5 text-xs outline-none"
-                        style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-2)" }}>
+                        style={{
+                          background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-2)",
+                          WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
+                          backgroundImage: CHEVRON, backgroundRepeat: "no-repeat",
+                          backgroundPosition: "right 10px center", paddingRight: 28,
+                        }}>
                         {departments.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
                       </select>
 
@@ -353,9 +358,12 @@ function SettingsInner() {
                         onChange={(e) => setMemberField(m.id, { accessLevel: e.target.value })}
                         className="rounded-full px-3 py-1.5 text-xs font-semibold outline-none"
                         style={{
-                          background: m.accessLevel === "admin" ? "#FCE3D6" : m.accessLevel === "hod" ? "#E3EEF9" : "var(--card)",
+                          backgroundColor: m.accessLevel === "admin" ? "#FCE3D6" : m.accessLevel === "hod" ? "#E3EEF9" : "var(--card)",
                           color: m.accessLevel === "admin" ? "#F26A3C" : m.accessLevel === "hod" ? "#3E8ED0" : "var(--text-2)",
                           border: "1px solid var(--border)",
+                          WebkitAppearance: "none", MozAppearance: "none", appearance: "none",
+                          backgroundImage: CHEVRON, backgroundRepeat: "no-repeat",
+                          backgroundPosition: "right 10px center", paddingRight: 28,
                         }}>
                         <option value="admin">Management / Admin / HOD Admin</option>
                         <option value="hod">HOD</option>
