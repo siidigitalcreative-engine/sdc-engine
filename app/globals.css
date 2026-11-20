@@ -73,3 +73,15 @@ input::placeholder,textarea::placeholder{color:var(--muted)}
   input[type="date"], input[type="time"] { min-width: 0; }
   /* 16px on touch */
 }
+
+/* The system chevron for any select that does not draw its own. Elements that
+   set appearance-none already supply an icon, so they are left alone. */
+select:not(.appearance-none) {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238C8398' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 34px;
+}
