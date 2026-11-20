@@ -31,7 +31,14 @@ const field = { background: "var(--surface)", border: "1px solid var(--border)",
 const panel = { background: "var(--card)", border: "1px solid var(--border)" };
 
 const newId = (p) => `${p}-${Math.random().toString(36).slice(2, 10)}`;
-const fmtDuration = (d) => (d && d.value ? `${d.value} ${UNIT_SHORT[d.unit] || "day"}${d.value === 1 ? "" : "s"}` : "No duration");
+const fmtDuration = (d) => {
+  if (!d || !d.value) return "No duration";
+  const unit = UNIT_SHORT[d.unit] || "day";
+  // a range reads "1–2 days", a single estimate "2 days"
+  const high = Number(d.max) || 0;
+  if (high > d.value) return `${d.value}–${high} ${unit}${high === 1 ? "" : "s"}`;
+  return `${d.value} ${unit}${d.value === 1 ? "" : "s"}`;
+};
 const fmtTime = (d) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 const fmtDay = (ts) => {
   const d = new Date(ts);
@@ -349,7 +356,7 @@ function PlugPlayPageInner() {
 
   const blankStep = (dept) => ({
     kind: "step", id: newId("step"), title: "", dept: dept || meta?.activeDept || "", type: "",
-    status: firstStatus, priority: "medium", duration: { value: 1, unit: "d" },
+    status: firstStatus, priority: "medium", duration: { value: 1, unit: "d", max: 0 },
     assignees: [], subtasks: [], desc: "", notes: "", links: [],
   });
   const stepFromPlug = (tpl, dept) => ({
@@ -514,7 +521,7 @@ function PlugPlayPageInner() {
   const plugSet = (id, patch) => saveLibrary(tplDept, lib.types, lib.templates.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   const plugAdd = () => saveLibrary(tplDept, lib.types, [...lib.templates, {
     id: newId("tpl"), title: "New plug", type: tplFilter && tplFilter !== "__none" ? tplFilter : lib.types[0]?.id || "",
-    priority: "medium", duration: { value: 1, unit: "d" }, desc: "", notes: "", links: [],
+    priority: "medium", duration: { value: 1, unit: "d", max: 0 }, desc: "", notes: "", links: [],
   }]);
   const plugDelete = (id) => saveLibrary(tplDept, lib.types, lib.templates.filter((t) => t.id !== id));
   const typeAdd = () => {
@@ -956,12 +963,39 @@ function PlugsPage({ meta, tplDept, setTplDept, lib, tplFilter, setTplFilter, ty
           <select value={t.priority} disabled={!lib.canEdit} onChange={(e) => plugSet(t.id, { priority: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={field}>
             {PRIORITIES.map((p) => <option key={p} value={p}>{PRI[p].name}</option>)}
           </select>
-          <span className="flex gap-2">
+          <span className="flex gap-2 items-center flex-wrap">
             <input type="number" min="0" defaultValue={t.duration.value} disabled={!lib.canEdit}
+              title="Low estimate"
               onBlur={(e) => plugSet(t.id, { duration: { ...t.duration, value: Number(e.target.value) } })}
-              className="rounded-lg px-2.5 py-2 text-sm outline-none" style={{ ...field, width: 68 }} />
+              className="rounded-lg px-2.5 py-2 text-sm outline-none" style={{ ...field, width: 64 }} />
+
+            {/* An optional high estimate, for work that is "one to two days"
+                rather than a single figure. The schedule plans on the high one. */}
+            {Number(t.duration.max) > 0 ? (
+              <>
+                <span className="text-sm" style={{ color: "var(--muted)" }}>to</span>
+                <input type="number" min="0" defaultValue={t.duration.max} disabled={!lib.canEdit}
+                  title="High estimate"
+                  onBlur={(e) => plugSet(t.id, { duration: { ...t.duration, max: Number(e.target.value) } })}
+                  className="rounded-lg px-2.5 py-2 text-sm outline-none" style={{ ...field, width: 64 }} />
+                {lib.canEdit && (
+                  <button type="button" title="Use a single estimate"
+                    onClick={() => plugSet(t.id, { duration: { ...t.duration, max: 0 } })}
+                    className="tp-ib h-8 w-8 flex items-center justify-center rounded-lg" style={{ color: "var(--muted)" }}>
+                    <Minus size={14} />
+                  </button>
+                )}
+              </>
+            ) : lib.canEdit && (
+              <button type="button" title="Add a high estimate"
+                onClick={() => plugSet(t.id, { duration: { ...t.duration, max: Math.max(1, (Number(t.duration.value) || 1) * 2) } })}
+                className="tp-ib rounded-lg px-2 py-2 text-xs font-semibold" style={{ color: "var(--text-2)" }}>
+                + Range
+              </button>
+            )}
+
             <select value={t.duration.unit} disabled={!lib.canEdit} onChange={(e) => plugSet(t.id, { duration: { ...t.duration, unit: e.target.value } })}
-              className="flex-1 rounded-lg px-2 py-2 text-sm outline-none" style={field}>
+              className="flex-1 rounded-lg px-2 py-2 text-sm outline-none" style={{ ...field, minWidth: 96 }}>
               {UNITS.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </span>
@@ -1315,7 +1349,8 @@ function StepModal({ data, departments, libs, loadLibrary, statuses, people, onC
     if (was.dept !== step.dept) changed.push("department");
     if (was.type !== step.type) changed.push("type");
     if (was.priority !== step.priority) changed.push("priority");
-    if (was.duration.value !== step.duration.value || was.duration.unit !== step.duration.unit) changed.push("duration");
+    if (was.duration.value !== step.duration.value || was.duration.unit !== step.duration.unit
+      || (was.duration.max || 0) !== (step.duration.max || 0)) changed.push("duration");
     if (was.status !== step.status) changed.push("status");
     if ((was.assignees || []).join() !== (step.assignees || []).join()) changed.push("assignees");
     if (was.desc !== step.desc || was.notes !== step.notes) changed.push("details");
@@ -1349,9 +1384,30 @@ function StepModal({ data, departments, libs, loadLibrary, statuses, people, onC
             <select value={step.priority} onChange={(e) => set({ priority: e.target.value })} className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none" style={field}>
               {PRIORITIES.map((p) => <option key={p} value={p}>{PRI[p].name}</option>)}
             </select></label>
-          <label className="block"><span className="text-xs font-medium" style={{ color: "var(--muted)" }}>Duration</span>
-            <input type="number" min="0" max="999" value={step.duration.value} onChange={(e) => set({ duration: { ...step.duration, value: Number(e.target.value) } })}
-              className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none" style={field} /></label>
+          <label className="block">
+            <span className="text-xs font-medium" style={{ color: "var(--muted)" }}>
+              {Number(step.duration.max) > 0 ? "Duration (low to high)" : "Duration"}
+            </span>
+            <span className="mt-1 flex gap-2 items-center">
+              <input type="number" min="0" max="999" value={step.duration.value}
+                onChange={(e) => set({ duration: { ...step.duration, value: Number(e.target.value) } })}
+                className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={field} />
+              {Number(step.duration.max) > 0 && (
+                <input type="number" min="0" max="999" value={step.duration.max}
+                  onChange={(e) => set({ duration: { ...step.duration, max: Number(e.target.value) } })}
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none" style={field} />
+              )}
+              <button type="button"
+                title={Number(step.duration.max) > 0 ? "Use a single estimate" : "Add a high estimate"}
+                onClick={() => set({ duration: {
+                  ...step.duration,
+                  max: Number(step.duration.max) > 0 ? 0 : Math.max(1, (Number(step.duration.value) || 1) * 2),
+                } })}
+                className="tp-ib h-9 w-9 shrink-0 flex items-center justify-center rounded-lg" style={{ color: "var(--text-2)" }}>
+                {Number(step.duration.max) > 0 ? <Minus size={14} /> : <Plus size={14} />}
+              </button>
+            </span>
+          </label>
           <label className="block"><span className="text-xs font-medium" style={{ color: "var(--muted)" }}>Unit</span>
             <select value={step.duration.unit} onChange={(e) => set({ duration: { ...step.duration, unit: e.target.value } })} className="mt-1 w-full rounded-lg px-3 py-2 text-sm outline-none" style={field}>
               {UNITS.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
