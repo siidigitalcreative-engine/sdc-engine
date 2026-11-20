@@ -93,8 +93,13 @@ export function segmentsOf(date) {
 const atMinute = (d, m) => { const x = new Date(d); x.setHours(0, m, 0, 0); return x; };
 const minuteOf = (d) => d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
 
+/* The working minutes a step takes. With a range, the high estimate is used:
+   a plan built on the low one is beaten by its own estimate as soon as a step
+   runs long. */
 export function minutesOfDuration(duration) {
-  const value = Number(duration?.value) || 0;
+  const low = Number(duration?.value) || 0;
+  const high = Number(duration?.max) || 0;
+  const value = high > low ? high : low;
   if (duration?.unit === "m") return value;
   if (duration?.unit === "h") return value * 60;
   if (duration?.unit === "w") return value * WEEK_MINUTES;
