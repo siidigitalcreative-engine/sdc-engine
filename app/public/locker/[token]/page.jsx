@@ -119,11 +119,11 @@ export default function PublicLockerPage() {
 
                         {item.kind === "video" ? (
                           <video src={item.url} muted playsInline
-                            style={{ width: "100%", height: item.h - 28, objectFit: "cover", background: "#000", display: "block" }} />
+                            style={{ width: "100%", height: item.h - 28, objectFit: "contain", background: "#000", display: "block" }} />
                         ) : (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={item.url} alt={item.name || locker.name}
-                            style={{ width: "100%", height: item.h - 28, objectFit: "cover", display: "block" }} />
+                            style={{ width: "100%", height: item.h - 28, objectFit: "contain", background: "var(--col)", display: "block" }} />
                         )}
                         <div style={{
                           padding: "6px 9px", fontSize: 11.5, color: "var(--text-2)", borderTop: "1px solid var(--border)",
