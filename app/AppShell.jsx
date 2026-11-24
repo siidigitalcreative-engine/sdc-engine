@@ -73,7 +73,10 @@ function AppFrame({ children, dark }) {
   const router = useRouter();
   const { ready, currentMember } = useAuth();
   const isLogin = pathname === "/login";
-  const publicTimeline = pathname?.startsWith("/public/time-blocking/");
+  /* Everything under /public/ is a shared link: no sign-in, no sidebar. This
+     used to name the timeline path alone, so every later public page fell
+     through to the login screen. */
+  const publicPage = pathname?.startsWith("/public/");
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => { setMenuOpen(false); }, [pathname]);
@@ -81,13 +84,13 @@ function AppFrame({ children, dark }) {
   useEffect(() => {
     if (!ready) return;
 
-    if (!currentMember && !isLogin && !publicTimeline) router.replace("/login");
+    if (!currentMember && !isLogin && !publicPage) router.replace("/login");
     if (currentMember && isLogin) router.replace("/dashboard");
-  }, [ready, currentMember, isLogin, publicTimeline, router]);
+  }, [ready, currentMember, isLogin, publicPage, router]);
 
   const shellClass = `h-screen p-3 sm:p-5 ${dark ? "theme-dark" : "theme-light"}`;
 
-  if (!publicTimeline && (!ready || (!currentMember && !isLogin) || (currentMember && isLogin))) {
+  if (!publicPage && (!ready || (!currentMember && !isLogin) || (currentMember && isLogin))) {
     return (
       <div className={shellClass}>
         <div className="h-full rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center">
@@ -97,7 +100,7 @@ function AppFrame({ children, dark }) {
     );
   }
 
-  if (publicTimeline) return <div className="theme-dark min-h-screen" style={{ background: "#111114", color: "#F2F2F5" }}>{children}</div>;
+  if (publicPage) return <div className="theme-dark min-h-screen" style={{ background: "#111114", color: "#F2F2F5" }}>{children}</div>;
 
   return (
     <div className={shellClass} style={{ minHeight: 560, background: "var(--page)", color: "var(--text)" }}>
