@@ -28,7 +28,8 @@ export default function Lockers({ deptView }) {
   const dragRef = useRef(null);
   const writeSeq = useRef(0);
   const fileRef = useRef(null);
-  const pendingKind = useRef("image");
+  // in state, not a ref: the file input's accepted types have to re-render
+  const [pendingKind, setPendingKind] = useState("image");
 
   const scope = deptView || department?.id || "";
   const url = useCallback(
@@ -85,13 +86,16 @@ export default function Lockers({ deptView }) {
   };
 
   const chooseFile = (kind) => {
-    pendingKind.current = kind;
+    setPendingKind(kind);
     setPicker(false);
-    fileRef.current?.click();
+    // let the input re-render with the right accept before opening it
+    setTimeout(() => fileRef.current?.click(), 0);
   };
 
-  // Files go straight to Blob storage, so a large video never passes through
-  // the server's request body.
+  /* The file goes straight to Blob storage, so a large video never passes
+     through the server's request body. The store is private, like task
+     attachments, and the file is read back through /api/attachments, which
+     also answers Range requests so video actually plays. */
   const onFile = async (file) => {
     if (!file || !locker) return;
     setUploading(true);
@@ -100,18 +104,24 @@ export default function Lockers({ deptView }) {
       const kind = file.type.startsWith("video") ? "video" : "image";
       const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-60);
       const uploaded = await uploadToBlob(`sdc/lockers/${locker.id}-${Date.now().toString(36)}-${safe}`, file, {
-        access: "public",
+        access: "private",
         handleUploadUrl: "/api/upload-token",
+        multipart: true,
+        contentType: file.type || undefined,
       });
 
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
       const at = freeSpot(locker.items);
       await saveItems([...locker.items, {
         id: `it-${Date.now().toString(36)}`,
-        kind, url: uploaded.url, name: file.name,
+        kind, url: `${origin}/api/attachments/${uploaded.pathname}`, name: file.name,
         x: at.x, y: at.y, w: 230, h: kind === "video" ? 170 : 230,
       }]);
     } catch (e) {
-      setError(e.message || "That file did not upload.");
+      const tooBig = file.size > 50 * 1024 * 1024;
+      setError(tooBig
+        ? `${file.name} is ${(file.size / 1024 / 1024).toFixed(0)} MB. The limit is 50 MB.`
+        : (e.message || "That file did not upload."));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -201,7 +211,7 @@ export default function Lockers({ deptView }) {
   return (
     <div className="flex gap-4 items-start flex-col lg:flex-row">
       <input ref={fileRef} type="file" className="hidden"
-        accept={pendingKind.current === "video" ? "video/*" : "image/*"}
+        accept={pendingKind === "video" ? "video/*" : "image/*"}
         onChange={(e) => onFile(e.target.files?.[0])} />
 
       {/* the lockers in this department */}
