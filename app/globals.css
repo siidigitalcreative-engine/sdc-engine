@@ -85,3 +85,9 @@ select:not(.appearance-none) {
   background-position: right 12px center;
   padding-right: 34px;
 }
+
+/* Locker cards: the preview, download and remove controls appear on hover,
+   and stay visible on touch, where there is no hover. */
+.lk-tools { opacity: 0; transition: opacity .12s; }
+*:hover > .lk-tools, .lk-tools:focus-within { opacity: 1; }
+@media (hover: none) { .lk-tools { opacity: 1; } }
