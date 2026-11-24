@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { Download } from "lucide-react";
 
 const TINT = { image: { fg: "#3E8ED0", bg: "#E3EEF9" }, video: { fg: "#7C5CD8", bg: "#EBE4FA" } };
 
@@ -126,8 +127,18 @@ export default function PublicLockerPage() {
                         )}
                         <div style={{
                           padding: "6px 9px", fontSize: 11.5, color: "var(--text-2)", borderTop: "1px solid var(--border)",
-                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                        }}>{item.name}</div>
+                          display: "flex", alignItems: "center", gap: 6,
+                        }}>
+                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {item.name}
+                          </span>
+                          {/* a visitor can take the file, not just look at it */}
+                          <a href={item.url} download={item.name || "file"} title="Download"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ marginLeft: "auto", color: "var(--muted)", display: "flex" }}>
+                            <Download size={12} />
+                          </a>
+                        </div>
                       </>
                     )}
                   </div>
@@ -149,14 +160,32 @@ export default function PublicLockerPage() {
             position: "fixed", inset: 0, zIndex: 100, background: "rgba(10,8,12,.86)",
             display: "flex", alignItems: "center", justifyContent: "center", padding: 20, cursor: "zoom-out",
           }}>
-          {lightbox.kind === "video" ? (
-            <video src={lightbox.url} controls autoPlay playsInline
-              style={{ maxWidth: "100%", maxHeight: "90vh", borderRadius: 12 }} />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={lightbox.url} alt={lightbox.name || ""}
-              style={{ maxWidth: "100%", maxHeight: "90vh", borderRadius: 12, objectFit: "contain" }} />
-          )}
+          <div onClick={(e) => e.stopPropagation()} style={{ textAlign: "center", maxWidth: "100%" }}>
+            {lightbox.kind === "video" ? (
+              <video src={lightbox.url} controls autoPlay playsInline
+                style={{ maxWidth: "100%", maxHeight: "84vh", borderRadius: 12 }} />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={lightbox.url} alt={lightbox.name || ""}
+                style={{ maxWidth: "100%", maxHeight: "84vh", borderRadius: 12, objectFit: "contain" }} />
+            )}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 12 }}>
+              <span style={{ fontSize: 12, color: "var(--text-2)" }}>{lightbox.name}</span>
+              <a href={lightbox.url} download={lightbox.name || "file"}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none",
+                  background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-2)",
+                  borderRadius: 999, padding: "6px 12px", fontSize: 12, fontWeight: 600,
+                }}>
+                <Download size={13} /> Download
+              </a>
+              <button onClick={() => setLightbox(null)}
+                style={{
+                  background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-2)",
+                  borderRadius: 999, padding: "6px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                }}>Close</button>
+            </div>
+          </div>
         </div>
       )}
     </main>
