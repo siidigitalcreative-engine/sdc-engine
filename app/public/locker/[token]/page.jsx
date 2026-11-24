@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Download } from "lucide-react";
+import { Download, Check } from "lucide-react";
+import { downloadLockerFiles } from "../../../lib/locker-download";
 
 const TINT = { image: { fg: "#3E8ED0", bg: "#E3EEF9" }, video: { fg: "#7C5CD8", bg: "#EBE4FA" } };
 
@@ -13,6 +14,10 @@ export default function PublicLockerPage() {
   const [locker, setLocker] = useState(null);
   const [error, setError] = useState("");
   const [lightbox, setLightbox] = useState(null);
+  const [selecting, setSelecting] = useState(false);   // pick several files to download together
+  const [picks, setPicks] = useState([]);
+  const [dl, setDl] = useState(null);                  // { done, total } while a download is being prepared
+  const [dlError, setDlError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -70,11 +75,32 @@ export default function PublicLockerPage() {
   }
 
   const media = locker.items.filter((i) => i.kind !== "note");
+  const chosen = media.filter((i) => picks.includes(i.id));
+  const allChosen = media.length > 0 && chosen.length === media.length;
+  const togglePick = (id) => setPicks((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const download = async (items) => {
+    if (!items.length || dl) return;
+    setDlError("");
+    setDl({ done: 0, total: items.length });
+    try {
+      const { skipped } = await downloadLockerFiles(items, {
+        zipName: locker.name,
+        onProgress: (done, total) => setDl({ done, total }),
+      });
+      if (skipped.length) setDlError(`${skipped.length} file${skipped.length === 1 ? "" : "s"} could not be added: ${skipped.join(", ")}`);
+    } catch (e) {
+      setDlError(e.message || "The download did not work.");
+    } finally {
+      setDl(null);
+    }
+  };
 
   return (
     <main style={{ ...shell, alignItems: "flex-start", paddingTop: 28 }}>
       <div style={{ width: "100%", maxWidth: 1180 }}>
-        <header style={{ marginBottom: 14 }}>
+        <header style={{ marginBottom: 14, display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
           {locker.brand ? (
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--muted)" }}>
               {locker.brand}
@@ -84,7 +110,36 @@ export default function PublicLockerPage() {
           <p style={{ fontSize: 12.5, color: "var(--muted)", margin: "4px 0 0" }}>
             {media.length} file{media.length === 1 ? "" : "s"}
           </p>
+          </div>
+
+          {media.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {selecting ? (
+                <>
+                  <button type="button" onClick={() => setPicks(allChosen ? [] : media.map((i) => i.id))} style={pill}>
+                    {allChosen ? "Clear" : "Select all"}
+                  </button>
+                  <button type="button" disabled={!chosen.length || !!dl} onClick={() => download(chosen)}
+                    style={{ ...pillAccent, opacity: !chosen.length || dl ? 0.55 : 1 }}>
+                    <Download size={14} />
+                    {dl ? `Preparing ${dl.done} of ${dl.total}…` : `Download selected (${chosen.length})`}
+                  </button>
+                  <button type="button" onClick={() => { setSelecting(false); setPicks([]); }} style={pill}>Done</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setSelecting(true)} style={pill}>Select files</button>
+                  <button type="button" disabled={!!dl} onClick={() => download(media)}
+                    style={{ ...pillAccent, opacity: dl ? 0.55 : 1 }}>
+                    <Download size={14} />
+                    {dl ? `Preparing ${dl.done} of ${dl.total}…` : `Download all (${media.length})`}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </header>
+        {dlError && <p style={{ fontSize: 12.5, color: "#E5536E", margin: "-6px 0 12px" }}>{dlError}</p>}
 
         <div style={{
           border: "1px solid var(--border)", borderRadius: 18, background: "var(--card)", overflow: "hidden",
@@ -102,15 +157,16 @@ export default function PublicLockerPage() {
                 // drawn at the file's own proportions, so it fills its frame
                 const ratio = isNote ? 0 : Number(item.ratio) || 0;
                 const height = ratio ? Math.round(item.w / ratio) + 28 : item.h;
+                const picked = picks.includes(item.id);
                 return (
                   <div key={item.id}
-                    onClick={() => !isNote && setLightbox(item)}
+                    onClick={() => { if (!isNote) { if (selecting) togglePick(item.id); else setLightbox(item); } }}
                     style={{
                       position: "absolute", left: item.x, top: item.y, width: item.w, height,
-                      borderRadius: 12, overflow: "hidden", cursor: isNote ? "default" : "zoom-in",
+                      borderRadius: 12, overflow: "hidden", cursor: isNote ? "default" : selecting ? "pointer" : "zoom-in",
                       background: isNote ? "#FBE9C6" : "var(--card)",
-                      border: `1px solid ${isNote ? "#E8D3A6" : "var(--border)"}`,
-                      boxShadow: "0 1px 3px rgba(0,0,0,.18)",
+                      border: `1px solid ${picked ? "#F0784B" : isNote ? "#E8D3A6" : "var(--border)"}`,
+                      boxShadow: picked ? "0 0 0 2px #F0784B" : "0 1px 3px rgba(0,0,0,.18)",
                     }}>
                     {isNote ? (
                       <div style={{ padding: "10px 11px", fontSize: 12.5, lineHeight: 1.5, color: "#4A3A16", whiteSpace: "pre-wrap" }}>
@@ -123,6 +179,15 @@ export default function PublicLockerPage() {
                           fontSize: 9.5, fontWeight: 800, letterSpacing: ".04em", textTransform: "uppercase",
                           background: tint.bg, color: tint.fg,
                         }}>{item.kind}</span>
+
+                        {selecting && (
+                          <span style={{
+                            position: "absolute", top: 6, right: 6, zIndex: 3, height: 22, width: 22, borderRadius: 999,
+                            display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
+                            background: picked ? "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)" : "rgba(0,0,0,.45)",
+                            border: picked ? "none" : "2px solid rgba(255,255,255,.85)", color: "#fff",
+                          }}>{picked ? <Check size={13} strokeWidth={3} /> : null}</span>
+                        )}
 
                         {item.kind === "video" ? (
                           <video src={item.url} muted playsInline
@@ -213,4 +278,14 @@ const card = {
   background: "var(--card)",
   border: "1px solid var(--border)",
   borderRadius: 18,
+};
+
+const pill = {
+  background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-2)",
+  borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+  display: "inline-flex", alignItems: "center", gap: 6,
+};
+
+const pillAccent = {
+  ...pill, border: "none", background: "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)", color: "var(--on-accent, #fff)",
 };
