@@ -25,6 +25,7 @@ export default function Lockers({ deptView }) {
   const [note, setNote] = useState("");
   const [picker, setPicker] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [progress, setProgress] = useState(null);
   const [uploading, setUploading] = useState(false);
 
   const dragRef = useRef(null);
@@ -94,44 +95,71 @@ export default function Lockers({ deptView }) {
     setTimeout(() => fileRef.current?.click(), 0);
   };
 
-  /* The file goes straight to Blob storage, so a large video never passes
-     through the server's request body. The store is private, like task
-     attachments, and the file is read back through /api/attachments, which
-     also answers Range requests so video actually plays. */
-  const onFile = async (file) => {
-    if (!file || !locker) return;
+  /* Files go straight to Blob storage, so a large video never passes through
+     the server's request body. The store is private, like task attachments,
+     and files are read back through /api/attachments, which also answers
+     Range requests so video actually plays.
+
+     Several files at once are uploaded one after another and saved in a
+     single write at the end, so the board is not rewritten per file. */
+  const onFiles = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length || !locker) return;
+
     setUploading(true);
     setError("");
+    const added = [];
+    const failed = [];
+
     try {
-      const kind = file.type.startsWith("video") ? "video" : "image";
-      const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-60);
-      const uploaded = await uploadToBlob(`sdc/lockers/${locker.id}-${Date.now().toString(36)}-${safe}`, file, {
-        access: "private",
-        handleUploadUrl: "/api/upload-token",
-        multipart: true,
-        contentType: file.type || undefined,
-      });
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        setProgress({ done: index, total: files.length, name: file.name });
 
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const at = freeSpot(locker.items);
+        if (file.size > 50 * 1024 * 1024) {
+          failed.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(0)} MB, over the 50 MB limit)`);
+          continue;
+        }
 
-      // keep the file's own ratio: width fixed, height follows, plus the name row
-      const ratio = await ratioOf(file, kind);
-      const width = 230;
-      const height = Math.round(Math.min(520, Math.max(90, width / (ratio || 1)))) + 28;
+        try {
+          const kind = file.type.startsWith("video") ? "video" : "image";
+          const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-60);
+          const uploaded = await uploadToBlob(
+            `sdc/lockers/${locker.id}-${Date.now().toString(36)}-${index}-${safe}`, file, {
+              access: "private",
+              handleUploadUrl: "/api/upload-token",
+              multipart: true,
+              contentType: file.type || undefined,
+            });
 
-      await saveItems([...locker.items, {
-        id: `it-${Date.now().toString(36)}`,
-        kind, url: `${origin}/api/attachments/${uploaded.pathname}`, name: file.name,
-        ratio, x: at.x, y: at.y, w: width, h: height,
-      }]);
-    } catch (e) {
-      const tooBig = file.size > 50 * 1024 * 1024;
-      setError(tooBig
-        ? `${file.name} is ${(file.size / 1024 / 1024).toFixed(0)} MB. The limit is 50 MB.`
-        : (e.message || "That file did not upload."));
+          const origin = typeof window !== "undefined" ? window.location.origin : "";
+          const ratio = await ratioOf(file, kind);
+          const width = 230;
+
+          // new cards flow left to right, wrapping every five, under what exists
+          const slot = added.length;
+          const base = freeSpot(locker.items);
+          added.push({
+            id: `it-${Date.now().toString(36)}-${slot}`,
+            kind,
+            url: `${origin}/api/attachments/${uploaded.pathname}`,
+            name: file.name,
+            ratio,
+            x: base.x + (slot % 5) * (width + 22),
+            y: base.y + Math.floor(slot / 5) * 300,
+            w: width,
+            h: Math.round(Math.min(520, Math.max(90, width / (ratio || 1)))) + 28,
+          });
+        } catch (e) {
+          failed.push(`${file.name} (${e.message || "did not upload"})`);
+        }
+      }
+
+      if (added.length) await saveItems([...locker.items, ...added]);
+      if (failed.length) setError(`${failed.length} file${failed.length === 1 ? "" : "s"} skipped: ${failed.join(", ")}`);
     } finally {
       setUploading(false);
+      setProgress(null);
       if (fileRef.current) fileRef.current.value = "";
     }
   };
@@ -248,9 +276,9 @@ export default function Lockers({ deptView }) {
 
   return (
     <div className="flex gap-4 items-start flex-col lg:flex-row">
-      <input ref={fileRef} type="file" className="hidden"
+      <input ref={fileRef} type="file" className="hidden" multiple
         accept={pendingKind === "video" ? "video/*" : "image/*"}
-        onChange={(e) => onFile(e.target.files?.[0])} />
+        onChange={(e) => onFiles(e.target.files)} />
 
       {/* the lockers in this department */}
       <aside className="w-full lg:w-64 shrink-0">
@@ -318,7 +346,9 @@ export default function Lockers({ deptView }) {
               <button onClick={() => setPicker(true)} disabled={busy || uploading}
                 className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
                 style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
-                <Plus size={14} /> {uploading ? "Uploading…" : "Add media"}
+                <Plus size={14} /> {uploading
+                  ? (progress ? `Uploading ${progress.done + 1} of ${progress.total}…` : "Uploading…")
+                  : "Add media"}
               </button>
               <button onClick={addNote} disabled={busy}
                 className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
@@ -418,8 +448,8 @@ export default function Lockers({ deptView }) {
             <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>Pick what you are putting in this locker.</p>
 
             {[
-              { kind: "image", Icon: ImageIcon, title: "Image", note: "JPG, PNG or WebP" },
-              { kind: "video", Icon: Film, title: "Video", note: "MP4 or MOV" },
+              { kind: "image", Icon: ImageIcon, title: "Images", note: "JPG, PNG or WebP. Pick as many as you like." },
+              { kind: "video", Icon: Film, title: "Videos", note: "MP4 or MOV, up to 50 MB each." },
             ].map(({ kind, Icon, title, note: hint }) => (
               <button key={kind} onClick={() => chooseFile(kind)}
                 className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 mb-2 text-left"
