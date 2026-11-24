@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { upload as uploadToBlob } from "@vercel/blob/client";
 import {
   Plus, Trash2, X, Globe2, Copy, ExternalLink, Image as ImageIcon, Film, StickyNote, Lock,
-  Maximize2, Download,
+  Maximize2, Download, Check, CheckSquare,
 } from "lucide-react";
 import { useAuth } from "./auth";
+import { downloadLockerFiles } from "./lib/locker-download";
 
 const ACCENT = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 const ON_ACCENT = "var(--on-accent)";
@@ -27,6 +28,9 @@ export default function Lockers({ deptView }) {
   const [preview, setPreview] = useState(null);
   const [progress, setProgress] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [selecting, setSelecting] = useState(false);   // pick several files to download together
+  const [picks, setPicks] = useState([]);
+  const [dl, setDl] = useState(null);                  // { done, total } while a download is being prepared
 
   const dragRef = useRef(null);
   const writeSeq = useRef(0);
@@ -80,6 +84,30 @@ export default function Lockers({ deptView }) {
 
   const locker = lockers.find((l) => l.id === currentId) || null;
   const saveItems = (items) => locker && send("PATCH", { id: locker.id, patch: { items } });
+
+  /* ---- downloading: everything, or just the files that were ticked ---- */
+
+  const media = locker ? locker.items.filter((i) => i.kind !== "note") : [];
+  const chosen = media.filter((i) => picks.includes(i.id));
+  const allChosen = media.length > 0 && chosen.length === media.length;
+  const togglePick = (id) => setPicks((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const download = async (items) => {
+    if (!items.length || dl) return;
+    setError("");
+    setDl({ done: 0, total: items.length });
+    try {
+      const { skipped } = await downloadLockerFiles(items, {
+        zipName: locker.name,
+        onProgress: (done, total) => setDl({ done, total }),
+      });
+      if (skipped.length) setError(`${skipped.length} file${skipped.length === 1 ? "" : "s"} could not be added: ${skipped.join(", ")}`);
+    } catch (e) {
+      setError(e.message || "The download did not work.");
+    } finally {
+      setDl(null);
+    }
+  };
 
   /* ---- adding things ---- */
 
@@ -296,7 +324,7 @@ export default function Lockers({ deptView }) {
             const media = l.items.filter((i) => i.kind !== "note").length;
             const on = l.id === currentId;
             return (
-              <button key={l.id} onClick={() => { setCurrentId(l.id); setSelected(""); }}
+              <button key={l.id} onClick={() => { setCurrentId(l.id); setSelected(""); setPicks([]); }}
                 className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-left"
                 style={{ background: on ? "var(--col)" : "transparent", border: `1px solid ${on ? "var(--border)" : "transparent"}` }}>
                 <span className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0"
@@ -355,6 +383,22 @@ export default function Lockers({ deptView }) {
                 style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
                 <StickyNote size={14} /> Note
               </button>
+              {media.length > 0 && (
+                <>
+                  <button onClick={() => { setSelecting((s) => !s); setPicks([]); }}
+                    className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                    style={selecting
+                      ? { background: "var(--col)", color: "var(--text)", border: "1px solid #F0784B" }
+                      : { background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                    <CheckSquare size={14} /> {selecting ? "Done" : "Select"}
+                  </button>
+                  <button onClick={() => download(media)} disabled={!!dl}
+                    className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                    style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                    <Download size={14} /> {dl && !selecting ? `Preparing ${dl.done} of ${dl.total}…` : "Download all"}
+                  </button>
+                </>
+              )}
               <button onClick={() => send("PATCH", { id: locker.id, patch: { share: { ...locker.share, enabled: !locker.share?.enabled } } })}
                 disabled={busy}
                 className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
@@ -375,6 +419,19 @@ export default function Lockers({ deptView }) {
                 className="tp-ib rounded-full p-2" style={{ color: "#E5536E" }}><Trash2 size={14} /></button>
             </div>
 
+            {selecting && (
+              <div className="flex items-center gap-2 mb-2 flex-wrap text-xs" style={{ color: "var(--muted)" }}>
+                <span>{chosen.length ? `${chosen.length} selected` : "Click files to select them."}</span>
+                <button onClick={() => setPicks(allChosen ? [] : media.map((i) => i.id))}
+                  className="underline" style={{ color: "var(--text-2)" }}>{allChosen ? "Clear" : "Select all"}</button>
+                <button onClick={() => download(chosen)} disabled={!chosen.length || !!dl}
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
+                  style={{ background: ACCENT, color: ON_ACCENT, opacity: !chosen.length || dl ? 0.55 : 1 }}>
+                  <Download size={12} /> {dl ? `Preparing ${dl.done} of ${dl.total}…` : `Download selected (${chosen.length})`}
+                </button>
+              </div>
+            )}
+
             {error && <p className="text-xs mb-2" style={{ color: "#E5536E" }}>{error}</p>}
             {note && <p className="text-xs mb-2" style={{ color: "#3FA37A" }}>{note}</p>}
 
@@ -394,6 +451,7 @@ export default function Lockers({ deptView }) {
 
                 {locker.items.map((item) => (
                   <LockerCard key={item.id} item={item} selected={selected === item.id}
+                    selecting={selecting} picked={picks.includes(item.id)} onToggle={() => togglePick(item.id)}
                     onGrab={(e) => begin(e, item, "move")}
                     onResize={(e) => begin(e, item, "size")}
                     onRemove={() => removeItem(item.id)}
@@ -474,7 +532,7 @@ export default function Lockers({ deptView }) {
 
 const NAME_ROW = 28;
 
-function LockerCard({ item, selected, onGrab, onResize, onRemove, onText, onRename, onPreview, onRatio }) {
+function LockerCard({ item, selected, selecting = false, picked = false, onToggle, onGrab, onResize, onRemove, onText, onRename, onPreview, onRatio }) {
   const tint = TINT[item.kind] || TINT.image;
   const isNote = item.kind === "note";
 
@@ -491,9 +549,22 @@ function LockerCard({ item, selected, onGrab, onResize, onRemove, onText, onRena
         position: "absolute", left: item.x, top: item.y, width: item.w, height,
         borderRadius: 12, overflow: "hidden", cursor: "grab",
         background: isNote ? "#FBE9C6" : "var(--card)",
-        border: `1px solid ${selected ? "#F0784B" : isNote ? "#E8D3A6" : "var(--border)"}`,
-        boxShadow: selected ? "0 6px 20px rgba(0,0,0,.3)" : "0 1px 3px rgba(0,0,0,.18)",
+        border: `1px solid ${selected || picked ? "#F0784B" : isNote ? "#E8D3A6" : "var(--border)"}`,
+        boxShadow: picked ? "0 0 0 2px #F0784B" : selected ? "0 6px 20px rgba(0,0,0,.3)" : "0 1px 3px rgba(0,0,0,.18)",
       }}>
+      {/* while picking files, the whole card is one big tick box */}
+      {selecting && !isNote && (
+        <>
+          <div onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(); }}
+            style={{ position: "absolute", inset: 0, zIndex: 3, cursor: "pointer" }} />
+          <span style={{
+            position: "absolute", top: 6, right: 6, zIndex: 4, height: 22, width: 22, borderRadius: 999,
+            display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none",
+            background: picked ? ACCENT : "rgba(0,0,0,.45)",
+            border: picked ? "none" : "2px solid rgba(255,255,255,.85)", color: "#fff",
+          }}>{picked ? <Check size={13} strokeWidth={3} /> : null}</span>
+        </>
+      )}
       {/* double-clicking the picture opens it too */}
       {isNote ? (
         <textarea defaultValue={item.text}
