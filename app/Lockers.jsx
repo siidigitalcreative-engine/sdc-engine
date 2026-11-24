@@ -114,10 +114,16 @@ export default function Lockers({ deptView }) {
 
       const origin = typeof window !== "undefined" ? window.location.origin : "";
       const at = freeSpot(locker.items);
+
+      // keep the file's own ratio: width fixed, height follows, plus the name row
+      const ratio = await ratioOf(file, kind);
+      const width = 230;
+      const height = Math.round(Math.min(520, Math.max(90, width / (ratio || 1)))) + 28;
+
       await saveItems([...locker.items, {
         id: `it-${Date.now().toString(36)}`,
         kind, url: `${origin}/api/attachments/${uploaded.pathname}`, name: file.name,
-        x: at.x, y: at.y, w: 230, h: kind === "video" ? 170 : 230,
+        ratio, x: at.x, y: at.y, w: width, h: height,
       }]);
     } catch (e) {
       const tooBig = file.size > 50 * 1024 * 1024;
@@ -129,6 +135,27 @@ export default function Lockers({ deptView }) {
       if (fileRef.current) fileRef.current.value = "";
     }
   };
+
+  /* The shape of the file itself, so a card starts at the right proportions
+     instead of being squared off. Falls back to a sensible default if the
+     browser cannot read it. */
+  const ratioOf = (file, kind) => new Promise((resolve) => {
+    const src = URL.createObjectURL(file);
+    const done = (ratio) => { URL.revokeObjectURL(src); resolve(ratio || 1); };
+
+    if (kind === "video") {
+      const probe = document.createElement("video");
+      probe.preload = "metadata";
+      probe.onloadedmetadata = () => done(probe.videoWidth / probe.videoHeight);
+      probe.onerror = () => done(16 / 9);
+      probe.src = src;
+      return;
+    }
+    const probe = new Image();
+    probe.onload = () => done(probe.naturalWidth / probe.naturalHeight);
+    probe.onerror = () => done(1);
+    probe.src = src;
+  });
 
   const addNote = () => {
     if (!locker) return;
@@ -153,6 +180,7 @@ export default function Lockers({ deptView }) {
       id: item.id, mode,
       startX: event.clientX, startY: event.clientY,
       ox: item.x, oy: item.y, ow: item.w, oh: item.h,
+      ratio: item.kind === "note" ? 0 : Number(item.ratio) || 0,
       live: null,
     };
   };
@@ -164,9 +192,17 @@ export default function Lockers({ deptView }) {
       const dx = event.clientX - drag.startX;
       const dy = event.clientY - drag.startY;
 
-      drag.live = drag.mode === "move"
-        ? { x: Math.max(0, snap(drag.ox + dx)), y: Math.max(0, snap(drag.oy + dy)) }
-        : { w: Math.max(120, snap(drag.ow + dx)), h: Math.max(90, snap(drag.oh + dy)) };
+      if (drag.mode === "move") {
+        drag.live = { x: Math.max(0, snap(drag.ox + dx)), y: Math.max(0, snap(drag.oy + dy)) };
+      } else {
+        const width = Math.max(120, snap(drag.ow + dx));
+        /* A file with known proportions resizes along them, so the picture is
+           never cropped or squashed however the card is dragged. The 28px is
+           the name row under it. */
+        drag.live = drag.ratio
+          ? { w: width, h: Math.round(width / drag.ratio) + 28 }
+          : { w: width, h: Math.max(90, snap(drag.oh + dy)) };
+      }
 
       // move it on screen now; the save happens once, on release
       setLockers((list) => list.map((l) => (l.id !== locker.id ? l : {
@@ -333,7 +369,8 @@ export default function Lockers({ deptView }) {
                     onRemove={() => removeItem(item.id)}
                     onText={(text) => patchItem(item.id, { text })}
                     onRename={(name) => patchItem(item.id, { name })}
-                    onPreview={() => setPreview(item)} />
+                    onPreview={() => setPreview(item)}
+                    onRatio={(ratio) => patchItem(item.id, { ratio })} />
                 ))}
               </div>
             </div>
@@ -405,7 +442,7 @@ export default function Lockers({ deptView }) {
   );
 }
 
-function LockerCard({ item, selected, onGrab, onResize, onRemove, onText, onRename, onPreview }) {
+function LockerCard({ item, selected, onGrab, onResize, onRemove, onText, onRename, onPreview, onRatio }) {
   const tint = TINT[item.kind] || TINT.image;
   const isNote = item.kind === "note";
 
@@ -438,11 +475,17 @@ function LockerCard({ item, selected, onGrab, onResize, onRemove, onText, onRena
 
           {item.kind === "video" ? (
             <video src={item.url} muted playsInline onDoubleClick={onPreview}
-              style={{ width: "100%", height: item.h - 28, objectFit: "cover", background: "#000", display: "block" }} />
+              style={{ width: "100%", height: item.h - 28, objectFit: "contain", background: "#000", display: "block" }} />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={item.url} alt={item.name || "Locker media"} onDoubleClick={onPreview}
-              style={{ width: "100%", height: item.h - 28, objectFit: "cover", display: "block" }} />
+              onLoad={(e) => {
+                // a card uploaded before ratios were stored learns its own here
+                if (!item.ratio && e.currentTarget.naturalWidth && onRatio) {
+                  onRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight);
+                }
+              }}
+              style={{ width: "100%", height: item.h - 28, objectFit: "contain", background: "var(--col)", display: "block" }} />
           )}
           {/* the file name is editable in place: the uploaded name is rarely
               what anyone wants to read on a board */}
