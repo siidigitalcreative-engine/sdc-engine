@@ -32,8 +32,12 @@ export default function PublicLockerPage() {
      was built on. */
   const bounds = useMemo(() => {
     const items = locker?.items || [];
+    const drawnHeight = (i) => {
+      const ratio = i.kind === "note" ? 0 : Number(i.ratio) || 0;
+      return ratio ? Math.round(i.w / ratio) + 28 : i.h;
+    };
     const width = items.reduce((w, i) => Math.max(w, i.x + i.w), 0) + 44;
-    const height = items.reduce((h, i) => Math.max(h, i.y + i.h), 0) + 44;
+    const height = items.reduce((h, i) => Math.max(h, i.y + drawnHeight(i)), 0) + 44;
     return { width: Math.max(480, width), height: Math.max(320, height) };
   }, [locker]);
 
@@ -95,11 +99,14 @@ export default function PublicLockerPage() {
               {locker.items.map((item) => {
                 const isNote = item.kind === "note";
                 const tint = TINT[item.kind] || TINT.image;
+                // drawn at the file's own proportions, so it fills its frame
+                const ratio = isNote ? 0 : Number(item.ratio) || 0;
+                const height = ratio ? Math.round(item.w / ratio) + 28 : item.h;
                 return (
                   <div key={item.id}
                     onClick={() => !isNote && setLightbox(item)}
                     style={{
-                      position: "absolute", left: item.x, top: item.y, width: item.w, height: item.h,
+                      position: "absolute", left: item.x, top: item.y, width: item.w, height,
                       borderRadius: 12, overflow: "hidden", cursor: isNote ? "default" : "zoom-in",
                       background: isNote ? "#FBE9C6" : "var(--card)",
                       border: `1px solid ${isNote ? "#E8D3A6" : "var(--border)"}`,
@@ -119,11 +126,11 @@ export default function PublicLockerPage() {
 
                         {item.kind === "video" ? (
                           <video src={item.url} muted playsInline
-                            style={{ width: "100%", height: item.h - 28, objectFit: "contain", background: "#000", display: "block" }} />
+                            style={{ width: "100%", height: height - 28, objectFit: "cover", background: "#000", display: "block" }} />
                         ) : (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={item.url} alt={item.name || locker.name}
-                            style={{ width: "100%", height: item.h - 28, objectFit: "contain", background: "var(--col)", display: "block" }} />
+                            style={{ width: "100%", height: height - 28, objectFit: "cover", display: "block" }} />
                         )}
                         <div style={{
                           padding: "6px 9px", fontSize: 11.5, color: "var(--text-2)", borderTop: "1px solid var(--border)",
