@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { upload as uploadToBlob } from "@vercel/blob/client";
 import {
   Plus, Trash2, X, Globe2, Copy, ExternalLink, Image as ImageIcon, Film, StickyNote, Lock,
+  Maximize2, Download,
 } from "lucide-react";
 import { useAuth } from "./auth";
 
@@ -23,6 +24,7 @@ export default function Lockers({ deptView }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [picker, setPicker] = useState(false);
+  const [preview, setPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
 
   const dragRef = useRef(null);
@@ -329,13 +331,44 @@ export default function Lockers({ deptView }) {
                     onGrab={(e) => begin(e, item, "move")}
                     onResize={(e) => begin(e, item, "size")}
                     onRemove={() => removeItem(item.id)}
-                    onText={(text) => patchItem(item.id, { text })} />
+                    onText={(text) => patchItem(item.id, { text })}
+                    onRename={(name) => patchItem(item.id, { name })}
+                    onPreview={() => setPreview(item)} />
                 ))}
               </div>
             </div>
           </>
         )}
       </section>
+
+      {/* one file, full size */}
+      {preview && (
+        <div role="presentation" onClick={() => setPreview(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(10,8,12,.86)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 20, cursor: "zoom-out" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "100%", maxHeight: "92vh", textAlign: "center" }}>
+            {preview.kind === "video" ? (
+              <video src={preview.url} controls autoPlay playsInline
+                style={{ maxWidth: "100%", maxHeight: "84vh", borderRadius: 12 }} />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={preview.url} alt={preview.name || ""}
+                style={{ maxWidth: "100%", maxHeight: "84vh", borderRadius: 12, objectFit: "contain" }} />
+            )}
+            <div className="flex items-center justify-center gap-2 mt-3">
+              <span className="text-xs" style={{ color: "var(--text-2)" }}>{preview.name}</span>
+              <a href={preview.url} download={preview.name || "file"}
+                className="rounded-full px-3 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
+                style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                <Download size={13} /> Download
+              </a>
+              <button onClick={() => setPreview(null)}
+                className="rounded-full px-3 py-1.5 text-xs"
+                style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* what are you adding */}
       {picker && (
@@ -372,7 +405,7 @@ export default function Lockers({ deptView }) {
   );
 }
 
-function LockerCard({ item, selected, onGrab, onResize, onRemove, onText }) {
+function LockerCard({ item, selected, onGrab, onResize, onRemove, onText, onRename, onPreview }) {
   const tint = TINT[item.kind] || TINT.image;
   const isNote = item.kind === "note";
 
@@ -385,6 +418,7 @@ function LockerCard({ item, selected, onGrab, onResize, onRemove, onText }) {
         border: `1px solid ${selected ? "#F0784B" : isNote ? "#E8D3A6" : "var(--border)"}`,
         boxShadow: selected ? "0 6px 20px rgba(0,0,0,.3)" : "0 1px 3px rgba(0,0,0,.18)",
       }}>
+      {/* double-clicking the picture opens it too */}
       {isNote ? (
         <textarea defaultValue={item.text}
           onPointerDown={(e) => e.stopPropagation()}
@@ -403,28 +437,46 @@ function LockerCard({ item, selected, onGrab, onResize, onRemove, onText }) {
           }}>{item.kind}</span>
 
           {item.kind === "video" ? (
-            <video src={item.url} muted playsInline
+            <video src={item.url} muted playsInline onDoubleClick={onPreview}
               style={{ width: "100%", height: item.h - 28, objectFit: "cover", background: "#000", display: "block" }} />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.url} alt={item.name || "Locker media"}
+            <img src={item.url} alt={item.name || "Locker media"} onDoubleClick={onPreview}
               style={{ width: "100%", height: item.h - 28, objectFit: "cover", display: "block" }} />
           )}
-          <div style={{
-            padding: "6px 9px", fontSize: 11.5, color: "var(--text-2)", borderTop: "1px solid var(--border)",
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          }}>{item.name}</div>
+          {/* the file name is editable in place: the uploaded name is rarely
+              what anyone wants to read on a board */}
+          <input defaultValue={item.name} key={item.name}
+            onPointerDown={(e) => e.stopPropagation()}
+            onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== item.name) onRename(v); }}
+            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+            title="Rename"
+            style={{
+              width: "100%", padding: "6px 9px", fontSize: 11.5, color: "var(--text-2)",
+              borderTop: "1px solid var(--border)", border: "none", borderTopWidth: 1, borderTopStyle: "solid",
+              borderTopColor: "var(--border)", background: "transparent", outline: "none", fontFamily: "inherit",
+            }} />
         </>
       )}
 
-      <button onClick={(e) => { e.stopPropagation(); onRemove(); }}
-        onPointerDown={(e) => e.stopPropagation()}
-        title="Remove"
-        style={{
-          position: "absolute", top: 5, right: 5, height: 19, width: 19, borderRadius: 999, border: "none",
-          background: "rgba(0,0,0,.45)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer",
-        }}><X size={10} /></button>
+      <div className="lk-tools" style={{ position: "absolute", top: 5, right: 5, display: "flex", gap: 4 }}>
+        {!isNote && (
+          <>
+            <button onClick={(e) => { e.stopPropagation(); onPreview(); }}
+              onPointerDown={(e) => e.stopPropagation()} title="Preview" style={toolBtn}>
+              <Maximize2 size={10} />
+            </button>
+            <a href={item.url} download={item.name || "file"} onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()} title="Download" style={toolBtn}>
+              <Download size={10} />
+            </a>
+          </>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          onPointerDown={(e) => e.stopPropagation()} title="Remove" style={toolBtn}>
+          <X size={10} />
+        </button>
+      </div>
 
       <span onPointerDown={onResize} title="Resize"
         style={{
@@ -434,3 +486,17 @@ function LockerCard({ item, selected, onGrab, onResize, onRemove, onText }) {
     </div>
   );
 }
+
+
+const toolBtn = {
+  height: 19,
+  width: 19,
+  borderRadius: 999,
+  border: "none",
+  background: "rgba(0,0,0,.5)",
+  color: "#fff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
