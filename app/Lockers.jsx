@@ -442,14 +442,23 @@ export default function Lockers({ deptView }) {
   );
 }
 
+const NAME_ROW = 28;
+
 function LockerCard({ item, selected, onGrab, onResize, onRemove, onText, onRename, onPreview, onRatio }) {
   const tint = TINT[item.kind] || TINT.image;
   const isNote = item.kind === "note";
 
+  /* The card is drawn at the file's own proportions, whatever height happens
+     to be stored. The frame then matches the picture exactly, so it fills the
+     card with no bars down the sides and nothing cropped. */
+  const ratio = isNote ? 0 : Number(item.ratio) || 0;
+  const height = ratio ? Math.round(item.w / ratio) + NAME_ROW : item.h;
+  const mediaHeight = height - NAME_ROW;
+
   return (
     <div onPointerDown={onGrab}
       style={{
-        position: "absolute", left: item.x, top: item.y, width: item.w, height: item.h,
+        position: "absolute", left: item.x, top: item.y, width: item.w, height,
         borderRadius: 12, overflow: "hidden", cursor: "grab",
         background: isNote ? "#FBE9C6" : "var(--card)",
         border: `1px solid ${selected ? "#F0784B" : isNote ? "#E8D3A6" : "var(--border)"}`,
@@ -475,7 +484,7 @@ function LockerCard({ item, selected, onGrab, onResize, onRemove, onText, onRena
 
           {item.kind === "video" ? (
             <video src={item.url} muted playsInline onDoubleClick={onPreview}
-              style={{ width: "100%", height: item.h - 28, objectFit: "contain", background: "#000", display: "block" }} />
+              style={{ width: "100%", height: mediaHeight, objectFit: "cover", background: "#000", display: "block" }} />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={item.url} alt={item.name || "Locker media"} onDoubleClick={onPreview}
@@ -485,7 +494,7 @@ function LockerCard({ item, selected, onGrab, onResize, onRemove, onText, onRena
                   onRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight);
                 }
               }}
-              style={{ width: "100%", height: item.h - 28, objectFit: "contain", background: "var(--col)", display: "block" }} />
+              style={{ width: "100%", height: mediaHeight, objectFit: "cover", display: "block" }} />
           )}
           {/* the file name is editable in place: the uploaded name is rarely
               what anyone wants to read on a board */}
