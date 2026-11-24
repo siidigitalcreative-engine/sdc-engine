@@ -27,6 +27,10 @@ function normalizeItem(item) {
     name: clean(item?.name, 140),
     // notes carry their text; media carry a caption in `name`
     text: kind === "note" ? String(item?.text ?? "").slice(0, 2000) : "",
+    // the file's own proportions, so a card is never cropped or stretched
+    ratio: Number.isFinite(Number(item?.ratio)) && Number(item.ratio) > 0
+      ? Math.min(6, Math.max(0.16, Number(item.ratio)))
+      : 0,
     x: num(item?.x, 44, 0, 6000),
     y: num(item?.y, 44, 0, 6000),
     w: num(item?.w, 230, 120, 1600),
