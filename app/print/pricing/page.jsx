@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2, Globe2, Copy, ExternalLink, ArrowLeft, Tag } from "lucide-react";
+import { Plus, Trash2, Globe2, Copy, ExternalLink, ArrowLeft, Tag, Send, Image as ImageIcon } from "lucide-react";
 import PageAccess from "../../PageAccess";
 import DepartmentView from "../../DepartmentView";
 import { useAuth } from "../../auth";
+import { useLarkSend } from "../../LarkSend";
 
 const ACCENT = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 const cell = { borderBottom: "1px solid var(--border)", borderRight: "1px solid var(--border)" };
@@ -20,6 +21,7 @@ const field = {
 
 function PricingInner() {
   const { department } = useAuth();
+  const { openLarkSend, larkPicker } = useLarkSend();
   const [sheets, setSheets] = useState([]);
   const [currentId, setCurrentId] = useState("");
   const [error, setError] = useState("");
@@ -103,6 +105,49 @@ function PricingInner() {
   const newSheet = async () => {
     const body = await send("POST", { sheet: { name: "Untitled price list", rows: [] } });
     if (body?.sheets?.[0]) setCurrentId(body.sheets[0].id);
+  };
+
+  /* The whole table as one picture, saved or sent to a Lark group. */
+  const exportPayload = () => ({
+    sheet: {
+      name: sheet?.name || "Price list",
+      note: sheet?.note || "",
+      rows: (sheet?.rows || []).map((r) => ({
+        id: r.id, brand: r.brand, product: r.product,
+        tiers: (r.tiers || []).map((t) => ({ id: t.id, pieces: t.pieces, price: t.price })),
+      })),
+    },
+    stamp: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
+  });
+
+  const exportPng = async () => {
+    if (!sheet?.rows?.length) { setError("Nothing priced yet to export."); return; }
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/pricing-image", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(exportPayload()),
+      });
+      if (!res.ok) throw new Error("Unable to render that price list.");
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(await res.blob());
+      link.href = url;
+      link.download = `${(sheet.name || "pricing").replace(/[^a-zA-Z0-9 ._-]+/g, "-").trim()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendToLark = () => {
+    if (!sheet?.rows?.length) { setError("Nothing priced yet to send."); return; }
+    openLarkSend("/api/lark/pricing-image", exportPayload(), { label: sheet.name || "this price list" });
   };
 
   const copyLink = async () => {
@@ -200,6 +245,16 @@ function PricingInner() {
                     className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
                     style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
                     <Plus size={14} /> Add product
+                  </button>
+                  <button onClick={exportPng} disabled={busy}
+                    className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                    style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                    <ImageIcon size={14} /> Export PNG
+                  </button>
+                  <button onClick={sendToLark} disabled={busy}
+                    className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                    style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                    <Send size={14} /> Send to Lark
                   </button>
                   <button onClick={() => send("PATCH", { id: sheet.id, patch: { share: { ...sheet.share, enabled: !sheet.share?.enabled } } })}
                     disabled={busy}
@@ -309,6 +364,8 @@ function PricingInner() {
           </section>
         </div>
       </div>
+
+      {larkPicker}
     </main>
   );
 }
