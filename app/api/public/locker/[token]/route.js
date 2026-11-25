@@ -3,6 +3,8 @@ import { getSharedLocker } from "../../../../lib/locker-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 // Open to anyone holding the link; the token is the whole credential.
 export async function GET(request, { params }) {
