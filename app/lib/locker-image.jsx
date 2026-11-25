@@ -13,6 +13,17 @@ const PAD = 34;        // the same gap on all four sides
 const NAME_ROW = 28;
 const MAX_WIDTH = 2000;          // the PNG's own ceiling, before scaling down
 
+/* One line only, cut to what the card is actually wide enough to show.
+   Satori has no text-overflow, so the budget is worked out from the card's
+   width and the type size, and the tail is dropped with an ellipsis. */
+function fitName(name, cardWidth, fontSize) {
+  const text = String(name || "");
+  const room = Math.max(0, cardWidth - 20);
+  const budget = Math.floor(room / (fontSize * 0.54));
+  if (text.length <= budget) return text;
+  return budget > 1 ? `${text.slice(0, budget - 1)}…` : "";
+}
+
 // A card is drawn at its file's proportions, the same rule the board uses.
 const drawnHeight = (item) => {
   const ratio = item.kind === "note" ? 0 : Number(item.ratio) || 0;
@@ -79,6 +90,7 @@ export function buildLockerImage(payload = {}) {
         height: Math.round(boardH * scale),
       }}>
         {items.map((item) => {
+          const nameSize = Math.max(9, Math.round(11.5 * scale));
           const h = drawnHeight(item);
           const left = Math.round((item.x - originX) * scale);
           const top = Math.round((item.y - originY) * scale);
@@ -121,9 +133,9 @@ export function buildLockerImage(payload = {}) {
                 display: "flex", width: w, height: Math.round(NAME_ROW * scale),
                 alignItems: "center", padding: `0 ${Math.round(9 * scale)}px`,
                 borderTop: `1px solid ${C.border}`, color: C.text2,
-                fontSize: Math.max(9, Math.round(11.5 * scale)),
+                fontSize: nameSize, whiteSpace: "nowrap", overflow: "hidden",
               }}>
-                {String(item.name || "").slice(0, 46)}
+                {fitName(item.name, w, nameSize)}
               </div>
             </div>
           );
