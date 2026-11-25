@@ -27,7 +27,23 @@ export default function PublicPricingPage() {
     }
   }, [token]);
 
-  useEffect(() => { if (token) load(); }, [token, load]);
+  /* Re-read when the tab comes back into view, and every 30 seconds while it
+     is visible. Without this a link left open kept showing whatever it had
+     when it was first opened, long after the page behind it changed. */
+  useEffect(() => {
+    if (!token) return undefined;
+    load();
+
+    const again = () => { if (document.visibilityState === "visible") load(); };
+    const timer = setInterval(again, 30000);
+    window.addEventListener("focus", again);
+    document.addEventListener("visibilitychange", again);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", again);
+      document.removeEventListener("visibilitychange", again);
+    };
+  }, [token, load]);
 
   if (error) {
     return (
