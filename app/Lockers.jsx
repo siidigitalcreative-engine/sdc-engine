@@ -85,6 +85,20 @@ export default function Lockers({ deptView }) {
   };
 
   const locker = lockers.find((l) => l.id === currentId) || null;
+
+  /* The canvas always runs well past the last card, so there is somewhere to
+     drag things to. It grows as the board does rather than being a fixed size
+     the work can reach the edge of. */
+  const canvas = (() => {
+    const items = locker?.items || [];
+    const right = items.reduce((edge, i) => Math.max(edge, i.x + i.w), 0);
+    const bottom = items.reduce((edge, i) => {
+      const ratio = i.kind === "note" ? 0 : Number(i.ratio) || 0;
+      const h = ratio ? Math.round(i.w / ratio) + 28 : i.h;
+      return Math.max(edge, i.y + h);
+    }, 0);
+    return { width: Math.max(1600, right + 640), height: Math.max(1100, bottom + 520) };
+  })();
   const saveItems = (items) => locker && send("PATCH", { id: locker.id, patch: { items } });
 
   /* ---- downloading: everything, or just the files that were ticked ---- */
@@ -500,7 +514,7 @@ export default function Lockers({ deptView }) {
                 backgroundSize: "22px 22px", backgroundPosition: "-1px -1px",
               }}
               onPointerDown={() => setSelected("")}>
-              <div style={{ position: "relative", width: 1600, height: 1100 }}>
+              <div style={{ position: "relative", width: canvas.width, height: canvas.height }}>
                 {!locker.items.length && (
                   <p className="text-sm" style={{ position: "absolute", left: 20, top: 18, color: "var(--faint)" }}>
                     Empty locker. Use Add media for images and videos, and Note for the copy.
