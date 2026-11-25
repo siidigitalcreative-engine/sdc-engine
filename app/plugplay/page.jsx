@@ -1,7 +1,6 @@
 "use client";
 
 import PageAccess from "../PageAccess";
-import Lockers from "../Lockers";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -622,7 +621,6 @@ function PlugPlayPageInner() {
             <PlaybookIndex {...{ flows: flowsIn(listTab), listTab, deptById, doneStatus, openFlow, playFlow, pauseFlow, stopFlow,
               patchFlow, setConfirm, purgeFlow, setFlowModal, meta }} />
           )}
-          {view === "lockers" && <Lockers deptView={tplDept} />}
           {view === "templates" && (
             <PlugsPage {...{ meta, tplDept, setTplDept, lib, tplFilter, setTplFilter, typeEdit, setTypeEdit, newTypeName, setNewTypeName,
               countOfType, shownPlugs, plugSet, plugAdd, plugDelete, typeAdd, typeRename, typeDelete }} />
@@ -681,7 +679,6 @@ function PlugPlayPageInner() {
 
 function IndexHeader({ view, setView, listTab, setListTab, flowsIn, plugAdd, canEditPlugs }) {
   const onPlugs = view === "templates";
-  const onLockers = view === "lockers";
   return (
     <>
       <div className="flex items-start gap-3 flex-wrap">
@@ -689,17 +686,15 @@ function IndexHeader({ view, setView, listTab, setListTab, flowsIn, plugAdd, can
         <div className="mr-auto min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text)" }}>Plug &amp; Play</h1>
           <p className="text-sm" style={{ color: "var(--muted)" }}>
-            {onLockers
-              ? "A locker is one ad: its images, videos and copy on a board you arrange, with a read-only link to share it."
-              : onPlugs
-                ? "Plugs are the ready-made tasks each department keeps — set the duration, priority and type once, then plug them into any playbook."
-                : "A playbook is one process from start to finish. Build it once, then run it every time."}
+            {onPlugs
+              ? "Plugs are the ready-made tasks each department keeps — set the duration, priority and type once, then plug them into any playbook."
+              : "A playbook is one process from start to finish. Build it once, then run it every time."}
           </p>
         </div>
       </div>
       <div className="mt-3.5 flex items-center gap-3 flex-wrap">
         <span className="inline-flex rounded-2xl p-1 gap-1" style={{ background: "var(--col)", border: "1px solid var(--border)" }}>
-          {[["list", "Playbooks", BookOpen], ["templates", "Plugs", Puzzle], ["lockers", "Lockers", Lock]].map(([key, label, Icon]) => (
+          {[["list", "Playbooks", BookOpen], ["templates", "Plugs", Puzzle]].map(([key, label, Icon]) => (
             <button key={key} onClick={() => setView(key)} className="tp-pill inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold"
               style={view === key ? { background: ACCENT, color: ON_ACCENT } : { color: "var(--muted)" }}>
               <Icon size={15} /> {label}
