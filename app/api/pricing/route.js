@@ -5,6 +5,8 @@ import { getAuthenticatedMember } from "../../lib/auth-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const json = (body, status = 200) => {
   const response = NextResponse.json(body, { status });
