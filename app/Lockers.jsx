@@ -668,6 +668,7 @@ function LockerCard({ item, selected, selecting = false, picked = false, onToggl
               width: "100%", padding: "6px 9px", fontSize: 11.5, color: "var(--text-2)",
               borderTop: "1px solid var(--border)", border: "none", borderTopWidth: 1, borderTopStyle: "solid",
               borderTopColor: "var(--border)", background: "transparent", outline: "none", fontFamily: "inherit",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
             }} />
         </>
       )}
