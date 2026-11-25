@@ -65,7 +65,7 @@ export function buildLockerImage(payload = {}) {
   const element = (
     <div style={{
       width, height, display: "flex", flexDirection: "column",
-      background: C.page, color: C.text, fontFamily: "Inter",
+      background: C.page, color: C.text, fontFamily: "Inter, InterExt",
     }}>
       {/* the heading */}
       <div style={{ display: "flex", flexDirection: "column", padding: `${PAD}px ${PAD}px 0` }}>
