@@ -17,6 +17,7 @@ export const PAGES = [
   { id: "lark",      name: "Lark Groups",  href: "/lark",      note: "Where exports get sent" },
   { id: "reports",   name: "Reports",      href: "/reports",   note: "Reporting" },
   { id: "plugplay",  name: "Plug & Play",  href: "/plugplay",  note: "Reusable playbooks and flows" },
+  { id: "lockers",   name: "Lockers",      href: "/lockers",   note: "Ad boards with shareable links" },
   { id: "settings",  name: "Settings",     href: "/settings",  note: "Departments, access and app settings", adminOnly: true },
 ];
 
