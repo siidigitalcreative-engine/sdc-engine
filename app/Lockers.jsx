@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { upload as uploadToBlob } from "@vercel/blob/client";
 import {
   Plus, Trash2, X, Globe2, Copy, ExternalLink, Image as ImageIcon, Film, StickyNote, Lock,
-  Maximize2, Download, Check, CheckSquare,
+  Maximize2, Download, Check, CheckSquare, Send,
 } from "lucide-react";
 import { useAuth } from "./auth";
+import { useLarkSend } from "./LarkSend";
 import { downloadLockerFiles } from "./lib/locker-download";
 
 const ACCENT = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
@@ -18,6 +19,7 @@ const snap = (n) => Math.round(n / GRID) * GRID;
 
 export default function Lockers({ deptView }) {
   const { department } = useAuth();
+  const { openLarkSend, larkPicker } = useLarkSend();
   const [lockers, setLockers] = useState([]);
   const [currentId, setCurrentId] = useState("");
   const [selected, setSelected] = useState("");
@@ -297,6 +299,50 @@ export default function Lockers({ deptView }) {
     }
   };
 
+  /* What the renderer draws: the whole board, cards where they sit. Items
+     keep their stored positions, so the PNG matches what is on screen. */
+  const exportPayload = () => ({
+    locker: {
+      name: locker?.name || "Locker",
+      brand: locker?.brand || "",
+      items: (locker?.items || []).map((i) => ({
+        id: i.id, kind: i.kind, url: i.url, name: i.name, text: i.text,
+        ratio: i.ratio, x: i.x, y: i.y, w: i.w, h: i.h,
+      })),
+    },
+    stamp: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
+  });
+
+  const exportPng = async () => {
+    if (!locker?.items?.length) { setError("Nothing on this board to export yet."); return; }
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/locker-image", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(exportPayload()),
+      });
+      if (!res.ok) throw new Error("Unable to render that board.");
+      const url = URL.createObjectURL(await res.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${(locker.name || "locker").replace(/[^a-zA-Z0-9 ._-]+/g, "-").trim()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendToLark = () => {
+    if (!locker?.items?.length) { setError("Nothing on this board to send yet."); return; }
+    openLarkSend("/api/lark/locker-image", exportPayload(), { label: locker.name || "this locker" });
+  };
+
   const newLocker = async () => {
     const body = await send("POST", { locker: { name: "Untitled locker", items: [] } });
     if (body?.lockers?.[0]) setCurrentId(body.lockers[0].id);
@@ -399,6 +445,18 @@ export default function Lockers({ deptView }) {
                   </button>
                 </>
               )}
+
+              {/* the whole board as one picture, saved or sent to a Lark group */}
+              <button onClick={exportPng} disabled={busy}
+                className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                <ImageIcon size={14} /> Export PNG
+              </button>
+              <button onClick={sendToLark} disabled={busy}
+                className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                <Send size={14} /> Send to Lark
+              </button>
               <button onClick={() => send("PATCH", { id: locker.id, patch: { share: { ...locker.share, enabled: !locker.share?.enabled } } })}
                 disabled={busy}
                 className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
@@ -494,6 +552,8 @@ export default function Lockers({ deptView }) {
           </div>
         </div>
       )}
+
+      {larkPicker}
 
       {/* what are you adding */}
       {picker && (
