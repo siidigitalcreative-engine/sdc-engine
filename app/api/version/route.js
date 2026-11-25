@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // confirm the running deployment is the build you expect.
 export async function GET() {
   return NextResponse.json(
-    { version: "2026-11-25-locker-names", ok: true },
+    { version: "2026-11-25-locker-canvas", ok: true },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
