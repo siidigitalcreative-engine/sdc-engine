@@ -7,8 +7,7 @@ import { upload as uploadToBlob } from "@vercel/blob/client";
 import { useLarkSend } from "../LarkSend";
 import {
   Printer, Search, Plus, X, Pencil, Trash2, Download, Send, Image as ImageIcon,
-  SlidersHorizontal, Layers, Folder, Gauge,
-} from "lucide-react";
+  SlidersHorizontal, Layers, Folder, Gauge, Tag } from "lucide-react";
 
 const ACCENT_GRAD = "linear-gradient(135deg,#FFAA62 0%,#E53E30 100%)";
 
@@ -313,6 +312,10 @@ function PrintHubPageInner() {
           <Search size={15} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search product, SKU, design" />
         </div>
+        {/* the price lists, which live on their own page */}
+        <a href="/print/pricing" className="ps-btn" style={{ textDecoration: "none" }}>
+          <Tag size={15} /> Pricing
+        </a>
         <button onClick={() => openLarkSend("/api/lark/print-overview-image", overviewPayload(),
             { label: `this overview (${filtered.length} record${filtered.length === 1 ? "" : "s"})`, kind: "print" })}
           className="ps-btn" disabled={!filtered.length}>
