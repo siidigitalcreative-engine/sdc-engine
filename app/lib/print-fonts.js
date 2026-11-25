@@ -27,29 +27,27 @@ let cached = null;
 
 export async function interFonts() {
   if (cached) return cached;
-  try {
-    const dir = path.join(process.cwd(), "app", "lib", "fonts");
-    /* The fallback needs its own family name: satori keeps only the first
-       font for a given name and weight, so files sharing "Inter" were being
-       ignored. Renderers list both families, as FONT_STACK below. */
-    cached = await Promise.all([
-      ...FILES.map(async ({ file, weight }) => ({
-        name: "Inter",
-        data: await readFile(path.join(dir, file)),
-        weight,
-        style: "normal",
-      })),
-      ...FALLBACK.map(async ({ file, weight }) => ({
-        name: "InterExt",
-        data: await readFile(path.join(dir, file)),
-        weight,
-        style: "normal",
-      })),
-    ]);
-  } catch (error) {
-    // Without the files the image still renders, just in the fallback face.
-    console.error("print-fonts: could not load Inter", error);
-    cached = [];
-  }
+
+  const dir = path.join(process.cwd(), "app", "lib", "fonts");
+
+  /* Each file is loaded on its own and a missing one is skipped, rather than
+     losing the whole set. One absent file used to leave satori with no fonts
+     at all, which fails the render outright with "No fonts are loaded". */
+  const load = async (entries, family) => {
+    const loaded = await Promise.all(entries.map(async ({ file, weight }) => {
+      try {
+        return { name: family, data: await readFile(path.join(dir, file)), weight, style: "normal" };
+      } catch {
+        console.error(`print-fonts: ${file} is missing, carrying on without it`);
+        return null;
+      }
+    }));
+    return loaded.filter(Boolean);
+  };
+
+  const main = await load(FILES, "Inter");
+  const ext = main.length ? await load(FALLBACK, "InterExt") : [];
+
+  cached = [...main, ...ext];
   return cached;
 }
