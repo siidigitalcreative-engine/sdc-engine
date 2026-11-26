@@ -28,6 +28,7 @@ function PricingInner() {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const writeSeq = useRef(0);
+  const busyRef = useRef(false);
 
   const [deptView, setDeptView] = useState("");
   useEffect(() => {
@@ -55,10 +56,25 @@ function PricingInner() {
 
   useEffect(() => { load(); }, [load]);
 
+  /* Pick up anyone else's changes without a reload. A read is skipped while a
+     save of our own is still in flight, so a slower answer cannot put back
+     what was just typed. */
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      if (busyRef.current) return;
+      load();
+    };
+    const timer = setInterval(tick, 10000);
+    window.addEventListener("focus", tick);
+    return () => { clearInterval(timer); window.removeEventListener("focus", tick); };
+  }, [load]);
+
   /* Writes answer with the whole list for this department. Only the newest
      may apply its response, so a slower earlier save cannot undo a later one. */
   const send = async (method, payload) => {
     const seq = (writeSeq.current += 1);
+    busyRef.current = true;
     setBusy(true);
     setError("");
     try {
@@ -73,34 +89,60 @@ function PricingInner() {
       if (seq === writeSeq.current) { setError(e.message); await load(); }
       return null;
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   const sheet = sheets.find((s) => s.id === currentId) || null;
-  const saveRows = (rows) => sheet && send("PATCH", { id: sheet.id, patch: { rows } });
 
-  const addRow = () => sheet && saveRows([...sheet.rows, {
-    brand: "", product: "",
-    tiers: [{ pieces: "1-10pcs", price: "" }, { pieces: "11-100pcs", price: "" }, { pieces: "101pcs-above", price: "" }],
+  /* Every edit builds on the newest rows, held in a ref.
+
+     Reading them from the render instead meant a second edit made before the
+     first had answered was built on the rows as they were, so saving it put
+     the earlier value back. Each edit is also shown at once and the rows are
+     sent as they will be, which keeps the two in step. */
+  const rowsRef = useRef([]);
+  useEffect(() => { rowsRef.current = sheet?.rows || []; }, [sheet]);
+
+  const saveRows = (rows) => {
+    if (!sheet) return;
+    rowsRef.current = rows;
+    setSheets((list) => list.map((s) => (s.id === sheet.id ? { ...s, rows } : s)));
+    send("PATCH", { id: sheet.id, patch: { rows } });
+  };
+
+  /* Ids are made here rather than waiting for the server, so a new row has a
+     stable identity the moment it appears and its fields are not confused
+     with a neighbour's while the save is in flight. */
+  const rowId = () => `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const tierId = () => `tr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+  const addRow = () => sheet && saveRows([...rowsRef.current, {
+    id: rowId(), brand: "", product: "",
+    tiers: [
+      { id: tierId(), pieces: "1-10pcs", price: "" },
+      { id: tierId(), pieces: "11-100pcs", price: "" },
+      { id: tierId(), pieces: "101pcs-above", price: "" },
+    ],
   }]);
 
   const patchRow = (rowId, fields) =>
-    sheet && saveRows(sheet.rows.map((r) => (r.id === rowId ? { ...r, ...fields } : r)));
+    sheet && saveRows(rowsRef.current.map((r) => (r.id === rowId ? { ...r, ...fields } : r)));
 
-  const patchTier = (rowId, tierId, fields) => sheet && saveRows(sheet.rows.map((r) => (r.id !== rowId ? r : {
+  const patchTier = (rowId, tierId, fields) => sheet && saveRows(rowsRef.current.map((r) => (r.id !== rowId ? r : {
     ...r, tiers: r.tiers.map((t) => (t.id === tierId ? { ...t, ...fields } : t)),
   })));
 
-  const addTier = (rowId) => sheet && saveRows(sheet.rows.map((r) => (r.id !== rowId ? r : {
-    ...r, tiers: [...r.tiers, { pieces: "", price: "" }],
+  const addTier = (rowId) => sheet && saveRows(rowsRef.current.map((r) => (r.id !== rowId ? r : {
+    ...r, tiers: [...r.tiers, { id: tierId(), pieces: "", price: "" }],
   })));
 
-  const removeTier = (rowId, tierId) => sheet && saveRows(sheet.rows.map((r) => (r.id !== rowId ? r : {
+  const removeTier = (rowId, tierId) => sheet && saveRows(rowsRef.current.map((r) => (r.id !== rowId ? r : {
     ...r, tiers: r.tiers.length > 1 ? r.tiers.filter((t) => t.id !== tierId) : r.tiers,
   })));
 
-  const removeRow = (rowId) => sheet && saveRows(sheet.rows.filter((r) => r.id !== rowId));
+  const removeRow = (rowId) => sheet && saveRows(rowsRef.current.filter((r) => r.id !== rowId));
 
   const newSheet = async () => {
     const body = await send("POST", { sheet: { name: "Untitled price list", rows: [] } });
