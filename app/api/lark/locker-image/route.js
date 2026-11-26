@@ -59,10 +59,38 @@ export async function POST(request) {
       return NextResponse.json({ step: "upload", error: `Image upload failed — the app needs the "im:resource" permission (${uploadData.msg || JSON.stringify(uploadData)})` }, { status: 500 });
     }
 
+    /* With a public link, the board goes as a rich post: the title, the
+       picture, then the link itself, so anyone in the group can open the
+       live board rather than only seeing a snapshot. Without a link it stays
+       a plain image message, as before. */
+    const link = typeof body.shareUrl === "string" && /^https?:\/\//i.test(body.shareUrl) ? body.shareUrl : "";
+    const title = String(body.locker?.name || "Locker").slice(0, 120);
+    const brand = String(body.locker?.brand || "").slice(0, 80);
+
+    const message = link
+      ? {
+          msg_type: "post",
+          content: {
+            post: {
+              en_us: {
+                title: brand ? `${brand} · ${title}` : title,
+                content: [
+                  [{ tag: "img", image_key: uploadData.data.image_key }],
+                  [
+                    { tag: "text", text: "Open the board: " },
+                    { tag: "a", text: link, href: link },
+                  ],
+                ],
+              },
+            },
+          },
+        }
+      : { msg_type: "image", content: { image_key: uploadData.data.image_key } };
+
     const sendRes = await fetch(webhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ msg_type: "image", content: { image_key: uploadData.data.image_key } }),
+      body: JSON.stringify(message),
     });
     const sendData = await sendRes.json().catch(() => ({}));
     if (!(sendData.code === 0 || sendData.StatusCode === 0)) {
