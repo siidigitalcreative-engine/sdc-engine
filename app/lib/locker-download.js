@@ -123,13 +123,45 @@ const fileSafe = (text) => String(text || "locker").replace(/[\\/:*?"<>|\u0000-\
 
 /* items: locker items with { url, name }. Resolves { skipped: [names] }.
    Throws if nothing could be fetched at all. */
-export async function downloadLockerFiles(items, { zipName = "locker", onProgress } = {}) {
+/* mode "zip" bundles everything into one archive; mode "files" hands the
+   browser each file on its own, which is what people want when the files go
+   straight into another tool rather than a folder.
+
+   A single file is always just that file, whichever mode is asked for. */
+export async function downloadLockerFiles(items, { zipName = "locker", onProgress, mode = "zip" } = {}) {
   const list = (items || []).filter((item) => item && item.url);
   if (!list.length) throw new Error("There is nothing to download.");
 
   if (list.length === 1) {
     save(list[0].url, String(list[0].name || "file"));
     return { skipped: [] };
+  }
+
+  if (mode === "files") {
+    const used = new Set();
+    const missed = [];
+
+    for (let index = 0; index < list.length; index += 1) {
+      const item = list[index];
+      onProgress?.(index, list.length);
+      try {
+        /* Fetched rather than linked, so each one keeps the name it was given
+           here and the browser does not open it in a tab instead. */
+        const response = await fetch(item.url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        save(objectUrl, entryName(item, response.headers.get("content-type"), used));
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+        // a short gap, or a browser treats a burst as one runaway download
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      } catch {
+        missed.push(String(item.name || "file"));
+      }
+    }
+
+    onProgress?.(list.length, list.length);
+    return { skipped: missed };
   }
 
   const used = new Set();
