@@ -21,7 +21,7 @@ export default function PublicLockerPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/public/locker/${encodeURIComponent(token)}`, { cache: "no-store" });
+      const res = await fetch(`/api/public/locker/${encodeURIComponent(token)}`, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || "That link is not available.");
       setLocker(body.locker);
@@ -38,12 +38,14 @@ export default function PublicLockerPage() {
     load();
 
     const again = () => { if (document.visibilityState === "visible") load(); };
-    const timer = setInterval(again, 30000);
+    const timer = setInterval(again, 5000);          // close enough to live
     window.addEventListener("focus", again);
+    window.addEventListener("pageshow", again);      // also when restored from the back/forward cache
     document.addEventListener("visibilitychange", again);
     return () => {
       clearInterval(timer);
       window.removeEventListener("focus", again);
+      window.removeEventListener("pageshow", again);
       document.removeEventListener("visibilitychange", again);
     };
   }, [token, load]);
