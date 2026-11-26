@@ -52,10 +52,36 @@ export async function POST(request) {
       return NextResponse.json({ step: "upload", error: `Image upload failed — the app needs the "im:resource" permission (${uploadData.msg || JSON.stringify(uploadData)})` }, { status: 500 });
     }
 
+    /* With a public link, the table goes as a rich post: the name, the
+       picture, then the link, so the group can open the live list rather than
+       a snapshot that ages. Without a link it stays a plain image. */
+    const link = typeof body.shareUrl === "string" && /^https?:\/\//i.test(body.shareUrl) ? body.shareUrl : "";
+    const title = String(body.sheet?.name || "Price list").slice(0, 120);
+
+    const message = link
+      ? {
+          msg_type: "post",
+          content: {
+            post: {
+              en_us: {
+                title,
+                content: [
+                  [{ tag: "img", image_key: uploadData.data.image_key }],
+                  [
+                    { tag: "text", text: "Open the price list: " },
+                    { tag: "a", text: link, href: link },
+                  ],
+                ],
+              },
+            },
+          },
+        }
+      : { msg_type: "image", content: { image_key: uploadData.data.image_key } };
+
     const sendRes = await fetch(webhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ msg_type: "image", content: { image_key: uploadData.data.image_key } }),
+      body: JSON.stringify(message),
     });
     const sendData = await sendRes.json().catch(() => ({}));
     if (!(sendData.code === 0 || sendData.StatusCode === 0)) {
