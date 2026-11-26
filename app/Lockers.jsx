@@ -99,7 +99,18 @@ export default function Lockers({ deptView }) {
     }, 0);
     return { width: Math.max(1600, right + 640), height: Math.max(1100, bottom + 520) };
   })();
-  const saveItems = (items) => locker && send("PATCH", { id: locker.id, patch: { items } });
+  /* Every change builds on the newest items, held in a ref, and is shown at
+     once. Reading them from the render meant a change made before the last
+     had answered was built on stale items, putting the earlier one back. */
+  const itemsRef = useRef([]);
+  useEffect(() => { itemsRef.current = locker?.items || []; }, [locker]);
+
+  const saveItems = (items) => {
+    if (!locker) return;
+    itemsRef.current = items;
+    setLockers((list) => list.map((l) => (l.id === locker.id ? { ...l, items } : l)));
+    send("PATCH", { id: locker.id, patch: { items } });
+  };
 
   /* ---- downloading: everything, or just the files that were ticked ---- */
 
@@ -182,7 +193,7 @@ export default function Lockers({ deptView }) {
 
           // new cards flow left to right, wrapping every five, under what exists
           const slot = added.length;
-          const base = freeSpot(locker.items);
+          const base = freeSpot(itemsRef.current);
           added.push({
             id: `it-${Date.now().toString(36)}-${slot}`,
             kind,
@@ -199,7 +210,7 @@ export default function Lockers({ deptView }) {
         }
       }
 
-      if (added.length) await saveItems([...locker.items, ...added]);
+      if (added.length) await saveItems([...itemsRef.current, ...added]);
       if (failed.length) setError(`${failed.length} file${failed.length === 1 ? "" : "s"} skipped: ${failed.join(", ")}`);
     } finally {
       setUploading(false);
@@ -231,16 +242,16 @@ export default function Lockers({ deptView }) {
 
   const addNote = () => {
     if (!locker) return;
-    const at = freeSpot(locker.items);
-    saveItems([...locker.items, {
+    const at = freeSpot(itemsRef.current);
+    saveItems([...itemsRef.current, {
       id: `nt-${Date.now().toString(36)}`, kind: "note", name: "Note",
       text: "Hook:\nCTA:", x: at.x, y: at.y, w: 253, h: 150,
     }]);
   };
 
-  const removeItem = (id) => locker && saveItems(locker.items.filter((i) => i.id !== id));
+  const removeItem = (id) => locker && saveItems(itemsRef.current.filter((i) => i.id !== id));
   const patchItem = (id, fields) =>
-    locker && saveItems(locker.items.map((i) => (i.id === id ? { ...i, ...fields } : i)));
+    locker && saveItems(itemsRef.current.map((i) => (i.id === id ? { ...i, ...fields } : i)));
 
   /* ---- dragging and resizing: pointer events, so touch behaves the same ---- */
 
@@ -286,8 +297,7 @@ export default function Lockers({ deptView }) {
       const drag = dragRef.current;
       dragRef.current = null;
       if (drag?.live && locker) {
-        const items = locker.items.map((i) => (i.id === drag.id ? { ...i, ...drag.live } : i));
-        saveItems(items);
+        saveItems(itemsRef.current.map((i) => (i.id === drag.id ? { ...i, ...drag.live } : i)));
       }
     };
 
