@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Download, Check } from "lucide-react";
+import { Download, Check, ChevronDown } from "lucide-react";
 import { downloadLockerFiles } from "../../../lib/locker-download";
 
 const TINT = { image: { fg: "#3E8ED0", bg: "#E3EEF9" }, video: { fg: "#7C5CD8", bg: "#EBE4FA" } };
@@ -15,6 +15,7 @@ export default function PublicLockerPage() {
   const [error, setError] = useState("");
   const [lightbox, setLightbox] = useState(null);
   const [selecting, setSelecting] = useState(false);   // pick several files to download together
+  const [dlMenu, setDlMenu] = useState(false);
   const [picks, setPicks] = useState([]);
   const [dl, setDl] = useState(null);                  // { done, total } while a download is being prepared
   const [dlError, setDlError] = useState("");
@@ -97,13 +98,14 @@ export default function PublicLockerPage() {
   const allChosen = media.length > 0 && chosen.length === media.length;
   const togglePick = (id) => setPicks((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
-  const download = async (items) => {
+  const download = async (items, mode = "zip") => {
     if (!items.length || dl) return;
     setDlError("");
     setDl({ done: 0, total: items.length });
     try {
       const { skipped } = await downloadLockerFiles(items, {
         zipName: locker.name,
+        mode,
         onProgress: (done, total) => setDl({ done, total }),
       });
       if (skipped.length) setDlError(`${skipped.length} file${skipped.length === 1 ? "" : "s"} could not be added: ${skipped.join(", ")}`);
@@ -137,21 +139,54 @@ export default function PublicLockerPage() {
                   <button type="button" onClick={() => setPicks(allChosen ? [] : media.map((i) => i.id))} style={pill}>
                     {allChosen ? "Clear" : "Select all"}
                   </button>
-                  <button type="button" disabled={!chosen.length || !!dl} onClick={() => download(chosen)}
+                  <button type="button" disabled={!chosen.length || !!dl} onClick={() => download(chosen, "zip")}
                     style={{ ...pillAccent, opacity: !chosen.length || dl ? 0.55 : 1 }}>
                     <Download size={14} />
-                    {dl ? `Preparing ${dl.done} of ${dl.total}…` : `Download selected (${chosen.length})`}
+                    {dl ? `Preparing ${dl.done} of ${dl.total}…` : `ZIP (${chosen.length})`}
+                  </button>
+                  <button type="button" disabled={!chosen.length || !!dl} onClick={() => download(chosen, "files")}
+                    style={{ ...pill, opacity: !chosen.length || dl ? 0.55 : 1 }}>
+                    Separate files
                   </button>
                   <button type="button" onClick={() => { setSelecting(false); setPicks([]); }} style={pill}>Done</button>
                 </>
               ) : (
                 <>
                   <button type="button" onClick={() => setSelecting(true)} style={pill}>Select files</button>
-                  <button type="button" disabled={!!dl} onClick={() => download(media)}
-                    style={{ ...pillAccent, opacity: dl ? 0.55 : 1 }}>
-                    <Download size={14} />
-                    {dl ? `Preparing ${dl.done} of ${dl.total}…` : `Download all (${media.length})`}
-                  </button>
+
+                  {/* the choice: one archive, or each file on its own */}
+                  <span style={{ position: "relative", display: "inline-flex" }}>
+                    <button type="button" disabled={!!dl} onClick={() => setDlMenu((v) => !v)}
+                      style={{ ...pillAccent, opacity: dl ? 0.55 : 1 }}>
+                      <Download size={14} />
+                      {dl ? `Preparing ${dl.done} of ${dl.total}…` : `Download all (${media.length})`}
+                      <ChevronDown size={12} />
+                    </button>
+
+                    {dlMenu && (
+                      <span style={{
+                        position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 30, minWidth: 210,
+                        background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12,
+                        overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,.35)",
+                      }}>
+                        {[
+                          { mode: "zip", title: "As a ZIP", note: "One archive with every file" },
+                          { mode: "files", title: "Separate files", note: "One download per file" },
+                        ].map((choice) => (
+                          <button key={choice.mode} type="button"
+                            onClick={() => { setDlMenu(false); download(media, choice.mode); }}
+                            style={{
+                              display: "block", width: "100%", textAlign: "left", padding: "8px 12px",
+                              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+                              color: "var(--text)",
+                            }}>
+                            <span style={{ display: "block", fontSize: 12.5, fontWeight: 600 }}>{choice.title}</span>
+                            <span style={{ display: "block", fontSize: 11, color: "var(--muted)" }}>{choice.note}</span>
+                          </button>
+                        ))}
+                      </span>
+                    )}
+                  </span>
                 </>
               )}
             </div>
