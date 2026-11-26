@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2, Globe2, Copy, ExternalLink, ArrowLeft, Tag, Send, Image as ImageIcon } from "lucide-react";
+import {
+  Plus, Trash2, Globe2, Copy, ExternalLink, ArrowLeft, Tag, Send, Image as ImageIcon, Pencil, Check,
+} from "lucide-react";
 import PageAccess from "../../PageAccess";
 import DepartmentView from "../../DepartmentView";
 import { useAuth } from "../../auth";
@@ -27,8 +29,25 @@ function PricingInner() {
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+
+  /* Editing is a mode, not a running save. Changes go into a draft held here
+     and reach the server once, when Save is pressed, which is why the table
+     no longer fights a save that is still in flight. */
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(null);
+  useEffect(() => { editingRef.current = editing; }, [editing]);
+
+  const startEdit = (current) => {
+    setDraft({
+      name: current.name,
+      note: current.note || "",
+      rows: current.rows.map((r) => ({ ...r, tiers: r.tiers.map((t) => ({ ...t })) })),
+    });
+    setEditing(true);
+  };
   const writeSeq = useRef(0);
   const busyRef = useRef(false);
+  const editingRef = useRef(false);
 
   const [deptView, setDeptView] = useState("");
   useEffect(() => {
@@ -62,7 +81,7 @@ function PricingInner() {
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState !== "visible") return;
-      if (busyRef.current) return;
+      if (busyRef.current || editingRef.current) return;      // never overwrite a draft
       load();
     };
     const timer = setInterval(tick, 10000);
@@ -105,20 +124,14 @@ function PricingInner() {
   const rowsRef = useRef([]);
   useEffect(() => { rowsRef.current = sheet?.rows || []; }, [sheet]);
 
-  const saveRows = (rows) => {
-    if (!sheet) return;
-    rowsRef.current = rows;
-    setSheets((list) => list.map((s) => (s.id === sheet.id ? { ...s, rows } : s)));
-    send("PATCH", { id: sheet.id, patch: { rows } });
-  };
+  const setRows = (rows) => setDraft((d) => ({ ...d, rows }));
 
   /* Ids are made here rather than waiting for the server, so a new row has a
-     stable identity the moment it appears and its fields are not confused
-     with a neighbour's while the save is in flight. */
+     stable identity the moment it appears. */
   const rowId = () => `rw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const tierId = () => `tr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-  const addRow = () => sheet && saveRows([...rowsRef.current, {
+  const addRow = () => setRows([...(draft?.rows || []), {
     id: rowId(), brand: "", product: "",
     tiers: [
       { id: tierId(), pieces: "1-10pcs", price: "" },
@@ -127,22 +140,39 @@ function PricingInner() {
     ],
   }]);
 
-  const patchRow = (rowId, fields) =>
-    sheet && saveRows(rowsRef.current.map((r) => (r.id === rowId ? { ...r, ...fields } : r)));
+  const patchRow = (id, fields) =>
+    setRows(draft.rows.map((r) => (r.id === id ? { ...r, ...fields } : r)));
 
-  const patchTier = (rowId, tierId, fields) => sheet && saveRows(rowsRef.current.map((r) => (r.id !== rowId ? r : {
-    ...r, tiers: r.tiers.map((t) => (t.id === tierId ? { ...t, ...fields } : t)),
+  const patchTier = (rid, tid, fields) => setRows(draft.rows.map((r) => (r.id !== rid ? r : {
+    ...r, tiers: r.tiers.map((t) => (t.id === tid ? { ...t, ...fields } : t)),
   })));
 
-  const addTier = (rowId) => sheet && saveRows(rowsRef.current.map((r) => (r.id !== rowId ? r : {
+  const addTier = (rid) => setRows(draft.rows.map((r) => (r.id !== rid ? r : {
     ...r, tiers: [...r.tiers, { id: tierId(), pieces: "", price: "" }],
   })));
 
-  const removeTier = (rowId, tierId) => sheet && saveRows(rowsRef.current.map((r) => (r.id !== rowId ? r : {
-    ...r, tiers: r.tiers.length > 1 ? r.tiers.filter((t) => t.id !== tierId) : r.tiers,
+  const removeTier = (rid, tid) => setRows(draft.rows.map((r) => (r.id !== rid ? r : {
+    ...r, tiers: r.tiers.length > 1 ? r.tiers.filter((t) => t.id !== tid) : r.tiers,
   })));
 
-  const removeRow = (rowId) => sheet && saveRows(rowsRef.current.filter((r) => r.id !== rowId));
+  const removeRow = (id) => setRows(draft.rows.filter((r) => r.id !== id));
+
+  // One write, with everything in it.
+  const saveEdits = async () => {
+    if (!sheet || !draft) return;
+    const body = await send("PATCH", {
+      id: sheet.id,
+      patch: { name: draft.name.trim() || sheet.name, note: draft.note, rows: draft.rows },
+    });
+    if (body) { setEditing(false); setDraft(null); setNote("Saved."); setTimeout(() => setNote(""), 1600); }
+  };
+
+  const cancelEdits = async () => {
+    setEditing(false);
+    setDraft(null);
+    setError("");
+    await load();
+  };
 
   const newSheet = async () => {
     const body = await send("POST", { sheet: { name: "Untitled price list", rows: [] } });
@@ -160,6 +190,10 @@ function PricingInner() {
       })),
     },
     stamp: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
+    // only when sharing is on, so the link always leads somewhere
+    shareUrl: sheet?.share?.enabled && typeof window !== "undefined"
+      ? `${window.location.origin}/public/pricing/${sheet.share.token}`
+      : "",
   });
 
   const exportPng = async () => {
@@ -189,7 +223,11 @@ function PricingInner() {
 
   const sendToLark = () => {
     if (!sheet?.rows?.length) { setError("Nothing priced yet to send."); return; }
-    openLarkSend("/api/lark/pricing-image", exportPayload(), { label: sheet.name || "this price list" });
+    openLarkSend("/api/lark/pricing-image", exportPayload(), {
+      label: sheet.share?.enabled
+        ? `${sheet.name || "this price list"}, with its public link`
+        : (sheet.name || "this price list"),
+    });
   };
 
   const copyLink = async () => {
@@ -269,25 +307,51 @@ function PricingInner() {
               <>
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   <div className="mr-auto min-w-0">
-                    <input defaultValue={sheet.name} key={`${sheet.id}-name`}
-                      onBlur={(e) => {
-                        if (e.target.value.trim() && e.target.value !== sheet.name) {
-                          send("PATCH", { id: sheet.id, patch: { name: e.target.value } });
-                        }
-                      }}
-                      className="bg-transparent outline-none text-lg font-semibold w-full"
-                      style={{ color: "var(--text)" }} />
-                    <input defaultValue={sheet.note} key={`${sheet.id}-note`} placeholder="Note shown on the shared page"
-                      onBlur={(e) => { if (e.target.value !== sheet.note) send("PATCH", { id: sheet.id, patch: { note: e.target.value } }); }}
-                      className="bg-transparent outline-none text-xs w-full"
-                      style={{ color: "var(--muted)" }} />
+                    {editing ? (
+                      <>
+                        <input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                          className="bg-transparent outline-none text-lg font-semibold w-full"
+                          style={{ color: "var(--text)" }} />
+                        <input value={draft.note} onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
+                          placeholder="Note shown on the shared page"
+                          className="bg-transparent outline-none text-xs w-full"
+                          style={{ color: "var(--muted)" }} />
+                      </>
+                    ) : (
+                      <>
+                        <h2 className="text-lg font-semibold truncate" style={{ color: "var(--text)" }}>{sheet.name}</h2>
+                        <p className="text-xs truncate" style={{ color: "var(--muted)" }}>
+                          {sheet.note || "No note on the shared page"}
+                        </p>
+                      </>
+                    )}
                   </div>
 
-                  <button onClick={addRow} disabled={busy}
-                    className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
-                    style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
-                    <Plus size={14} /> Add product
-                  </button>
+                  {editing ? (
+                    <>
+                      <button onClick={addRow}
+                        className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                        style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                        <Plus size={14} /> Add product
+                      </button>
+                      <button onClick={cancelEdits} disabled={busy}
+                        className="tp-ib rounded-full px-3 py-2 text-sm font-medium"
+                        style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                        Cancel
+                      </button>
+                      <button onClick={saveEdits} disabled={busy}
+                        className="rounded-full px-4 py-2 text-sm font-semibold inline-flex items-center gap-1.5 shadow-md"
+                        style={{ background: ACCENT, color: "var(--on-accent)" }}>
+                        <Check size={14} /> {busy ? "Saving…" : "Save changes"}
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => startEdit(sheet)}
+                      className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                      style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                      <Pencil size={14} /> Edit
+                    </button>
+                  )}
                   <button onClick={exportPng} disabled={busy}
                     className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
                     style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
@@ -334,51 +398,71 @@ function PricingInner() {
                     </thead>
 
                     <tbody>
-                      {sheet.rows.map((row) => row.tiers.map((tier, index) => (
+                      {(editing ? draft.rows : sheet.rows).map((row) => row.tiers.map((tier, index) => (
                         <tr key={tier.id}>
                           {/* brand and product span the product's tiers, as on paper */}
                           {index === 0 && (
                             <>
-                              <td rowSpan={row.tiers.length} style={{ ...cell, verticalAlign: "top", padding: 0 }}>
-                                <input defaultValue={row.brand} key={`${row.id}-brand`} placeholder="Brand"
-                                  onBlur={(e) => { if (e.target.value !== row.brand) patchRow(row.id, { brand: e.target.value }); }}
-                                  style={{ ...field, fontWeight: 600 }} />
+                              <td rowSpan={row.tiers.length} style={{ ...cell, verticalAlign: "top", padding: editing ? 0 : "9px 12px" }}>
+                                {editing ? (
+                                  <input value={row.brand} placeholder="Brand"
+                                    onChange={(e) => patchRow(row.id, { brand: e.target.value })}
+                                    style={{ ...field, fontWeight: 600 }} />
+                                ) : (
+                                  <span style={{ fontSize: 13, fontWeight: 600 }}>{row.brand}</span>
+                                )}
                               </td>
-                              <td rowSpan={row.tiers.length} style={{ ...cell, verticalAlign: "top", padding: 0 }}>
-                                <input defaultValue={row.product} key={`${row.id}-product`} placeholder="Product"
-                                  onBlur={(e) => { if (e.target.value !== row.product) patchRow(row.id, { product: e.target.value }); }}
-                                  style={field} />
+                              <td rowSpan={row.tiers.length} style={{ ...cell, verticalAlign: "top", padding: editing ? 0 : "9px 12px" }}>
+                                {editing ? (
+                                  <input value={row.product} placeholder="Product"
+                                    onChange={(e) => patchRow(row.id, { product: e.target.value })}
+                                    style={field} />
+                                ) : (
+                                  <span style={{ fontSize: 13 }}>{row.product}</span>
+                                )}
                               </td>
                             </>
                           )}
 
-                          <td style={{ ...cell, padding: 0 }}>
-                            <input defaultValue={tier.pieces} key={`${tier.id}-pieces`} placeholder="1-10pcs"
-                              onBlur={(e) => { if (e.target.value !== tier.pieces) patchTier(row.id, tier.id, { pieces: e.target.value }); }}
-                              style={field} />
+                          <td style={{ ...cell, padding: editing ? 0 : "9px 12px" }}>
+                            {editing ? (
+                              <input value={tier.pieces} placeholder="1-10pcs"
+                                onChange={(e) => patchTier(row.id, tier.id, { pieces: e.target.value })}
+                                style={field} />
+                            ) : (
+                              <span style={{ fontSize: 13, color: "var(--text-2)" }}>{tier.pieces}</span>
+                            )}
                           </td>
-                          <td style={{ ...cell, padding: 0 }}>
-                            <input defaultValue={tier.price} key={`${tier.id}-price`} placeholder="₱0"
-                              onBlur={(e) => { if (e.target.value !== tier.price) patchTier(row.id, tier.id, { price: e.target.value }); }}
-                              style={field} />
+                          <td style={{ ...cell, padding: editing ? 0 : "9px 12px" }}>
+                            {editing ? (
+                              <input value={tier.price} placeholder="₱0"
+                                onChange={(e) => patchTier(row.id, tier.id, { price: e.target.value })}
+                                style={field} />
+                            ) : (
+                              <span style={{ fontSize: 13, fontWeight: 600 }}>{tier.price}</span>
+                            )}
                           </td>
 
                           <td style={{ ...cell, padding: "0 6px", textAlign: "center", whiteSpace: "nowrap" }}>
-                            <button onClick={() => removeTier(row.id, tier.id)} title="Remove this tier"
-                              style={{ color: "var(--faint)", padding: 4 }}>
-                              <Trash2 size={12} />
-                            </button>
-                            {index === row.tiers.length - 1 && (
-                              <button onClick={() => addTier(row.id)} title="Add a tier"
-                                style={{ color: "var(--faint)", padding: 4 }}>
-                                <Plus size={12} />
-                              </button>
+                            {editing && (
+                              <>
+                                <button onClick={() => removeTier(row.id, tier.id)} title="Remove this tier"
+                                  style={{ color: "var(--faint)", padding: 4 }}>
+                                  <Trash2 size={12} />
+                                </button>
+                                {index === row.tiers.length - 1 && (
+                                  <button onClick={() => addTier(row.id)} title="Add a tier"
+                                    style={{ color: "var(--faint)", padding: 4 }}>
+                                    <Plus size={12} />
+                                  </button>
+                                )}
+                              </>
                             )}
                           </td>
                         </tr>
                       )))}
 
-                      {!sheet.rows.length && (
+                      {!(editing ? draft.rows : sheet.rows).length && (
                         <tr>
                           <td colSpan={5} style={{ padding: 26, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
                             No products yet. Add one to start pricing.
@@ -389,18 +473,23 @@ function PricingInner() {
                   </table>
                 </div>
 
-                {sheet.rows.length > 0 && (
-                  <div className="flex items-center gap-3 mt-3">
-                    <button onClick={addRow} disabled={busy}
+                {editing ? (
+                  <div className="flex items-center gap-3 mt-3 flex-wrap">
+                    <button onClick={addRow}
                       className="text-xs font-semibold inline-flex items-center gap-1.5" style={{ color: "var(--text-2)" }}>
                       <Plus size={13} /> Add product
                     </button>
-                    <button onClick={() => removeRow(sheet.rows[sheet.rows.length - 1].id)} disabled={busy}
-                      className="text-xs inline-flex items-center gap-1.5" style={{ color: "var(--faint)" }}>
-                      <Trash2 size={12} /> Remove the last product
-                    </button>
+                    {draft.rows.length > 0 && (
+                      <button onClick={() => removeRow(draft.rows[draft.rows.length - 1].id)}
+                        className="text-xs inline-flex items-center gap-1.5" style={{ color: "var(--faint)" }}>
+                        <Trash2 size={12} /> Remove the last product
+                      </button>
+                    )}
+                    <span className="text-xs" style={{ color: "var(--faint)" }}>
+                      Nothing is saved until you press Save changes.
+                    </span>
                   </div>
-                )}
+                ) : null}
               </>
             )}
           </section>
