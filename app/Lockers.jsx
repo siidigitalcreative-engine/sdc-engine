@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { upload as uploadToBlob } from "@vercel/blob/client";
 import {
   Plus, Trash2, X, Globe2, Copy, ExternalLink, Image as ImageIcon, Film, StickyNote, Lock,
-  Maximize2, Download, Check, CheckSquare, Send,
+  Maximize2, Download, Check, CheckSquare, Send, ChevronDown,
 } from "lucide-react";
 import { useAuth } from "./auth";
 import { useLarkSend } from "./LarkSend";
@@ -32,6 +32,7 @@ export default function Lockers({ deptView }) {
   const [uploading, setUploading] = useState(false);
   const [selecting, setSelecting] = useState(false);   // pick several files to download together
   const [picks, setPicks] = useState([]);
+  const [dlMenu, setDlMenu] = useState(false);
   const [dl, setDl] = useState(null);                  // { done, total } while a download is being prepared
 
   const dragRef = useRef(null);
@@ -119,13 +120,14 @@ export default function Lockers({ deptView }) {
   const allChosen = media.length > 0 && chosen.length === media.length;
   const togglePick = (id) => setPicks((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
-  const download = async (items) => {
+  const download = async (items, mode = "zip") => {
     if (!items.length || dl) return;
     setError("");
     setDl({ done: 0, total: items.length });
     try {
       const { skipped } = await downloadLockerFiles(items, {
         zipName: locker.name,
+        mode,
         onProgress: (done, total) => setDl({ done, total }),
       });
       if (skipped.length) setError(`${skipped.length} file${skipped.length === 1 ? "" : "s"} could not be added: ${skipped.join(", ")}`);
@@ -471,11 +473,33 @@ export default function Lockers({ deptView }) {
                       : { background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
                     <CheckSquare size={14} /> {selecting ? "Done" : "Select"}
                   </button>
-                  <button onClick={() => download(media)} disabled={!!dl}
-                    className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
-                    style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
-                    <Download size={14} /> {dl && !selecting ? `Preparing ${dl.done} of ${dl.total}…` : "Download all"}
-                  </button>
+                  <span className="relative inline-flex">
+                    <button onClick={() => setDlMenu((v) => !v)} disabled={!!dl}
+                      className="tp-ib rounded-full px-3 py-2 text-sm font-medium inline-flex items-center gap-1.5"
+                      style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+                      <Download size={14} />
+                      {dl && !selecting ? `Preparing ${dl.done} of ${dl.total}…` : "Download all"}
+                      <ChevronDown size={12} />
+                    </button>
+
+                    {dlMenu && (
+                      <span className="absolute right-0 rounded-xl overflow-hidden z-20"
+                        style={{ top: "calc(100% + 6px)", minWidth: 210, background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 10px 30px rgba(0,0,0,.35)" }}>
+                        {[
+                          { mode: "zip", title: "As a ZIP", note: "One archive with every file" },
+                          { mode: "files", title: "Separate files", note: "One download per file" },
+                        ].map((choice) => (
+                          <button key={choice.mode}
+                            onClick={() => { setDlMenu(false); download(media, choice.mode); }}
+                            className="block w-full text-left px-3 py-2"
+                            style={{ color: "var(--text)" }}>
+                            <span className="block text-[12.5px] font-semibold">{choice.title}</span>
+                            <span className="block text-[11px]" style={{ color: "var(--muted)" }}>{choice.note}</span>
+                          </button>
+                        ))}
+                      </span>
+                    )}
+                  </span>
                 </>
               )}
 
@@ -515,10 +539,15 @@ export default function Lockers({ deptView }) {
                 <span>{chosen.length ? `${chosen.length} selected` : "Click files to select them."}</span>
                 <button onClick={() => setPicks(allChosen ? [] : media.map((i) => i.id))}
                   className="underline" style={{ color: "var(--text-2)" }}>{allChosen ? "Clear" : "Select all"}</button>
-                <button onClick={() => download(chosen)} disabled={!chosen.length || !!dl}
+                <button onClick={() => download(chosen, "zip")} disabled={!chosen.length || !!dl}
                   className="rounded-full px-3 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
                   style={{ background: ACCENT, color: ON_ACCENT, opacity: !chosen.length || dl ? 0.55 : 1 }}>
-                  <Download size={12} /> {dl ? `Preparing ${dl.done} of ${dl.total}…` : `Download selected (${chosen.length})`}
+                  <Download size={12} /> {dl ? `Preparing ${dl.done} of ${dl.total}…` : `ZIP (${chosen.length})`}
+                </button>
+                <button onClick={() => download(chosen, "files")} disabled={!chosen.length || !!dl}
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
+                  style={{ background: "var(--card)", color: "var(--text-2)", border: "1px solid var(--border)", opacity: !chosen.length || dl ? 0.55 : 1 }}>
+                  <Download size={12} /> Separate files
                 </button>
               </div>
             )}
