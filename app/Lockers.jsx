@@ -335,6 +335,11 @@ export default function Lockers({ deptView }) {
       })),
     },
     stamp: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
+    /* Only when sharing is on. A link to a board whose sharing is off would
+       just give whoever opened it the "not available" page. */
+    shareUrl: locker?.share?.enabled && typeof window !== "undefined"
+      ? `${window.location.origin}/public/locker/${locker.share.token}`
+      : "",
   });
 
   const exportPng = async () => {
@@ -364,7 +369,11 @@ export default function Lockers({ deptView }) {
 
   const sendToLark = () => {
     if (!locker?.items?.length) { setError("Nothing on this board to send yet."); return; }
-    openLarkSend("/api/lark/locker-image", exportPayload(), { label: locker.name || "this locker" });
+    openLarkSend("/api/lark/locker-image", exportPayload(), {
+      label: locker.share?.enabled
+        ? `${locker.name || "this locker"}, with its public link`
+        : (locker.name || "this locker"),
+    });
   };
 
   const newLocker = async () => {
